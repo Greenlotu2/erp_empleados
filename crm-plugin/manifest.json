@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "CRM - Panel del Trabajador",
+  "version": "1.0",
+  "description": "Plugin para control de disponibilidad y reporte de actividades de empleados.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}

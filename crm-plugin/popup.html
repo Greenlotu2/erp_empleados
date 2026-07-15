@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 340px;
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 16px;
+    }
+    .profile-card {
+      background-color: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .user-info h2 { margin: 0; font-size: 14px; color: #ffffff; }
+    .user-info p { margin: 2px 0 0 0; font-size: 11px; color: #3b82f6; }
+    .status-section {
+      margin: 16px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #111827;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #1f2937;
+    }
+    .status-badge {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 99px;
+    }
+    .status-available { background-color: rgba(16, 185, 129, 0.1); color: #34d399; }
+    .status-busy { background-color: rgba(245, 158, 11, 0.1); color: #fbbf24; }
+    .btn-toggle {
+      background-color: #1f2937;
+      color: #cbd5e1;
+      border: 1px solid #374151;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .task-desc {
+      font-size: 12px;
+      color: #e2e8f0;
+      background-color: #0b0f19;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+      margin-bottom: 10px;
+    }
+    .btn-primary {
+      width: 100%;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .sim-area { margin-top: 12px; text-align: center; }
+    .btn-sim { background: none; border: none; color: #4b5563; font-family: monospace; font-size: 10px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="profile-card">
+    <div style="font-size: 24px;">👨‍🔧</div>
+    <div class="user-info">
+      <h2>Luis Martínez</h2>
+      <p>QA Tester</p>
+    </div>
+  </div>
+
+  <div class="status-section">
+    <div id="statusBadge" class="status-badge status-available">Disponible</div>
+    <button id="btnToggle" class="btn-toggle">Ponerme Ocupado</button>
+  </div>
+
+  <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 12px;">
+    <div id="taskText" class="task-desc">No tienes actividades asignadas por el momento. Tu estado figura como libre.</div>
+    <button id="btnAction" class="btn-primary" style="display: none;">⏹️ Finalizar Tarea</button>
+  </div>
+
+  <div class="sim-area">
+    <button id="btnSimulate" class="btn-sim">[ Simular Envío de Tarea ]</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
