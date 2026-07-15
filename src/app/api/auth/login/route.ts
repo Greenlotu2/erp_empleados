@@ -1,40 +1,51 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '../../../../lib/supabase'; // Asegúrate de usar tu alias o ruta relativa correcta hacia src/lib/supabase
+import { supabase } from '../../../../lib/supabase';
 
 export async function POST(request: Request) {
   try {
     const { username, password } = await request.json();
 
     if (!username || !password) {
-      return NextResponse.json({ message: 'Campos vacíos' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
-    }
-
-    // Consultar a Supabase buscando al empleado
-    const { data: empleado, error } = await supabase
-      .from('empleados')
-      .select('*')
-      .eq('username', username)
-      .eq('password', password) // En producción recuerda encriptar/comparar con bcrypt o usar Supabase Auth
-      .single();
-
-    if (error || !empleado) {
       return NextResponse.json(
-        { message: 'Usuario o contraseña incorrectos' },
-        { 
-          status: 401, 
-          headers: { 'Access-Control-Allow-Origin': '*' } 
-        }
+        { message: 'Campos vacíos' },
+        { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }
 
-    // Si todo coincide, devolvemos la info real guardando el ID del usuario
+    // 1. Autenticar contra Supabase Auth (username debe ser el email registrado en Auth)
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: username,
+      password: password,
+    });
+
+    if (authError || !authData.user) {
+      return NextResponse.json(
+        { message: 'Usuario o contraseña incorrectos' },
+        { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+
+    // 2. Traer el perfil del empleado vinculado a ese user_id
+    const { data: empleado, error: empleadoError } = await supabase
+      .from('empleados')
+      .select('*')
+      .eq('user_id', authData.user.id)
+      .single();
+
+    if (empleadoError || !empleado) {
+      return NextResponse.json(
+        { message: 'Empleado no encontrado en la tabla de perfiles' },
+        { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+
     return NextResponse.json(
-      { 
-        user: { 
+      {
+        user: {
           id: empleado.id,
-          name: empleado.nombre, 
-          role: empleado.rol 
-        } 
+          name: empleado.nombre,
+          role: empleado.rol,
+        },
       },
       {
         status: 200,
