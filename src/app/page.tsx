@@ -1,7 +1,7 @@
   'use client';
 
   import React, { useState } from 'react';
-  import WeeklyChart from '../../../components/charts/WeeklyChart';
+  import WeeklyChart from '../components/charts/WeeklyChart';
 
   const INITIAL_EMPLOYEES_TRACKING = [
     { id: '1', name: 'Carlos Pérez', role: 'Developer', task: 'Mantenimiento preventivo y optimización de servidores locales', status: 'Ocupado', avatar: '👨‍💻', priority: 'Alta' },

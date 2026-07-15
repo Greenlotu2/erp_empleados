@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '../../../lib/supabase'; // Asegúrate de usar tu alias o ruta relativa correcta hacia src/lib/supabase
+import { supabase } from '../../../../lib/supabase'; // Asegúrate de usar tu alias o ruta relativa correcta hacia src/lib/supabase
 
 export async function POST(request: Request) {
   try {
