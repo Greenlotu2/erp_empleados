@@ -1,40 +1,98 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr'; // Usar cliente oficial de SSR para Cookies
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Instanciar cliente de navegador (escribe y lee cookies en lugar de localStorage)
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Aquí conectaremos la lógica de autenticación más adelante
-    console.log('Iniciando sesión con:', { email, password });
-    
-    setTimeout(() => {
+    setErrorMessage(null);
+
+    try {
+      // 1. Autenticación inicial con Supabase (asigna las cookies en el navegador)
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        throw new Error('Credenciales inválidas. Revisa tu correo y contraseña.');
+      }
+
+      const user = authData.user;
+      if (!user) {
+        throw new Error('No se pudo obtener la información de sesión.');
+      }
+
+      // 2. Consultar el ROL en la tabla 'empleados'
+      const { data: empleadoData, error: empError } = await supabase
+        .from('empleados')
+        .select('rol')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (empError) {
+        console.error('Error al consultar el perfil:', empError);
+      }
+
+      const userRole = empleadoData?.rol?.toLowerCase().trim();
+
+      // 3. RESTRICCIÓN DE EMPLEADOS: Si no es admin, revocar acceso
+      if (userRole !== 'admin' && userRole !== 'administrador') {
+        // Cerrar la sesión de Supabase de inmediato (borra cookies)
+        await supabase.auth.signOut();
+        throw new Error('Acceso denegado: Esta plataforma es exclusiva para Administradores.');
+      }
+
+      // 4. Forzar refresco de router para sincronizar las cookies con el Middleware y redirigir
+      router.refresh();
+      router.push('/'); // Ajusta a la ruta exacta de tu dashboard
+
+    } catch (error: any) {
+      console.error('Error durante inicio de sesión:', error);
+      setErrorMessage(error.message || 'Error al iniciar sesión.');
       setIsLoading(false);
-      alert('Simulación de inicio de sesión. ¡El diseño responsivo funciona!');
-    }, 1500);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-[#e94f1b] to-[#21388e] flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4">
-  {/* Contenido */}
-    <div className="sm:mx-auto w-full sm:max-w-md text-center">
+      
+      {/* Contenido */}
+      <div className="sm:mx-auto w-full sm:max-w-md text-center">
         {/* Icono / Logo minimalista */}
-       
-          <img src="logo_rocal_bl.png" alt="Logo" />
+        <img src="logo_rocal_bl.png" alt="Logo" className="mx-auto" />
         
         <p className="mt-2 text-center text-sm text-white">
-          Control y seguimiento de actividades en tiempo real
+          ERP Empresarial - Rocal S.A. de C.V. <br />
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-sm border border-slate-100 rounded-2xl sm:px-10">
+          
+          {/* Mensaje de Error (si existe) */}
+          {errorMessage && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-medium">
+              ⚠️ {errorMessage}
+            </div>
+          )}
+
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-700">
@@ -49,7 +107,7 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
+                  className="appearance-none block w-full px-3 py-2.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black transition-all"
                   placeholder="tu@empresa.com"
                 />
               </div>
@@ -68,7 +126,7 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
+                  className="appearance-none block w-full px-3 py-2.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black"
                   placeholder="••••••••"
                 />
               </div>
