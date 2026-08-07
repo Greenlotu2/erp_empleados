@@ -65,21 +65,17 @@ export default function CriticalPathPage() {
 
       // C) Cargar tareas relacionales
       const { data: tareasData, error: tareasErr } = await supabase
-        .from('tareas')
-        .select(`
-          id,
-          titulo,
-          duracion_dias,
-          dia_inicio,
-          porcentaje_avance,
-          es_critica,
-          es_hito,
-          estado,
-          holgura_dias,
-          depende_de,
-          empleados (nombre),
-          proyectos (nombre)
-        `);
+  .from('tareas')
+  .select(`
+    *,
+    empleados:empleados!tareas_empleado_id_fkey (nombre),
+    proyectos (nombre)
+  `);
+
+if (tareasErr) {
+  console.error('Detalle error Supabase Tareas:', tareasErr);
+  throw tareasErr;
+}
 
       if (tareasErr) throw tareasErr;
 
@@ -123,41 +119,48 @@ export default function CriticalPathPage() {
   }, []);
 
   // 🤖 2. CONSULTA DIRECTA AL ENDPOINT DE GEMINI AI
-  const runGeminiAnalysis = async (proyectoActual: string, tareasFiltradas: CriticalTask[]) => {
-    try {
-      setIsAiAnalyzing(true);
+ const runGeminiAnalysis = async (proyectoActual: string, tareasFiltradas: CriticalTask[]) => {
+  try {
+    setIsAiAnalyzing(true);
 
-      const response = await fetch('/api/ruta-critica/analizar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proyectoNombre: proyectoActual,
-          tareas: tareasFiltradas,
-          reuniones: reuniones,
-        }),
-      });
+    const response = await fetch('/admin/ruta-critica/analizar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        proyectoNombre: proyectoActual,
+        tareas: tareasFiltradas,
+        reuniones,
+      }),
+    });
 
-      if (!response.ok) throw new Error('Error al consultar Gemini');
-
-      const data = await response.json();
-
-      let mappedRisk: 'ALTO' | 'MEDIO' | 'BAJO' = 'BAJO';
-      if (data.estadoGeneral === 'Crítico' || data.estadoGeneral === 'ALTO') mappedRisk = 'ALTO';
-      else if (data.estadoGeneral === 'En riesgo' || data.estadoGeneral === 'MEDIO') mappedRisk = 'MEDIO';
-
-      setAiDiagnostic({
-        riskLevel: mappedRisk,
-        summary: data.resumenEjecutivo || 'Análisis finalizado correctamente.',
-        bottleneckPerson: data.puntosCriticos?.[0] || 'Por evaluar',
-        suggestion: data.recomendaciones?.[0]?.descripcion || data.resumenEjecutivo,
-      });
-    } catch (error) {
-      console.error('Error ejecutando IA:', error);
-      alert('No se pudo generar el diagnóstico. Asegúrate de tener configurado tu GEMINI_API_KEY en el .env');
-    } finally {
-      setIsAiAnalyzing(false);
+    // 👇 Ahora SÍ lees el body del error antes de tirar
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.details || errData.error || `HTTP ${response.status}`);
     }
-  };
+
+    const data = await response.json();
+
+    let mappedRisk: 'ALTO' | 'MEDIO' | 'BAJO' = 'BAJO';
+    if (data.estadoGeneral === 'Crítico' || data.estadoGeneral === 'ALTO') mappedRisk = 'ALTO';
+    else if (data.estadoGeneral === 'En riesgo' || data.estadoGeneral === 'MEDIO') mappedRisk = 'MEDIO';
+
+    setAiDiagnostic({
+      riskLevel: mappedRisk,
+      summary: data.resumenEjecutivo || 'Análisis finalizado correctamente.',
+      bottleneckPerson: data.puntosCriticos?.[0] || 'Por evaluar',
+      suggestion: data.recomendaciones?.[0]?.descripcion || data.resumenEjecutivo,
+    });
+
+  } catch (error) {
+    console.error('Error ejecutando IA:', error);
+    // 👇 Ahora muestra el error REAL de Gemini o del servidor
+    const msg = error instanceof Error ? error.message : 'Error desconocido';
+    alert(`Error al generar diagnóstico: ${msg}`);
+  } finally {
+    setIsAiAnalyzing(false);
+  }
+};
 
   const filteredTasks = tasks.filter(t => {
     const isAllSelected = selectedProject === 'Todos los Proyectos';

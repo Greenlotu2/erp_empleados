@@ -1,52 +1,76 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 export async function POST(req: Request) {
   try {
-    const { proyectoNombre, tareas, reuniones } = await req.json();
+    const body = await req.json();
+    const { proyectoNombre, tareas, reuniones } = body;
+
+    const apiKey = process.env.GROQ_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'No se encontró la variable GROQ_API_KEY en .env.local' },
+        { status: 500 }
+      );
+    }
 
     const prompt = `
-      Eres un experto en gestión de proyectos y optimización de Ruta Crítica (CPM).
-      Analiza el estado del proyecto "${proyectoNombre}":
+Eres un experto en gestión de proyectos, Diagramas Gantt y Método de la Ruta Crítica (CPM).
+Analiza las siguientes tareas del proyecto "${proyectoNombre}":
 
-      TAREAS DEL PROYECTO:
-      ${JSON.stringify(tareas, null, 2)}
+TAREAS:
+${JSON.stringify(tareas, null, 2)}
 
-      REUNIONES Y REVISIONES PROGRAMADAS:
-      ${JSON.stringify(reuniones, null, 2)}
+REUNIONES RELACIONADAS:
+${JSON.stringify(reuniones, null, 2)}
 
-      Genera un análisis en formato JSON estricto con la siguiente estructura exacta:
-      {
-        "estadoGeneral": "A tiempo" | "En riesgo" | "Crítico",
-        "resumenEjecutivo": "Explicación breve del impacto de los retrasos y ajustes en las reuniones.",
-        "puntosCriticos": ["Descripción puntual del cuello de botella 1", "Descripción puntual 2"],
-        "recomendaciones": [
-          {
-            "titulo": "Acción recomendada",
-            "impacto": "Alto" | "Medio" | "Bajo",
-            "descripcion": "Qué ajustar en la cronología o asignación para recuperar tiempo."
-          }
-        ]
-      }
-    `;
+Responde ÚNICAMENTE con un objeto JSON estrictamente válido que tenga esta estructura exacta (sin bloques de código Markdown ni texto extra):
+{
+  "estadoGeneral": "Crítico",
+  "resumenEjecutivo": "Un resumen conciso del estado actual de las dependencias, holguras y tiempos.",
+  "puntosCriticos": ["Nombre del empleado o tarea que representa el cuello de botella main"],
+  "recomendaciones": [
+    {
+      "descripcion": "Sugerencia concreta de reasignación o balanceo de trabajo."
+    }
+  ]
+}
+`;
 
-    // Usamos gemini-1.5-flash optimizado para respuestas JSON rápidas
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: { responseMimeType: 'application/json' },
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+      }),
     });
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    const jsonAnalysis = JSON.parse(responseText);
+    if (!groqRes.ok) {
+      const errText = await groqRes.text();
+      console.error('Error devuelto por Groq API:', errText);
+      return NextResponse.json(
+        { error: 'Error devuelto por la API de Groq', details: errText },
+        { status: groqRes.status }
+      );
+    }
 
-    return NextResponse.json(jsonAnalysis);
+    const groqData = await groqRes.json();
+    const textResponse = groqData.choices?.[0]?.message?.content || '{}';
+
+    // Limpiar formato Markdown por si el modelo lo incluye
+    const cleanJsonText = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsedData = JSON.parse(cleanJsonText);
+
+    return NextResponse.json(parsedData);
   } catch (error: any) {
-    console.error('Error al analizar Ruta Crítica con Gemini:', error);
+    console.error('Error interno en endpoint de Groq:', error);
     return NextResponse.json(
-      { error: 'No se pudo generar el diagnóstico con Gemini.' },
+      { error: 'Error procesando la solicitud en el servidor', details: error?.message },
       { status: 500 }
     );
   }
