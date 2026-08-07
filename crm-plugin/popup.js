@@ -1,41 +1,91 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const btnToggle = document.getElementById('btnToggle');
-  const btnAction = document.getElementById('btnAction');
-  const btnSimulate = document.getElementById('btnSimulate');
-  const statusBadge = document.getElementById('statusBadge');
-  const taskText = document.getElementById('taskText');
+  const API_URL = 'http://localhost:3000/api';
 
-  let isOcupado = false;
+  // Vistas
+  const loginView = document.getElementById('loginView');
+  const dashboardView = document.getElementById('dashboardView');
 
-  function updateUI() {
-    if (isOcupado) {
-      statusBadge.className = "status-badge status-busy";
-      statusBadge.textContent = "Ocupado";
-      btnToggle.textContent = "Ponerme Libre";
-      btnAction.style.display = "block";
+  // Login
+  const inputUsername = document.getElementById('inputUsername');
+  const inputPassword = document.getElementById('inputPassword');
+  const btnLogin = document.getElementById('btnLogin');
+
+  // Dashboard
+  const userName = document.getElementById('userName');
+  const userRole = document.getElementById('userRole');
+  const btnLogout = document.getElementById('btnLogout');
+
+  let sessionData = null;
+
+  // 1. Revisar si ya hay una sesión guardada en la extensión
+  chrome.storage.local.get(['session'], (result) => {
+    if (result.session && result.session.access_token) {
+      sessionData = result.session;
+      showDashboard();
     } else {
-      statusBadge.className = "status-badge status-available";
-      statusBadge.textContent = "Disponible";
-      btnToggle.textContent = "Ponerme Ocupado";
-      taskText.textContent = "No tienes actividades asignadas por el momento. Tu estado figura como libre.";
-      btnAction.style.display = "none";
+      showLogin();
+    }
+  });
+
+  function showLogin() {
+    loginView.style.display = 'block';
+    dashboardView.style.display = 'none';
+  }
+
+  function showDashboard() {
+    loginView.style.display = 'none';
+    dashboardView.style.display = 'block';
+
+    if (sessionData && sessionData.user) {
+      userName.textContent = sessionData.user.name || 'Usuario';
+      userRole.textContent = sessionData.user.role || 'Empleado';
     }
   }
 
-  btnToggle.addEventListener('click', () => {
-    isOcupado = !isOcupado;
-    updateUI();
+  // 2. Conectar al backend (POST /api/auth/login)
+  btnLogin.addEventListener('click', async () => {
+    const username = inputUsername.value.trim();
+    const password = inputPassword.value.trim();
+
+    if (!username || !password) {
+      alert('Ingresa tu usuario y contraseña');
+      return;
+    }
+
+    btnLogin.textContent = 'Conectando...';
+    btnLogin.disabled = true;
+
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Error al autenticar');
+      }
+
+      // Guardar token y datos del usuario en el storage local de Chrome
+      sessionData = data;
+      chrome.storage.local.set({ session: data }, () => {
+        showDashboard();
+      });
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      btnLogin.textContent = 'Conectar';
+      btnLogin.disabled = false;
+    }
   });
 
-  btnSimulate.addEventListener('click', () => {
-    isOcupado = true;
-    taskText.textContent = "Ejecutar pruebas de regresión completas en el módulo de facturación del sistema.";
-    updateUI();
-  });
-
-  btnAction.addEventListener('click', () => {
-    alert("¡Actividad completada!");
-    isOcupado = false;
-    updateUI();
+  // 3. Cerrar sesión
+  btnLogout.addEventListener('click', () => {
+    chrome.storage.local.remove('session', () => {
+      sessionData = null;
+      showLogin();
+    });
   });
 });
