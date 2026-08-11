@@ -2,21 +2,23 @@
   "manifest_version": 3,
   "name": "ERP - Panel del Empleado",
   "version": "1.0",
-  "description": "Módulo ERP independiente con barra lateral y ventana flotante.",
+  "description": "Extensión para gestión de tareas, temporizador de servicio y notificaciones de reuniones",
   "permissions": [
+    "sidePanel",
     "storage",
-    "sidePanel"
+    "windows"
   ],
   "host_permissions": [
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://*.supabase.co/*"
   ],
-  "background": {
-    "service_worker": "background.js"
+  "action": {
+    "default_title": "Abrir Panel de Empleado"
   },
   "side_panel": {
     "default_path": "panel.html"
   },
-  "action": {
-    "default_title": "Abrir ERP"
+  "background": {
+    "service_worker": "background.js"
   }
 }
