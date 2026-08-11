@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
-import { supabaseServer } from '../../../lib/supabaseServer';
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '../../../lib/api-auth';
+import { verifyAuthToken } from '../../../lib/auth';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,54 +8,95 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-export async function GET(request: Request) {
+// 1. OBTENER TAREAS (GET)
+export async function GET(req: NextRequest) {
+  // 🔒 Verificación de Token JWT
+  const user = verifyAuthToken(req);
+  if (!user) {
+    return NextResponse.json({ error: 'No autorizado / Token inválido' }, { status: 401, headers: corsHeaders });
+  }
+
   try {
-    const { searchParams } = new URL(request.url);
-    const empleadoId = searchParams.get('empleadoId') || searchParams.get('empleado_id');
+    const { searchParams } = new URL(req.url);
+    const requestedEmpId = searchParams.get('employeeId') || searchParams.get('empleadoId');
 
-    let query = supabaseServer.from('tareas').select('*');
+    let query = supabaseAdmin
+      .from('tareas')
+      .select('*, proyectos(nombre)');
 
-    if (empleadoId) {
-      query = query.eq('empleado_id', empleadoId);
+    const isAdmin = user.rol.toLowerCase() === 'administrador' || user.rol.toLowerCase() === 'admin';
+
+    // Si no es admin, solo puede consultar sus tareas o colaboraciones
+    if (!isAdmin) {
+      query = query.or(`empleado_id.eq.${user.id},colaboradores_ids.cs.{${user.id}}`);
+    } else if (requestedEmpId) {
+      query = query.or(`empleado_id.eq.${requestedEmpId},colaboradores_ids.cs.{${requestedEmpId}}`);
     }
 
     const { data: tareas, error } = await query;
+    if (error) throw error;
 
-    if (error) {
-      return NextResponse.json({ message: error.message }, { status: 500, headers: corsHeaders });
-    }
+    return NextResponse.json({ success: true, tareas: tareas || [] }, { status: 200, headers: corsHeaders });
 
-    return NextResponse.json(tareas || [], { status: 200, headers: corsHeaders });
-  } catch (error: any) {
-    return NextResponse.json({ message: error.message }, { status: 500, headers: corsHeaders });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Error al consultar tareas' }, { status: 500, headers: corsHeaders });
   }
 }
 
-export async function PATCH(request: Request) {
+// 2. ACTUALIZAR ESTADO DE TAREA (PATCH)
+export async function PATCH(req: NextRequest) {
+  // 🔒 Verificación de Token JWT
+  const user = verifyAuthToken(req);
+  if (!user) {
+    return NextResponse.json({ error: 'No autorizado / Token inválido' }, { status: 401, headers: corsHeaders });
+  }
+
   try {
-    const body = await request.json();
-    const { id, estado } = body;
+    const body = await req.json();
+    const { taskId, estado, porcentajeAvance } = body;
 
-    const updateData: any = { estado };
-    if (estado === 'Completado') {
-      updateData.fecha_completado = new Date().toISOString();
-    } else {
-      updateData.fecha_completado = null;
+    if (!taskId) {
+      return NextResponse.json({ error: 'ID de la tarea requerido' }, { status: 400, headers: corsHeaders });
     }
 
-    const { data, error } = await supabaseServer
+    // A) Consultar la tarea para verificar ownership
+    const { data: tarea, error: fetchErr } = await supabaseAdmin
       .from('tareas')
-      .update(updateData)
-      .eq('id', id)
-      .select();
+      .select('*')
+      .eq('id', taskId)
+      .maybeSingle();
 
-    if (error) {
-      return NextResponse.json({ message: error.message }, { status: 500, headers: corsHeaders });
+    if (fetchErr || !tarea) {
+      return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404, headers: corsHeaders });
     }
 
-    return NextResponse.json(data, { status: 200, headers: corsHeaders });
-  } catch (error: any) {
-    return NextResponse.json({ message: error.message }, { status: 500, headers: corsHeaders });
+    // B) Validar permisos (Ownership Check)
+    const isAdmin = user.rol.toLowerCase() === 'administrador' || user.rol.toLowerCase() === 'admin';
+    const isOwner = tarea.empleado_id === user.id;
+    const isCollaborator = Array.isArray(tarea.colaboradores_ids) && tarea.colaboradores_ids.includes(user.id);
+
+    if (!isAdmin && !isOwner && !isCollaborator) {
+      return NextResponse.json({ error: 'No tienes permisos para modificar esta tarea' }, { status: 403, headers: corsHeaders });
+    }
+
+    // C) Construir payload de actualización
+    const updatePayload: any = {};
+    if (estado !== undefined) updatePayload.estado = estado;
+    if (porcentajeAvance !== undefined) updatePayload.porcentaje_avance = porcentajeAvance;
+
+    const { data: updatedTask, error: updateErr } = await supabaseAdmin
+      .from('tareas')
+      .update(updatePayload)
+      .eq('id', taskId)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+
+    return NextResponse.json({ success: true, tarea: updatedTask }, { status: 200, headers: corsHeaders });
+
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Error al actualizar tarea' }, { status: 500, headers: corsHeaders });
   }
 }
 

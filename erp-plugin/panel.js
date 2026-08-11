@@ -9,7 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let todaySeconds = 0;
   let lastSyncTimestamp = Date.now();
   const MAX_DAILY_SECONDS = 5 * 3600; // 5 Horas = 18,000s
-  const API_BASE_URL = 'http://localhost:3000/api';
+  const API_BASE_URL = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL 
+  ? process.env.NEXT_PUBLIC_API_URL 
+  : "http://localhost:3000/api";
 
   const screenContainer = document.getElementById('screen-container');
   const logoutBtn = document.getElementById('btn-logout');

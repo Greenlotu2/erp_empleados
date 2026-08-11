@@ -30,11 +30,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           .or(`username.ilike.${userEmail},id.eq.${session.user.id}`)
           .maybeSingle();
 
-          console.log('🔍 Session user ID:', session.user.id);
-console.log('🔍 Email buscado:', userEmail);
-console.log('🔍 Empleado encontrado:', empleado);
-console.log('🔍 Error query:', error);
-console.log('🔍 Rol detectado:', empleado?.rol);
         if (error) {
           console.error('Error al consultar rol en la tabla empleados:', error);
         }
