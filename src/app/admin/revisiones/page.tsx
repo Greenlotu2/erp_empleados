@@ -13,7 +13,6 @@ const supabaseAnonKey =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Interfaz adaptada a las columnas reales de 'reuniones'
 interface HistorialRevision {
   id: string;
   title: string;
@@ -24,6 +23,11 @@ interface HistorialRevision {
   notas: string;
 }
 
+interface OptionItem {
+  id: string;
+  nombre: string;
+}
+
 export default function RevisionesPage() {
   const [activeTab, setActiveTab] = useState<'calendario' | 'historial'>('calendario');
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,10 +35,35 @@ export default function RevisionesPage() {
   const [historial, setHistorial] = useState<HistorialRevision[]>([]);
   const [loading, setLoading] = useState(true);
 
-// 🔄 CARGA DE REVISIONES Y REUNIONES DESDE SUPABASE
+  // 📢 ESTADOS PARA EL MODAL DE AGENDAR REUNIÓN GRUPAL
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isSavingMeeting, setIsSavingTask] = useState(false);
+  
+  const [dbProjects, setDbProjects] = useState<OptionItem[]>([]);
+  const [dbEmployees, setDbEmployees] = useState<OptionItem[]>([]);
+
+  const [meetingFormData, setMeetingFormData] = useState({
+    titulo: '',
+    proyectoId: '', // Vacío por defecto para representar "Todos los Proyectos"
+    fechaInicio: '',
+    descripcion: '',
+    targetType: 'todos', // 'todos' | 'seleccionados'
+    selectedEmployeeIds: [] as string[],
+  });
+
+  // 🔄 CARGA DE REVISIONES Y REUNIONES DESDE SUPABASE
   const fetchRevisiones = async () => {
     try {
       setLoading(true);
+
+      // 1. Cargar proyectos y empleados para los selectores del modal
+      const { data: projData } = await supabase.from('proyectos').select('id, nombre');
+      if (projData) setDbProjects(projData);
+
+      const { data: empData } = await supabase.from('empleados').select('id, nombre');
+      if (empData) setDbEmployees(empData);
+
+      // 2. Cargar historial de reuniones
       const { data, error } = await supabase
         .from('reuniones')
         .select(`
@@ -54,9 +83,9 @@ export default function RevisionesPage() {
         const mapped: HistorialRevision[] = data.map((item: any) => ({
           id: item.id,
           title: item.titulo || 'Sin título',
-          project: item.proyectos?.nombre || 'General',
-          empleado: item.empleados?.nombre || 'Integrante',
-          fecha: item.fecha_inicio ? item.fecha_inicio.split('T')[0] : 'Sin fecha',
+          project: item.proyectos?.nombre ? `📁 ${item.proyectos.nombre}` : '🌐 Todos los Proyectos',
+          empleado: item.empleados?.nombre || 'Todo el equipo (Grupal)',
+          fecha: item.fecha_inicio ? item.fecha_inicio.replace('T', ' ').substring(0, 16) : 'Sin fecha',
           estado: item.estado || 'Programada',
           notas: item.descripcion || 'Sin notas registradas.',
         }));
@@ -72,6 +101,89 @@ export default function RevisionesPage() {
   useEffect(() => {
     fetchRevisiones();
   }, []);
+
+  // 📅 CREAR REUNIÓN GRUPAL / INDIVIDUAL Y NOTIFICAR A LAS EXTENSIONES
+  const handleCreateMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!meetingFormData.titulo.trim() || !meetingFormData.fechaInicio) {
+      alert('Por favor completa el título y la fecha/hora de la reunión.');
+      return;
+    }
+
+    try {
+      setIsSavingTask(true);
+
+      // Determinar lista de empleados a convocar
+      let targetEmployeeIds: string[] = [];
+      if (meetingFormData.targetType === 'todos') {
+        targetEmployeeIds = dbEmployees.map(e => e.id);
+      } else {
+        targetEmployeeIds = meetingFormData.selectedEmployeeIds;
+      }
+
+      if (targetEmployeeIds.length === 0) {
+        alert('Debes seleccionar al menos un integrante para convocar la reunión.');
+        setIsSavingTask(false);
+        return;
+      }
+
+      // Si no seleccionó un proyecto específico, se guarda como NULL (Aplica a Todos los Proyectos)
+      const targetProjectId = meetingFormData.proyectoId ? meetingFormData.proyectoId : null;
+
+      // 1. Insertar las reuniones en Supabase para los empleados convocados
+      const meetingsToInsert = targetEmployeeIds.map(empId => ({
+        titulo: meetingFormData.titulo.trim(),
+        descripcion: meetingFormData.descripcion.trim() || 'Reunión de revisión general de proyectos',
+        fecha_inicio: meetingFormData.fechaInicio,
+        estado: 'Programada',
+        empleado_id: empId,
+        proyecto_id: targetProjectId,
+      }));
+
+      const { error: meetingErr } = await supabase.from('reuniones').insert(meetingsToInsert);
+      if (meetingErr) throw meetingErr;
+
+      // 2. Generar Notificaciones en tiempo real para la extensión de cada empleado
+      const notificationsToInsert = targetEmployeeIds.map(empId => ({
+        empleado_id: empId,
+        proyecto_id: targetProjectId,
+        titulo_tarea: `📅 Convocatoria a Reunión: ${meetingFormData.titulo.trim()}`,
+        estado: 'Pendiente',
+      }));
+
+      await supabase.from('notificaciones').insert(notificationsToInsert);
+
+      alert(`✅ Reunión programada y notificación enviada a ${targetEmployeeIds.length} integrante(s).`);
+
+      // Resetear y cerrar modal
+      setMeetingFormData({
+        titulo: '',
+        proyectoId: '',
+        fechaInicio: '',
+        descripcion: '',
+        targetType: 'todos',
+        selectedEmployeeIds: [],
+      });
+      setIsScheduleModalOpen(false);
+
+      await fetchRevisiones();
+
+    } catch (err: any) {
+      console.error('Error al agendar la reunión:', err);
+      alert(`Error al agendar reunión: ${err.message || 'Error de conexión'}`);
+    } finally {
+      setIsSavingTask(false);
+    }
+  };
+
+  const handleToggleEmployeeSelection = (empId: string) => {
+    setMeetingFormData(prev => ({
+      ...prev,
+      selectedEmployeeIds: prev.selectedEmployeeIds.includes(empId)
+        ? prev.selectedEmployeeIds.filter(id => id !== empId)
+        : [...prev.selectedEmployeeIds, empId]
+    }));
+  };
 
   // Filtrado de la tabla del historial
   const filteredHistorial = historial.filter((item) => {
@@ -112,37 +224,48 @@ export default function RevisionesPage() {
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden h-full min-w-0">
         
-        {/* ENCABEZADO CON CONTROL DE PESTAÑAS */}
+        {/* ENCABEZADO CON BOTÓN DE CONVOCATORIA MASIVA */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 shrink-0">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Gestión de Revisiones</h1>
             <p className="text-xs text-slate-500">
-              Supervisa reuniones en el calendario y consulta el historial de ajustes de la Ruta Crítica
+              Supervisa reuniones en el calendario y convoca sesiones grupales para todo el equipo
             </p>
           </div>
 
-          {/* BOTONES DE PESTAÑA (TABS) */}
-          <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 📢 BOTÓN AGENDAR REUNIÓN GRUPAL */}
             <button
-              onClick={() => setActiveTab('calendario')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'calendario'
-                  ? 'bg-white text-blue-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              onClick={() => setIsScheduleModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
             >
-              📅 Calendario
+              <span>📢</span>
+              <span>+ Agendar Reunión Grupal</span>
             </button>
-            <button
-              onClick={() => setActiveTab('historial')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'historial'
-                  ? 'bg-white text-blue-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              📜 Historial de Revisiones ({historial.length})
-            </button>
+
+            {/* BOTONES DE PESTAÑA (TABS) */}
+            <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 shadow-2xs">
+              <button
+                onClick={() => setActiveTab('calendario')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'calendario'
+                    ? 'bg-white text-blue-600 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                📅 Calendario
+              </button>
+              <button
+                onClick={() => setActiveTab('historial')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'historial'
+                    ? 'bg-white text-blue-600 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                📜 Historial ({historial.length})
+              </button>
+            </div>
           </div>
         </header>
 
@@ -173,9 +296,9 @@ export default function RevisionesPage() {
                 className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
               >
                 <option value="all">Todos los estados</option>
+                <option value="Programada">Programada</option>
                 <option value="Completado">Completado</option>
                 <option value="Ajuste por tiempo">Ajuste por tiempo</option>
-                <option value="Programada">Programada</option>
                 <option value="Pendiente">Pendiente</option>
               </select>
             </div>
@@ -192,8 +315,8 @@ export default function RevisionesPage() {
                   <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold sticky top-0 uppercase text-[10px]">
                     <tr>
                       <th className="p-3">Revisión / Proyecto</th>
-                      <th className="p-3">Empleado</th>
-                      <th className="p-3">Fecha</th>
+                      <th className="p-3">Convocados / Empleado</th>
+                      <th className="p-3">Fecha y Hora</th>
                       <th className="p-3">Estado</th>
                       <th className="p-3">Notas</th>
                     </tr>
@@ -205,8 +328,8 @@ export default function RevisionesPage() {
                           <div className="font-bold text-slate-900">{rev.title}</div>
                           <div className="text-[10px] text-blue-600 font-semibold">{rev.project}</div>
                         </td>
-                        <td className="p-3 font-semibold text-slate-800">{rev.empleado}</td>
-                        <td className="p-3 font-mono">{rev.fecha}</td>
+                        <td className="p-3 font-semibold text-slate-800">👤 {rev.empleado}</td>
+                        <td className="p-3 font-mono text-[11px]">{rev.fecha}</td>
                         <td className="p-3">
                           {renderBadge(rev.estado)}
                         </td>
@@ -229,6 +352,171 @@ export default function RevisionesPage() {
         )}
 
       </main>
+
+      {/* 📝 MODAL CONVOCATORIA DE REUNIÓN GRUPAL / INDIVIDUAL */}
+      {isScheduleModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Agendar Reunión / Revisión</h3>
+                <p className="text-[11px] text-slate-500">Convoca a todo el equipo o a integrantes específicos</p>
+              </div>
+              <button 
+                onClick={() => setIsScheduleModalOpen(false)} 
+                className="text-slate-400 font-bold cursor-pointer hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateMeeting} className="space-y-3.5 text-xs">
+              
+              {/* Título */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Título de la Reunión
+                </label>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="Ej. Sincronización Semanal General de Avances" 
+                  value={meetingFormData.titulo} 
+                  onChange={(e) => setMeetingFormData({ ...meetingFormData, titulo: e.target.value })} 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" 
+                />
+              </div>
+
+              {/* Proyecto (Con opción de Todos los Proyectos por defecto) */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Proyecto Asociado
+                </label>
+                <select 
+                  value={meetingFormData.proyectoId} 
+                  onChange={(e) => setMeetingFormData({ ...meetingFormData, proyectoId: e.target.value })} 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">🌐 Todos los Proyectos / General</option>
+                  {dbProjects.map((p) => (
+                    <option key={p.id} value={p.id}>📁 {p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Fecha y Hora de Inicio */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Fecha y Hora de Inicio
+                </label>
+                <input 
+                  type="datetime-local" 
+                  required 
+                  value={meetingFormData.fechaInicio} 
+                  onChange={(e) => setMeetingFormData({ ...meetingFormData, fechaInicio: e.target.value })} 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20" 
+                />
+              </div>
+
+              {/* Selección de Convocados (Todos o Específicos) */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Tipo de Convocatoria
+                </label>
+                <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setMeetingFormData({ ...meetingFormData, targetType: 'todos' })}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      meetingFormData.targetType === 'todos'
+                        ? 'bg-white text-blue-600 shadow-2xs'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    👥 Todo el Equipo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMeetingFormData({ ...meetingFormData, targetType: 'seleccionados' })}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      meetingFormData.targetType === 'seleccionados'
+                        ? 'bg-white text-blue-600 shadow-2xs'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    👤 Seleccionar
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista de Checkboxes si eligió 'seleccionados' */}
+              {meetingFormData.targetType === 'seleccionados' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Selecciona Integrantes ({meetingFormData.selectedEmployeeIds.length})
+                  </label>
+                  <div className="max-h-32 overflow-y-auto border border-slate-300 rounded-xl p-2 space-y-1 bg-white">
+                    {dbEmployees.map((emp) => {
+                      const isChecked = meetingFormData.selectedEmployeeIds.includes(emp.id);
+                      return (
+                        <label 
+                          key={emp.id} 
+                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs ${
+                            isChecked ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            onChange={() => handleToggleEmployeeSelection(emp.id)} 
+                            className="rounded text-blue-600" 
+                          />
+                          <span>👤 {emp.nombre}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Descripción / Notas */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Notas / Orden del Día
+                </label>
+                <textarea 
+                  rows={3} 
+                  placeholder="Temas generales a tratar, avance por proyectos, enlace de Google Meet..." 
+                  value={meetingFormData.descripcion} 
+                  onChange={(e) => setMeetingFormData({ ...meetingFormData, descripcion: e.target.value })} 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20 resize-none" 
+                />
+              </div>
+
+              {/* Botones de Acción */}
+              <div className="flex gap-2 pt-3 border-t border-slate-100">
+                <button 
+                  type="button" 
+                  onClick={() => setIsScheduleModalOpen(false)} 
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSavingMeeting}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold cursor-pointer transition-colors shadow-xs"
+                >
+                  {isSavingMeeting ? 'Enviando...' : 'Confirmar & Notificar'}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

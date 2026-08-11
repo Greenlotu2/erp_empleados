@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "ERP - Panel del Empleado",
+  "version": "1.0",
+  "description": "Módulo ERP independiente con barra lateral y ventana flotante.",
+  "permissions": [
+    "storage",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "action": {
+    "default_title": "Abrir ERP"
+  }
+}

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
+import TaskCard from '../components/Taskcard';
 import { createClient } from '@supabase/supabase-js';
 
 // Cliente de Supabase
@@ -12,15 +13,64 @@ const supabaseAnonKey =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 🛠️ Funciones para dar formato a fecha y hora
+const formatDate = (dateString?: string | null) => {
+  if (!dateString) return 'Sin fecha';
+  const date = new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`);
+  if (isNaN(date.getTime())) return dateString;
+  
+  return date.toLocaleDateString('es-MX', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+};
+
+const formatDateTime = (dateString?: string | null) => {
+  if (!dateString) return 'Reciente';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return dateString;
+
+  return date.toLocaleString('es-MX', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+};
+
+// 🎨 Paleta de colores predefinida de selección rápida
+const PRESET_COLORS = [
+  '#2563eb', // Azul
+  '#059669', // Verde
+  '#7c3aed', // Violeta
+  '#d97706', // Ámbar
+  '#db2777', // Rosa
+  '#0891b2', // Cian
+  '#dc2626', // Rojo
+  '#4f46e5', // Índigo
+];
+
 interface Task {
   id: number | string;
   title: string;
   project: string;
   projectId?: string;
-  status: 'Completada' | 'En Proceso' | 'Pendiente';
+  description?: string;
+  priority?: 'Baja' | 'Media' | 'Alta' | 'Urgente';
+  status: 'Completada' | 'En Proceso' | 'Pendiente' | 'Postergada';
+  progressPercent?: number;
   date: string;
+  dueDate?: string;
+  assignedByName?: string;
+  isCritical?: boolean;
+  slackDays?: number;
   dependsOnTaskId?: number;
   dependsOnTaskTitle?: string;
+  collaborators?: { id: string; name: string }[];
+  collaboratorsNames?: string[];
 }
 
 interface LegalDocument {
@@ -52,6 +102,7 @@ interface Employee {
   currentTaskDependency?: string;
   status: 'Ocupado' | 'Disponible';
   avatar: string | null;
+  color?: string;
   completedTasksCount: number;
   horasAcumuladas?: number;      
   horasTotalesObjetivo?: number; 
@@ -101,21 +152,37 @@ export default function AdminDashboard() {
   const [loadingUpload, setLoadingUpload] = useState(false);
   const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeMetricModal, setActiveMetricModal] = useState<'totales' | 'ocupados' | 'disponibles' | 'completadas' | null>(null);
 
   // 📌 ESTADOS DE ASIGNACIÓN DE TAREA
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'Baja' | 'Media' | 'Alta' | 'Urgente'>('Media');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
-  const [newTaskAssignedBy, setNewTaskAssignedBy] = useState('Administrador');
+  const [newTaskAssignedBy, setNewTaskAssignedBy] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [dependsOnTaskId, setDependsOnTaskId] = useState<string>('none');
-
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  
+  // 🤝 SELECCIÓN MÚLTIPLE DE COLABORADORES
+  const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<string[]>([]);
 
   const [nuevoDocNombre, setNuevoDocNombre] = useState('');
   const [nuevoDocObligatorio, setNuevoDocObligatorio] = useState(true);
+
+  // 🔑 LISTA DE ADMINISTRADORES REGISTRADOS
+  const adminList = useMemo(() => {
+    return employees.filter(emp => {
+      const r = emp.role.toLowerCase();
+      return r === 'administrador' || r === 'admin';
+    });
+  }, [employees]);
+
+  // Asigna automáticamente el primer admin como emisor por defecto
+  useEffect(() => {
+    if (adminList.length > 0 && !newTaskAssignedBy) {
+      setNewTaskAssignedBy(adminList[0].id);
+    }
+  }, [adminList, newTaskAssignedBy]);
 
   const [newEmployeeData, setNewEmployeeData] = useState<{
     nombre: string;
@@ -127,6 +194,7 @@ export default function AdminDashboard() {
     disponibilidad: string;
     horasTotalesObjetivo: string;
     remuneracion: string;
+    color: string;
     documentos: DocumentRequirement[];
   }>({
     nombre: '',
@@ -138,6 +206,7 @@ export default function AdminDashboard() {
     disponibilidad: 'Disponible',
     horasTotalesObjetivo: '480',
     remuneracion: '3000',
+    color: '#2563eb',
     documentos: [
       { idTemp: '1', nombre: 'Identificación Oficial (INE / Pasaporte)', obligatorio: true, archivo: null },
       { idTemp: '2', nombre: 'Carta de Confidencialidad (NDA)', obligatorio: true, archivo: null },
@@ -163,6 +232,7 @@ export default function AdminDashboard() {
     disponibilidad: 'Disponible',
     horasTotalesObjetivo: '480',
     remuneracion: '15000',
+    color: '#2563eb',
   });
 
   const getDocFolder = (docName: string): string => {
@@ -177,6 +247,12 @@ export default function AdminDashboard() {
       return 'contratos/';
     }
     return '';
+  };
+
+  const handleToggleCollaborator = (empId: string) => {
+    setSelectedCollaboratorIds(prev =>
+      prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
+    );
   };
 
   // 🔄 CARGA GENERAL DESDE SUPABASE
@@ -218,15 +294,41 @@ export default function AdminDashboard() {
             const parentTask = rawTasks.find((p: any) => p.id === t.depende_de_tarea_id);
             const proj = proyectosSafe.find(p => p.id === t.proyecto_id);
 
+            const collabIds: string[] = Array.isArray(t.colaboradores_ids) ? t.colaboradores_ids : [];
+            const collabList = collabIds
+              .map(id => {
+                const found = empleadosData.find((e: any) => e.id === id);
+                return found ? { id: found.id, name: found.nombre } : null;
+              })
+              .filter(Boolean) as { id: string; name: string }[];
+
+            const collabNames = collabList.map(c => c.name);
+
+            // Normalizar estado
+            let normalizedStatus: 'Completada' | 'En Proceso' | 'Pendiente' | 'Postergada' = 'Pendiente';
+            const rawStatus = (t.estado || '').toLowerCase();
+            if (rawStatus.includes('completa')) normalizedStatus = 'Completada';
+            else if (rawStatus.includes('proceso')) normalizedStatus = 'En Proceso';
+            else if (rawStatus.includes('posterga') || rawStatus.includes('reagenda')) normalizedStatus = 'Postergada';
+
             return {
               id: t.id,
               title: t.titulo || 'Sin título',
               project: proj?.nombre || 'General',
               projectId: t.proyecto_id,
-              status: t.estado === 'completado' ? 'Completada' : t.estado || 'Pendiente',
-              date: t.fecha_asignada || 'Reciente',
+              description: t.descripcion || '',
+              priority: (t.prioridad as any) || 'Media',
+              status: normalizedStatus,
+              progressPercent: t.porcentaje_avance ?? (normalizedStatus === 'Completada' ? 100 : 0),
+              date: formatDate(t.fecha_asignada),
+              dueDate: formatDate(t.fecha_limite),
+              assignedByName: 'Administrador',
+              isCritical: Boolean(t.es_critica),
+              slackDays: t.holgura_dias ?? 0,
               dependsOnTaskId: t.depende_de_tarea_id,
-              dependsOnTaskTitle: parentTask?.titulo
+              dependsOnTaskTitle: parentTask?.titulo,
+              collaborators: collabList,
+              collaboratorsNames: collabNames
             };
           });
 
@@ -243,6 +345,7 @@ export default function AdminDashboard() {
             currentTaskDependency: activeParentTask?.titulo,
             status: emp.disponibilidad ? 'Disponible' : 'Ocupado',
             avatar: emp.avatar_url || null,
+            color: emp.color || '#2563eb',
             completedTasksCount: mappedHistory.filter(t => t.status === 'Completada').length,
             horasAcumuladas: emp.horas_acumuladas || 0,
             horasTotalesObjetivo: emp.horas_totales_objetivo,
@@ -252,13 +355,13 @@ export default function AdminDashboard() {
               name: d.nombre_documento || 'Documento',
               required: d.es_obligatorio ?? true,
               status: d.estado || 'Pendiente',
-              expirationDate: d.fecha_vencimiento,
+              expirationDate: formatDate(d.fecha_vencimiento),
               fileUrl: d.archivo_path
             })),
             contract: {
               contractType: contract.tipo_contrato || emp.rol || 'Tiempo Indeterminado',
-              startDate: contract.fecha_inicio || '2026-01-01',
-              endDate: contract.fecha_fin,
+              startDate: formatDate(contract.fecha_inicio || '2026-01-01'),
+              endDate: formatDate(contract.fecha_fin),
               stipendOrSalary: contract.remuneracion_o_beca || 'No asignado',
               supervisor: contract.supervisor || 'Coordinación General',
               hasTransitioned: contract.ha_transicionado
@@ -278,7 +381,7 @@ export default function AdminDashboard() {
         }
       }
 
-      // C) Consultar Notificaciones Reales
+      // C) Consultar Notificaciones
       const { data: notifData, error: notifErr } = await supabase
         .from('notificaciones')
         .select(`
@@ -297,8 +400,8 @@ export default function AdminDashboard() {
           id: n.id,
           employeeName: n.empleados?.nombre || 'Integrante',
           taskTitle: n.titulo_tarea || 'Revisión de código',
-          projectName: n.proyectos?.nombre || 'Proyecto',
-          timestamp: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          projectName: n.proyectos?.nombre || 'Proyecto General',
+          timestamp: formatDateTime(n.created_at),
           estado: n.estado
         }));
         setNotifications(mappedNotifs);
@@ -369,14 +472,6 @@ export default function AdminDashboard() {
         {initials}
       </div>
     );
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-    }
   };
 
   const handleAddDocumentRequirement = () => {
@@ -460,18 +555,23 @@ export default function AdminDashboard() {
         return;
       }
 
-      const { error } = await supabase.from('tareas').insert({
+      const assignedByAdminId = newTaskAssignedBy || (adminList[0]?.id ?? selectedEmployee.id);
+
+      const taskPayload: any = {
         empleado_id: selectedEmployee.id,
         proyecto_id: targetProjectId,
         titulo: newTaskTitle.trim(),
         descripcion: newTaskDescription.trim() || null,
         estado: dependsOnTaskId !== 'none' ? 'Pendiente' : 'En Proceso',
         prioridad: newTaskPriority,
-        asignada_por: newTaskAssignedBy.trim() || 'Administrador',
+        asignada_por: assignedByAdminId,
         fecha_asignada: new Date().toISOString().split('T')[0],
         fecha_limite: newTaskDueDate || null,
-        depende_de_tarea_id: parentTaskIdInt
-      });
+        depende_de_tarea_id: parentTaskIdInt,
+        colaboradores_ids: selectedCollaboratorIds.length > 0 ? selectedCollaboratorIds : null,
+      };
+
+      const { error } = await supabase.from('tareas').insert(taskPayload);
 
       if (error) throw error;
 
@@ -480,13 +580,13 @@ export default function AdminDashboard() {
         .update({ disponibilidad: false })
         .eq('id', selectedEmployee.id);
 
-      // Limpiar formulario
       setNewTaskTitle('');
       setNewTaskDescription('');
       setNewTaskPriority('Media');
       setNewTaskDueDate('');
-      setNewTaskAssignedBy('Administrador');
+      setNewTaskAssignedBy(adminList[0]?.id || '');
       setDependsOnTaskId('none');
+      setSelectedCollaboratorIds([]);
       setIsAssignModalOpen(false);
 
       await fetchDashboardData();
@@ -496,7 +596,8 @@ export default function AdminDashboard() {
     }
   };
 
-const handleCreateEmployee = async (e: React.FormEvent) => {
+  // 📌 REGISTRO DE NUEVO INTEGRANTE
+  const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoadingUpload(true);
 
@@ -508,26 +609,8 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
         throw new Error('Correo y contraseña son obligatorios.');
       }
 
-      // Subir avatar si existe
-      let avatarPublicUrl: string | null = null;
-      if (selectedFile) {
-        const fileExt = selectedFile.name.split('.').pop();
-        const fileName = `${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from('avatars')
-          .upload(fileName, selectedFile);
-
-        if (!uploadError) {
-          const { data: publicData } = supabase.storage
-            .from('avatars')
-            .getPublicUrl(fileName);
-          if (publicData) avatarPublicUrl = publicData.publicUrl;
-        }
-      }
-
       const finalRol = newEmployeeData.rol === 'Otro' ? newEmployeeData.customRol.trim() || 'General' : newEmployeeData.rol;
 
-      // LLAMADA AL ENDPOINT DEL SERVIDOR (Crea en Auth y en Empleados al mismo tiempo)
       const res = await fetch('/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -539,7 +622,8 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
           especialidad: newEmployeeData.especialidad.trim(),
           disponibilidad: newEmployeeData.disponibilidad,
           horasTotalesObjetivo: newEmployeeData.horasTotalesObjetivo,
-          avatarUrl: avatarPublicUrl,
+          color: newEmployeeData.color || '#2563eb',
+          avatarUrl: null,
         }),
       });
 
@@ -548,7 +632,6 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
 
       const newEmp = responseData.employee;
 
-      // Crear Contrato e Insertar Documentos si los hay
       if (newEmp) {
         const esEstudiante = finalRol === 'Practicante' || finalRol === 'Servicio Social';
         const formattedSalary = newEmployeeData.remuneracion ? `$${newEmployeeData.remuneracion} MXN / mes` : 'Sin Apoyo';
@@ -598,7 +681,6 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
         }
       }
 
-      // Resetear formulario y cerrar modal
       setNewEmployeeData({
         nombre: '',
         correo: '',
@@ -609,14 +691,13 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
         disponibilidad: 'Disponible',
         horasTotalesObjetivo: '480',
         remuneracion: '3000',
+        color: '#2563eb',
         documentos: [
           { idTemp: '1', nombre: 'Identificación Oficial (INE / Pasaporte)', obligatorio: true, archivo: null },
           { idTemp: '2', nombre: 'Carta de Confidencialidad (NDA)', obligatorio: true, archivo: null },
           { idTemp: '3', nombre: 'Contrato por tiempo definido', obligatorio: true, archivo: null },
         ]
       });
-      setSelectedFile(null);
-      setPreviewUrl(null);
       setIsNewEmployeeModalOpen(false);
 
       await fetchDashboardData();
@@ -695,9 +776,8 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
       disponibilidad: selectedEmployee.status,
       horasTotalesObjetivo: String(selectedEmployee.horasTotalesObjetivo || 480),
       remuneracion: currentSalaryDigits,
+      color: selectedEmployee.color || '#2563eb',
     });
-    setSelectedFile(null);
-    setPreviewUrl(null);
     setIsEditModalOpen(true);
   };
 
@@ -717,6 +797,7 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
           rol: editFormData.rol,
           especialidad: editFormData.especialidad,
           disponibilidad: editFormData.disponibilidad === 'Disponible',
+          color: editFormData.color,
           horas_totales_objetivo: esEstudiante ? parseInt(editFormData.horasTotalesObjetivo) || 480 : null,
         })
         .eq('id', selectedEmployee.id);
@@ -816,7 +897,7 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* 🔔 ÁREA DE NOTIFICACIONES */}
+            {/* 🔔 ÁREA DE NOTIFICACIONES INTERACTIVAS */}
             <div className="relative">
               <button 
                 onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -834,10 +915,10 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-4">
                   <div className="flex justify-between items-center pb-2 mb-2 border-b border-slate-100">
                     <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                      Solicitudes de Revisión ({notifications.length})
+                      Solicitudes y Entregas ({notifications.length})
                     </h4>
                     <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold">
-                      VS Code
+                      En tiempo real
                     </span>
                   </div>
 
@@ -848,7 +929,7 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                       {notifications.map((notif) => (
                         <div key={notif.id} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl text-xs space-y-2">
                           <div className="flex justify-between items-start">
-                            <span className="font-bold text-slate-900">{notif.employeeName}</span>
+                            <span className="font-bold text-slate-900">👤 {notif.employeeName}</span>
                             <span className="text-[10px] text-slate-400 font-mono">{notif.timestamp}</span>
                           </div>
                           
@@ -856,18 +937,28 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                             {notif.taskTitle}
                           </p>
 
-                          <div className="flex items-center justify-between pt-1">
+                          <div className="flex items-center justify-between pt-1 flex-wrap gap-1">
                             <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
                               📁 {notif.projectName}
                             </span>
                             
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 w-full justify-end mt-1">
+                              <button
+                                onClick={() => {
+                                  window.location.href = `/admin/revisiones?agendar=true&empleado=${encodeURIComponent(notif.employeeName)}&tarea=${encodeURIComponent(notif.taskTitle)}`;
+                                }}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1"
+                              >
+                                📅 Agendar Revisión
+                              </button>
+
                               <button
                                 onClick={() => handleResolveNotification(notif.id, 'Aprobado')}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer"
                               >
                                 Aprobar
                               </button>
+
                               <button
                                 onClick={() => handleResolveNotification(notif.id, 'Rechazado')}
                                 className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer"
@@ -886,45 +977,57 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
           </div>
         </header>
 
-        {/* MÉTRICAS */}
+        {/* MÉTRICAS INTERACTIVAS */}
         <div className="grid grid-cols-4 gap-4 mb-5 shrink-0">
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center">
+          <div 
+            onClick={() => setActiveMetricModal('totales')}
+            className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center cursor-pointer hover:border-slate-400 hover:shadow-md transition-all group"
+          >
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Integrantes</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors">Total Integrantes</p>
               <h3 className="text-lg font-bold text-slate-800 mt-0.5">{totalEmployees} Miembros</h3>
             </div>
-            <span className="text-lg bg-slate-100 p-2 rounded-xl">👥</span>
+            <span className="text-lg bg-slate-100 p-2 rounded-xl group-hover:bg-blue-50 transition-colors">👥</span>
           </div>
 
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center">
+          <div 
+            onClick={() => setActiveMetricModal('ocupados')}
+            className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
+          >
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">En Actividad</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-amber-600 transition-colors">En Actividad</p>
               <h3 className="text-lg font-bold text-amber-600 mt-0.5">{activeNow} Ocupados</h3>
             </div>
-            <span className="text-lg bg-amber-50 p-2 rounded-xl">⚡</span>
+            <span className="text-lg bg-amber-50 p-2 rounded-xl group-hover:bg-amber-100 transition-colors">⚡</span>
           </div>
 
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center">
+          <div 
+            onClick={() => setActiveMetricModal('disponibles')}
+            className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all group"
+          >
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Disponibles</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-emerald-600 transition-colors">Disponibles</p>
               <h3 className="text-lg font-bold text-emerald-600 mt-0.5">{available} Libres</h3>
             </div>
-            <span className="text-lg bg-emerald-50 p-2 rounded-xl">⏳</span>
+            <span className="text-lg bg-emerald-50 p-2 rounded-xl group-hover:bg-emerald-100 transition-colors">⏳</span>
           </div>
           
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center">
+          <div 
+            onClick={() => setActiveMetricModal('completadas')}
+            className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all group"
+          >
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tareas Completadas</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-emerald-600 transition-colors">Tareas Completadas</p>
               <h3 className="text-lg font-bold text-emerald-600 mt-0.5">{completedTasksCount} <span className="text-xs text-slate-400 font-normal">/ {totalTasksCount} Totales</span></h3>
             </div>
-            <span className="text-lg bg-emerald-50 p-2 rounded-xl">✅</span>
+            <span className="text-lg bg-emerald-50 p-2 rounded-xl group-hover:bg-emerald-100 transition-colors">✅</span>
           </div>
         </div>
 
         {/* VISTA MAESTRO-DETALLE */}
         <div className="flex-1 grid grid-cols-12 gap-5 min-h-0 overflow-hidden">
           
-          {/* PANEL IZQUIERDO: LISTA */}
+          {/* PANEL IZQUIERDO: LISTA DE INTEGRANTES */}
           <div className="col-span-5 flex flex-col min-h-0">
             
             <div className="mb-2 space-y-2 shrink-0">
@@ -940,7 +1043,7 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 </button>
               </div>
 
-              {/* FILTROS */}
+              {/* FILTROS DE EQUIPO */}
               <div className="flex bg-slate-200/60 p-1 rounded-xl text-[10px] font-bold text-slate-600">
                 <button
                   onClick={() => setTeamFilter('todos')}
@@ -969,7 +1072,7 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
               </div>
             </div>
 
-            {/* TARJETAS */}
+            {/* TARJETAS DE INTEGRANTES */}
             <div className="flex-1 overflow-y-auto pr-1.5 space-y-3 min-h-0">
               {filteredEmployees.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-8">No hay integrantes en esta categoría.</p>
@@ -997,6 +1100,13 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                           <div>
                             <div className="flex items-center gap-1.5">
                               <h4 className="font-bold text-slate-900 text-sm leading-tight">{emp.name}</h4>
+                              
+                              <span 
+                                className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs" 
+                                style={{ backgroundColor: emp.color || '#2563eb' }}
+                                title={`Color asignado: ${emp.color || '#2563eb'}`}
+                              />
+
                               {hasPendingDocs && (
                                 <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded-md border border-amber-200" title="Expediente incompleto">
                                   📂 !
@@ -1036,7 +1146,7 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
             </div>
           </div>
 
-          {/* PANEL DERECHO: DETALLE */}
+          {/* PANEL DERECHO: DETALLE DEL EMPLEADO SELECCIONADO */}
           {selectedEmployee && (
             <div className="col-span-7 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col min-h-0 overflow-hidden">
               
@@ -1047,9 +1157,16 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                     {renderAvatar(selectedEmployee.avatar, selectedEmployee.name)}
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-base font-bold text-slate-900 truncate leading-tight">
-                      {selectedEmployee.name}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-slate-900 truncate leading-tight">
+                        {selectedEmployee.name}
+                      </h3>
+                      <span 
+                        className="w-3 h-3 rounded-full shrink-0 shadow-2xs border border-white" 
+                        style={{ backgroundColor: selectedEmployee.color || '#2563eb' }}
+                        title={`Color de perfil: ${selectedEmployee.color || '#2563eb'}`}
+                      />
+                    </div>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <p className="text-xs text-slate-500 font-medium">
                         {selectedEmployee.role} • {selectedEmployee.email}
@@ -1156,42 +1273,39 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                     </div>
                   )}
 
-                  <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-100 shrink-0 mb-4 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">📌 Tarea En Curso</span>
-                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
-                        📁 {selectedEmployee.currentProject}
-                      </span>
-                    </div>
-                    <p className="text-xs font-semibold text-slate-800 leading-relaxed">
-                      {selectedEmployee.currentTask}
-                    </p>
-                  </div>
-
+                  {/* HISTORIAL DE ACTIVIDADES RENDERIZADO CON TARJETAS DETALLADAS */}
                   <div className="flex-1 flex flex-col min-h-0">
                     <div className="flex justify-between items-center mb-3 shrink-0">
                       <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Historial de Actividades</h4>
                       <span className="text-[11px] text-slate-400">{selectedEmployee.taskHistory.length} Registradas</span>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto pr-1 space-y-2 min-h-0">
+                    <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-0">
                       {selectedEmployee.taskHistory.length === 0 ? (
                         <p className="text-xs text-slate-400 text-center py-6">Sin actividades en el historial.</p>
                       ) : (
                         selectedEmployee.taskHistory.map((task) => (
-                          <div key={task.id} className="p-3 bg-white border border-slate-100 hover:border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                            <div className="space-y-1">
-                              <p className="font-semibold text-slate-800">{task.title}</p>
-                              <span className="text-[10px] text-blue-600 font-semibold bg-blue-50 px-1.5 py-0.5 rounded">
-                                📁 {task.project}
-                              </span>
-                            </div>
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                              task.status === 'Completada' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
-                            }`}>
-                              {task.status}
-                            </span>
-                          </div>
+                          <TaskCard
+                            key={task.id}
+                            id={task.id}
+                            title={task.title}
+                            projectName={task.project}
+                            description={task.description}
+                            assignedByName={task.assignedByName || 'Administrador'}
+                            dueDate={task.dueDate}
+                            priority={task.priority || 'Media'}
+                            status={task.status}
+                            progressPercent={task.progressPercent ?? 0}
+                            collaborators={task.collaborators || []}
+                            isCritical={task.isCritical}
+                            slackDays={task.slackDays}
+                            onRequestReview={() => {
+                              window.location.href = `/admin/revisiones?agendar=true&empleado=${encodeURIComponent(selectedEmployee.name)}&tarea=${encodeURIComponent(task.title)}`;
+                            }}
+                            onRequestExtension={() => {
+                              alert(`Se enviará una solicitud de prórroga para la tarea "${task.title}".`);
+                            }}
+                          />
                         ))
                       )}
                     </div>
@@ -1209,7 +1323,9 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                           <span className="text-xl">{doc.fileUrl || doc.status === 'Verificado' ? '📄' : '❓'}</span>
                           <div>
                             <p className="font-bold text-slate-800 text-xs">{doc.name}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">{doc.required ? 'Obligatorio' : 'Opcional'}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {doc.required ? 'Obligatorio' : 'Opcional'} {doc.expirationDate ? `• Vence: ${doc.expirationDate}` : ''}
+                            </p>
                           </div>
                         </div>
 
@@ -1296,26 +1412,6 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
             
             <form onSubmit={handleCreateEmployee} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1.5">Foto de Perfil / Avatar</label>
-                <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                  <div className="w-14 h-14 rounded-2xl bg-white border border-slate-300 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                    {previewUrl ? (
-                      <img src={previewUrl} alt="Vista previa" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-2xl text-slate-400">📷</span>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <input type="file" accept="image/*" id="avatar-upload" onChange={handleFileChange} className="hidden" />
-                    <label htmlFor="avatar-upload" className="inline-block bg-white hover:bg-slate-100 text-slate-800 font-bold px-3 py-1.5 rounded-xl border border-slate-300 cursor-pointer text-[11px] shadow-2xs transition-colors">
-                      Seleccionar imagen
-                    </label>
-                    <p className="text-[10px] text-slate-400">PNG, JPG o GIF hasta 5MB</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Nombre Completo</label>
                 <input type="text" required placeholder="Ej. Roberto Gómez" value={newEmployeeData.nombre} onChange={(e) => setNewEmployeeData({ ...newEmployeeData, nombre: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none" />
               </div>
@@ -1347,6 +1443,46 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Especialidad</label>
                   <input type="text" placeholder="Ej. React / Backend" value={newEmployeeData.especialidad} onChange={(e) => setNewEmployeeData({ ...newEmployeeData, especialidad: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Color Identificador de Perfil
+                </label>
+                <div className="flex items-center gap-2.5 bg-slate-50 p-2.5 border border-slate-200 rounded-xl">
+                  <div className="relative shrink-0">
+                    <input
+                      type="color"
+                      id="newColorPicker"
+                      value={newEmployeeData.color || '#2563eb'}
+                      onChange={(e) => setNewEmployeeData({ ...newEmployeeData, color: e.target.value })}
+                      className="w-9 h-9 rounded-xl border-0 p-0 cursor-pointer opacity-0 absolute inset-0 z-10"
+                    />
+                    <div
+                      className="w-9 h-9 rounded-xl border-2 border-slate-300 shadow-2xs flex items-center justify-center transition-transform active:scale-95 cursor-pointer"
+                      style={{ backgroundColor: newEmployeeData.color || '#2563eb' }}
+                      title="Abrir mapa de color personalizado"
+                    />
+                  </div>
+
+                  <span className="text-xs font-mono font-bold text-slate-700 uppercase w-16">
+                    {newEmployeeData.color || '#2563eb'}
+                  </span>
+
+                  <div className="flex items-center gap-1.5 flex-1 justify-end flex-wrap">
+                    {PRESET_COLORS.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setNewEmployeeData({ ...newEmployeeData, color: c })}
+                        className={`w-5 h-5 rounded-full cursor-pointer transition-transform ${
+                          newEmployeeData.color === c ? 'scale-125 ring-2 ring-slate-900' : 'hover:scale-110'
+                        }`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1393,7 +1529,7 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
               <div className="flex gap-2 pt-3 border-t border-slate-100">
                 <button type="button" onClick={() => setIsNewEmployeeModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold">Cancelar</button>
                 <button type="submit" disabled={loadingUpload} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold">
-                  {loadingUpload ? 'Subiendo datos y archivos...' : 'Registrar Integrante'}
+                  {loadingUpload ? 'Subiendo datos...' : 'Registrar Integrante'}
                 </button>
               </div>
             </form>
@@ -1437,6 +1573,45 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Especialidad</label>
                   <input type="text" value={editFormData.especialidad} onChange={(e) => setEditFormData({ ...editFormData, especialidad: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Color Asignado
+                </label>
+                <div className="flex items-center gap-2.5 bg-slate-50 p-2.5 border border-slate-200 rounded-xl">
+                  <div className="relative shrink-0">
+                    <input
+                      type="color"
+                      id="editColorPicker"
+                      value={editFormData.color || '#2563eb'}
+                      onChange={(e) => setEditFormData({ ...editFormData, color: e.target.value })}
+                      className="w-9 h-9 rounded-xl border-0 p-0 cursor-pointer opacity-0 absolute inset-0 z-10"
+                    />
+                    <div
+                      className="w-9 h-9 rounded-xl border-2 border-slate-300 shadow-2xs flex items-center justify-center cursor-pointer"
+                      style={{ backgroundColor: editFormData.color || '#2563eb' }}
+                    />
+                  </div>
+
+                  <span className="text-xs font-mono font-bold text-slate-700 uppercase w-16">
+                    {editFormData.color || '#2563eb'}
+                  </span>
+
+                  <div className="flex items-center gap-1.5 flex-1 justify-end flex-wrap">
+                    {PRESET_COLORS.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setEditFormData({ ...editFormData, color: c })}
+                        className={`w-5 h-5 rounded-full cursor-pointer transition-transform ${
+                          editFormData.color === c ? 'scale-125 ring-2 ring-slate-900' : 'hover:scale-110'
+                        }`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1514,7 +1689,6 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Tipo de Contrato</label>
                 <select value={transformFormData.tipoContrato} onChange={(e) => setTransformFormData({ ...transformFormData, tipoContrato: e.target.value as any })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none">
-                  <option value="Tiempo Indeterminado">♾️ Tiempo Indeterminado</option>
                   <option value="Tiempo Completo">💼 Tiempo Completo</option>
                   <option value="Medio Tiempo">⏱️ Medio Tiempo</option>
                 </select>
@@ -1536,14 +1710,13 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Asignar Tarea a {selectedEmployee.name}</h3>
-                <p className="text-[11px] text-slate-500">Detalles de la actividad, prioridad y fecha de entrega</p>
+                <p className="text-[11px] text-slate-500">Detalles de la actividad, colaboradores, prioridad y entrega</p>
               </div>
               <button onClick={() => setIsAssignModalOpen(false)} className="text-slate-400 font-bold cursor-pointer">✕</button>
             </div>
 
             <form onSubmit={handleAssignTask} className="space-y-3.5 text-xs">
               
-              {/* Proyecto (`proyecto_id`) */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Proyecto Destino</label>
                 <select 
@@ -1562,7 +1735,6 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 </select>
               </div>
 
-              {/* Título (`titulo`) */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Título de la Tarea</label>
                 <input 
@@ -1575,7 +1747,42 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 />
               </div>
 
-              {/* Descripción (`descripcion`) */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Integrantes Colaboradores ({selectedCollaboratorIds.length} seleccionados)
+                </label>
+                <div className="max-h-36 overflow-y-auto border border-slate-300 rounded-xl p-2 bg-white space-y-1">
+                  {employees.filter(emp => emp.id !== selectedEmployee.id).length === 0 ? (
+                    <p className="text-[11px] text-slate-400 p-2 text-center">No hay otros integrantes disponibles.</p>
+                  ) : (
+                    employees
+                      .filter(emp => emp.id !== selectedEmployee.id)
+                      .map(emp => {
+                        const isChecked = selectedCollaboratorIds.includes(emp.id);
+                        return (
+                          <label
+                            key={emp.id}
+                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${
+                              isChecked ? 'bg-blue-50 border border-blue-200 text-blue-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleCollaborator(emp.id)}
+                                className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <span>🤝 {emp.name}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-normal">{emp.role}</span>
+                          </label>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Descripción / Indicaciones</label>
                 <textarea 
@@ -1587,7 +1794,6 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 />
               </div>
 
-              {/* Prioridad y Fecha Límite (`prioridad` y `fecha_limite`) */}
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Prioridad</label>
@@ -1614,19 +1820,28 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
                 </div>
               </div>
 
-              {/* Asignada Por (`asignada_por`) */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Asignada Por</label>
-                <input 
-                  type="text" 
-                  required 
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Asignada Por (Administrador)
+                </label>
+                <select 
                   value={newTaskAssignedBy} 
                   onChange={(e) => setNewTaskAssignedBy(e.target.value)} 
-                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" 
-                />
+                  required 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                >
+                  {adminList.length === 0 ? (
+                    <option value="" disabled>No hay administradores registrados en Supabase</option>
+                  ) : (
+                    adminList.map((admin) => (
+                      <option key={admin.id} value={admin.id}>
+                        🔑 {admin.name} ({admin.email})
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
 
-              {/* Botones de Acción */}
               <div className="flex gap-2 pt-3 border-t border-slate-100">
                 <button 
                   type="button" 
@@ -1644,6 +1859,184 @@ const handleCreateEmployee = async (e: React.FormEvent) => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 📊 MODAL DE DETALLES DE MÉTRICAS */}
+      {activeMetricModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-slate-100 p-6 space-y-4 max-h-[85vh] flex flex-col">
+            
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">
+                  {activeMetricModal === 'totales' && '👥'}
+                  {activeMetricModal === 'ocupados' && '⚡'}
+                  {activeMetricModal === 'disponibles' && '⏳'}
+                  {activeMetricModal === 'completadas' && '✅'}
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {activeMetricModal === 'totales' && 'Detalle: Total de Integrantes'}
+                    {activeMetricModal === 'ocupados' && 'Detalle: Integrantes en Actividad'}
+                    {activeMetricModal === 'disponibles' && 'Detalle: Integrantes Disponibles'}
+                    {activeMetricModal === 'completadas' && 'Detalle: Historial de Tareas Completadas'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {activeMetricModal === 'totales' && `Mostrando los ${totalEmployees} miembros registrados`}
+                    {activeMetricModal === 'ocupados' && `Mostrando los ${activeNow} miembros con tareas activas`}
+                    {activeMetricModal === 'disponibles' && `Mostrando los ${available} miembros listos para recibir tareas`}
+                    {activeMetricModal === 'completadas' && `Mostrando las ${completedTasksCount} tareas finalizadas`}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActiveMetricModal(null)} 
+                className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer text-sm p-1 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-0 text-xs">
+              
+              {activeMetricModal === 'totales' && (
+                employees.map((emp) => (
+                  <div key={emp.id} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                        {renderAvatar(emp.avatar, emp.name)}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="font-bold text-slate-900">{emp.name}</h4>
+                          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: emp.color || '#2563eb' }} />
+                        </div>
+                        <p className="text-[11px] text-slate-500">{emp.role} • {emp.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-slate-200/70 text-slate-700 font-bold px-2 py-0.5 rounded-md">
+                        📁 {emp.currentProject}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        emp.status === 'Disponible' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {emp.status}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+
+              {activeMetricModal === 'ocupados' && (
+                employees.filter(e => e.status === 'Ocupado').length === 0 ? (
+                  <p className="text-center text-slate-400 py-6">No hay integrantes en actividad actualmente.</p>
+                ) : (
+                  employees.filter(e => e.status === 'Ocupado').map((emp) => (
+                    <div key={emp.id} className="p-3 bg-amber-50/50 border border-amber-200/80 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                            {renderAvatar(emp.avatar, emp.name)}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-slate-900">{emp.name}</h4>
+                            <p className="text-[10px] text-slate-500">{emp.role}</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-md border border-blue-200">
+                          📁 {emp.currentProject}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-lg border border-amber-200/60 text-slate-800">
+                        <span className="text-[10px] font-bold text-amber-700 uppercase block mb-0.5">📌 Actividad En Curso:</span>
+                        <p className="font-medium text-xs leading-snug">{emp.currentTask}</p>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+
+              {activeMetricModal === 'disponibles' && (
+                employees.filter(e => e.status === 'Disponible').length === 0 ? (
+                  <p className="text-center text-slate-400 py-6">No hay integrantes libres en este momento.</p>
+                ) : (
+                  employees.filter(e => e.status === 'Disponible').map((emp) => (
+                    <div key={emp.id} className="p-3 bg-emerald-50/40 border border-emerald-200/80 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                          {renderAvatar(emp.avatar, emp.name)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-slate-900">{emp.name}</h4>
+                          <p className="text-[11px] text-slate-500">{emp.role} {emp.especialidad ? `• ${emp.especialidad}` : ''}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedEmployee(emp);
+                          setActiveMetricModal(null);
+                          setIsAssignModalOpen(true);
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer"
+                      >
+                        + Asignar Tarea
+                      </button>
+                    </div>
+                  ))
+                )
+              )}
+
+              {activeMetricModal === 'completadas' && (
+                (() => {
+                  const allCompletedTasks = employees.flatMap(emp => 
+                    emp.taskHistory
+                      .filter(t => t.status === 'Completada')
+                      .map(t => ({ ...t, employeeName: emp.name }))
+                  );
+
+                  if (allCompletedTasks.length === 0) {
+                    return <p className="text-center text-slate-400 py-6">No hay tareas completadas en el historial.</p>;
+                  }
+
+                  return allCompletedTasks.map((task, idx) => (
+                    <div key={`${task.id}-${idx}`} className="p-3 bg-white border border-slate-200/80 rounded-xl flex items-center justify-between">
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-slate-900">{task.title}</h4>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 flex-wrap">
+                          <span>👤 {task.employeeName}</span>
+                          <span>•</span>
+                          <span className="text-blue-600 font-semibold bg-blue-50 px-1.5 py-0.5 rounded">
+                            📁 {task.project}
+                          </span>
+                          {task.collaboratorsNames && task.collaboratorsNames.length > 0 && (
+                            <span className="text-indigo-600 font-semibold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                              🤝 Colaboradores: {task.collaboratorsNames.join(', ')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg text-[10px] font-bold shrink-0">
+                        ✓ Completada ({task.date})
+                      </span>
+                    </div>
+                  ));
+                })()
+              )}
+
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                onClick={() => setActiveMetricModal(null)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-xs cursor-pointer transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+
           </div>
         </div>
       )}

@@ -16,10 +16,33 @@ const supabaseAnonKey =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 🎨 Paleta de colores para asignar dinámicamente por empleado
+const PALETA_COLORES_EMPLEADOS = [
+  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', hex: '#2563eb' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', hex: '#059669' },
+  { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', hex: '#7c3aed' },
+  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', hex: '#d97706' },
+  { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200', hex: '#db2777' },
+  { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', hex: '#4f46e5' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', hex: '#0891b2' },
+  { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', hex: '#0d9488' },
+];
+
+const getEmpleadoColor = (idOrName?: string) => {
+  if (!idOrName) return PALETA_COLORES_EMPLEADOS[0];
+  let hash = 0;
+  for (let i = 0; i < idOrName.length; i++) {
+    hash = idOrName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % PALETA_COLORES_EMPLEADOS.length;
+  return PALETA_COLORES_EMPLEADOS[index];
+};
+
 interface MeetingEvent {
   id: string;
   title: string;
   proyecto_id: string;
+  proyecto_nombre?: string;
   empleado_id?: string;
   empleado_nombre?: string;
   descripcion?: string;
@@ -66,6 +89,9 @@ export default function CalendarioRevisiones() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
+  const [selectedFormattedDate, setSelectedFormattedDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
 
   const [formData, setFormData] = useState({
     titulo: '',
@@ -82,15 +108,12 @@ export default function CalendarioRevisiones() {
     try {
       setFetchingData(true);
 
-      // A) Proyectos
       const { data: projData } = await supabase.from('proyectos').select('id, nombre');
       if (projData) setProyectosList(projData);
 
-      // B) Empleados
       const { data: empData } = await supabase.from('empleados').select('id, nombre');
       if (empData) setEmpleadosList(empData);
 
-      // C) Reuniones
       const { data: reunionesData, error: reunionesErr } = await supabase
         .from('reuniones')
         .select(`
@@ -111,26 +134,24 @@ export default function CalendarioRevisiones() {
       if (reunionesData) {
         const mappedEvents: MeetingEvent[] = reunionesData.map((r: any) => {
           const startDate = r.fecha_inicio || new Date().toISOString();
-          // Si no hay fecha fin, asignar 30 min por defecto
           const endDate = r.fecha_fin || new Date(new Date(startDate).getTime() + 30 * 60000).toISOString();
 
-          let color = '#2563eb'; // Azul por defecto
-          if (r.estado === 'Completado' || r.estado === 'Aprobado') color = '#059669'; // Verde
-          if (r.estado === 'Ajuste por tiempo' || r.estado === 'Pendiente') color = '#d97706'; // Ámbar
-          if (r.estado === 'Cancelada' || r.estado === 'Rechazado') color = '#dc2626'; // Rojo
+          // Asignar color dinámico distintivo según el empleado asignado
+          const colorObj = getEmpleadoColor(r.empleados?.nombre || r.empleado_id || 'default');
 
           return {
             id: r.id,
             title: r.titulo || 'Reunión sin título',
             proyecto_id: r.proyecto_id,
+            proyecto_nombre: r.proyectos?.nombre || 'General',
             empleado_id: r.empleado_id,
             empleado_nombre: r.empleados?.nombre || 'Sin asignar',
             descripcion: r.descripcion || '',
             estado: r.estado || 'Programada',
             start: startDate,
             end: endDate,
-            backgroundColor: color,
-            borderColor: color,
+            backgroundColor: colorObj.hex,
+            borderColor: colorObj.hex,
           };
         });
 
@@ -209,6 +230,7 @@ export default function CalendarioRevisiones() {
     const dd = String(targetDate.getDate()).padStart(2, '0');
     const formattedDate = `${yyyy}-${mm}-${dd}`;
 
+    setSelectedFormattedDate(formattedDate);
     setFormData(prev => ({ ...prev, fecha: formattedDate }));
 
     if (calendarRef.current) {
@@ -222,6 +244,14 @@ export default function CalendarioRevisiones() {
     if (selectedProjectFilter === 'all') return eventsList;
     return eventsList.filter(ev => ev.proyecto_id === selectedProjectFilter);
   }, [selectedProjectFilter, eventsList]);
+
+  // 📋 FILTRAR TAREAS / REVISIONES DEL DÍA SELECCIONADO EN EL HISTORIAL INFERIOR
+  const eventsOfSelectedDay = useMemo(() => {
+    return filteredEvents.filter(ev => {
+      const evDateStr = ev.start.split('T')[0];
+      return evDateStr === selectedFormattedDate;
+    });
+  }, [filteredEvents, selectedFormattedDate]);
 
   const handleEventClick = (clickInfo: EventClickArg) => {
     const fcEvent = clickInfo.event;
@@ -259,7 +289,6 @@ export default function CalendarioRevisiones() {
     setIsEditing(true);
   };
 
-  // 💾 GUARDAR EDICIÓN DESDE EL MODAL (ACTUALIZA SUPABASE)
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEventDetails) return;
@@ -270,7 +299,6 @@ export default function CalendarioRevisiones() {
       const startDateTime = new Date(`${editFormData.fecha}T${editFormData.hora_inicio}:00`);
       const endDateTime = new Date(startDateTime.getTime() + parseInt(editFormData.duracion_minutos) * 60000);
 
-      // Actualizar en Supabase (marca como 'Ajuste por tiempo' si cambió)
       const { error } = await supabase
         .from('reuniones')
         .update({
@@ -297,7 +325,6 @@ export default function CalendarioRevisiones() {
     }
   };
 
-  // 🔄 DRAG & DROP O RESIZE DIRECTO EN EL CALENDARIO (ACTUALIZA SUPABASE)
   const handleEventChange = async (changeInfo: EventChangeArg) => {
     const fcEvent = changeInfo.event;
     const newStart = fcEvent.start ? fcEvent.start.toISOString() : null;
@@ -313,7 +340,7 @@ export default function CalendarioRevisiones() {
         .update({
           fecha_inicio: newStart,
           fecha_fin: newEnd,
-          estado: 'Ajuste por tiempo' // Registra la reprogramación para el plugin
+          estado: 'Ajuste por tiempo'
         })
         .eq('id', fcEvent.id);
 
@@ -336,7 +363,6 @@ export default function CalendarioRevisiones() {
     });
   };
 
-  // ➕ AGENDAR NUEVA REVISIÓN (INSERTA EN SUPABASE)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -356,7 +382,7 @@ export default function CalendarioRevisiones() {
           titulo: formData.titulo.trim(),
           proyecto_id: formData.proyecto_id,
           empleado_id: formData.empleado_id,
-          creado_por: formData.empleado_id, // Asigna al creador
+          creado_por: formData.empleado_id,
           descripcion: formData.descripcion.trim() || null,
           fecha_inicio: startDateTime.toISOString(),
           fecha_fin: endDateTime.toISOString(),
@@ -386,127 +412,57 @@ export default function CalendarioRevisiones() {
   };
 
   return (
-    <main className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden h-full w-full min-w-0 select-none bg-slate-50 relative">
+    <main className="flex-1 flex flex-col p-2 md:p-4 overflow-hidden h-full w-full min-w-0 select-none bg-slate-50 relative gap-3">
       
-      {/* Encabezado */}
-      <header className="flex justify-between items-center mb-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-slate-900">Calendario de Revisiones</h1>
+      {/* BARRA SUPERIOR DE ACCIONES Y FILTROS */}
+      <header className="flex flex-wrap justify-between items-center gap-3 shrink-0 bg-white border border-slate-200/80 rounded-2xl p-3 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-bold text-slate-900">Calendario de Revisiones</h1>
           <button 
             onClick={() => {
               const today = new Date();
               setCurrentDate(today);
               setSelectedDay(today.getDate());
+              const todayFormatted = today.toISOString().split('T')[0];
+              setSelectedFormattedDate(todayFormatted);
               if (calendarRef.current) {
                 calendarRef.current.getApi().today();
               }
             }}
-            className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+            className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-200 transition-colors shadow-2xs cursor-pointer"
           >
             Hoy
           </button>
         </div>
 
-        <span className="text-xs text-slate-500 font-semibold hidden sm:inline-block">
-          Horario Laboral: L-V 9:00 - 17:00 | S 9:00 - 13:00
-        </span>
-      </header>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={selectedProjectFilter}
+            onChange={(e) => setSelectedProjectFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold py-1.5 px-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+          >
+            <option value="all">📁 Todos los proyectos ({eventsList.length})</option>
+            {proyectosList.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
 
-      {/* CONTENEDOR PRINCIPAL */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0 overflow-hidden">
-        
-        {/* PANEL LATERAL */}
-        <div className="w-full lg:w-72 xl:w-80 bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col gap-4 min-h-0 shrink-0 overflow-y-auto">
-          
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3.5 rounded-xl text-xs shadow-xs flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer"
           >
-            <span className="text-base leading-none">+</span> Agendar Revisión
+            <span className="text-sm leading-none">+</span> Agendar Revisión
           </button>
-
-          {/* MINI CALENDARIO INTERACTIVO */}
-          <div className="pt-1">
-            <div className="flex justify-between items-center mb-2 px-1">
-              <span className="text-xs font-bold text-slate-900">
-                {formattedMonthTitle}
-              </span>
-
-              <div className="flex gap-1 text-slate-600">
-                <button 
-                  type="button"
-                  onClick={handlePrevMonth}
-                  className="p-1 hover:bg-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                  title="Mes anterior"
-                >
-                  ‹
-                </button>
-                <button 
-                  type="button"
-                  onClick={handleNextMonth}
-                  className="p-1 hover:bg-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                  title="Mes siguiente"
-                >
-                  ›
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-7 text-center mb-1">
-              {daysOfWeek.map((d, index) => (
-                <span key={index} className="text-[10px] font-bold text-slate-400">
-                  {d}
-                </span>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-7 gap-y-1 text-center text-xs">
-              {miniCalendarDays.map((item, idx) => {
-                const isSelected = item.isCurrentMonth && item.day === selectedDay;
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleSelectMiniCalendarDay(item.day, item.monthOffset)}
-                    className={`h-7 w-7 mx-auto flex items-center justify-center rounded-full transition-all text-[11px] cursor-pointer ${
-                      !item.isCurrentMonth 
-                        ? 'text-slate-300 font-normal hover:bg-slate-50' 
-                        : isSelected
-                          ? 'bg-blue-600 text-white font-bold shadow-2xs'
-                          : 'text-slate-700 hover:bg-slate-100 font-medium'
-                    }`}
-                  >
-                    {item.day}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* FILTRO DE REVISIONES POR PROYECTO */}
-          <div className="pt-3 border-t border-slate-100 space-y-2">
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Filtrar por Proyecto
-            </span>
-
-            <select
-              value={selectedProjectFilter}
-              onChange={(e) => setSelectedProjectFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold py-2 px-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-            >
-              <option value="all">📁 Todos los proyectos ({eventsList.length})</option>
-              {proyectosList.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-
         </div>
+      </header>
 
-        {/* FULLCALENDAR */}
-        <div className="flex-1 bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col min-h-0 overflow-hidden relative
+      {/* CONTENEDOR PRINCIPAL VERTICAL */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto gap-3 pr-1">
+        
+        {/* 1. CALENDARIO GRANDE (FULLCALENDAR) */}
+        <div className="flex-1 min-h-[480px] bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col relative shrink-0
   [&_.fc-toolbar-title]:text-base [&_.fc-toolbar-title]:font-bold [&_.fc-toolbar-title]:text-slate-900
   [&_.fc-col-header-cell-cushion]:text-xs [&_.fc-col-header-cell-cushion]:font-bold [&_.fc-col-header-cell-cushion]:text-slate-700
   [&_.fc-timegrid-axis-cushion]:text-[11px] [&_.fc-timegrid-axis-cushion]:font-semibold [&_.fc-timegrid-axis-cushion]:!text-black
@@ -599,6 +555,146 @@ export default function CalendarioRevisiones() {
               }}
             />
           </div>
+        </div>
+
+        {/* 2. PANEL INFERIOR: MINI CALENDARIO + HISTORIAL DEL DÍA (CON COLORES DE EMPLEADOS) */}
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col lg:flex-row gap-5 shrink-0">
+          
+          {/* A) Mini Calendario Interactivo */}
+          <div className="w-full lg:w-auto shrink-0 flex flex-col items-center">
+            <div className="flex justify-between items-center w-full mb-2 px-1 gap-4">
+              <span className="text-xs font-bold text-slate-900">
+                📅 {formattedMonthTitle}
+              </span>
+
+              <div className="flex gap-1 text-slate-600">
+                <button 
+                  type="button"
+                  onClick={handlePrevMonth}
+                  className="p-1 hover:bg-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                  title="Mes anterior"
+                >
+                  ‹
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleNextMonth}
+                  className="p-1 hover:bg-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                  title="Mes siguiente"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7 text-center mb-1 w-60">
+              {daysOfWeek.map((d, index) => (
+                <span key={index} className="text-[10px] font-bold text-slate-400">
+                  {d}
+                </span>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-y-1 text-center text-xs w-60">
+              {miniCalendarDays.map((item, idx) => {
+                const isSelected = item.isCurrentMonth && item.day === selectedDay;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSelectMiniCalendarDay(item.day, item.monthOffset)}
+                    className={`h-7 w-7 mx-auto flex items-center justify-center rounded-full transition-all text-[11px] cursor-pointer ${
+                      !item.isCurrentMonth 
+                        ? 'text-slate-300 font-normal hover:bg-slate-50' 
+                        : isSelected
+                          ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                          : 'text-slate-700 hover:bg-slate-100 font-medium'
+                    }`}
+                  >
+                    {item.day}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* B) Historial y Detalle del Día Seleccionado con Distinción de Colores por Empleado */}
+          <div className="flex-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-3 lg:pt-0 lg:pl-5 flex flex-col min-w-0">
+            
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  📜 Revisiones del Día ({selectedFormattedDate})
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {eventsOfSelectedDay.length} revisiones programadas en esta fecha
+                </p>
+              </div>
+
+              {/* Leyenda rápida de colores por empleado */}
+              <div className="hidden sm:flex items-center gap-2 overflow-x-auto max-w-xs">
+                {empleadosList.slice(0, 4).map(emp => {
+                  const color = getEmpleadoColor(emp.nombre);
+                  return (
+                    <span 
+                      key={emp.id} 
+                      className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${color.bg} ${color.text} ${color.border} truncate`}
+                    >
+                      ● {emp.nombre}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* LISTA DE REVISIONES DEL DÍA */}
+            <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+              {eventsOfSelectedDay.length === 0 ? (
+                <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl text-center text-xs text-slate-400">
+                  No hay revisiones agendadas para el <strong className="text-slate-700">{selectedFormattedDate}</strong>.
+                </div>
+              ) : (
+                eventsOfSelectedDay.map((rev) => {
+                  const empColor = getEmpleadoColor(rev.empleado_nombre);
+
+                  return (
+                    <div 
+                      key={rev.id}
+                      onClick={() => {
+                        setSelectedEventDetails(rev);
+                        setIsEditing(false);
+                      }}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer hover:shadow-xs flex items-center justify-between gap-3 ${empColor.bg} ${empColor.border}`}
+                    >
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-slate-900 text-xs truncate">{rev.title}</h4>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border bg-white ${empColor.text} ${empColor.border}`}>
+                            👤 {rev.empleado_nombre}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                          <span className="font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                            📁 {rev.proyecto_nombre}
+                          </span>
+                          <span>•</span>
+                          <span>Estado: <strong>{rev.estado}</strong></span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="font-mono text-xs font-bold text-slate-800 bg-white/80 border border-slate-200 px-2 py-1 rounded-lg">
+                          ⏱️ {new Date(rev.start).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+          </div>
+
         </div>
 
       </div>
@@ -758,12 +854,11 @@ export default function CalendarioRevisiones() {
         </div>
       )}
 
-      {/* 🔍 MODAL DE DETALLES Y EDICIÓN DE LA REUNIÓN */}
+      {/* MODAL DETALLES Y EDICIÓN DE REUNIÓN */}
       {selectedEventDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             
-            {/* Header Modal */}
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
               <div className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded-full" style={{ backgroundColor: selectedEventDetails.backgroundColor }}></span>
@@ -780,7 +875,6 @@ export default function CalendarioRevisiones() {
               </button>
             </div>
 
-            {/* MODO EDICIÓN */}
             {isEditing ? (
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
                 <div>
@@ -888,7 +982,6 @@ export default function CalendarioRevisiones() {
                 </div>
               </form>
             ) : (
-              /* MODO LECTURA DE DETALLES */
               <div className="p-6 space-y-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 leading-snug">
@@ -903,13 +996,13 @@ export default function CalendarioRevisiones() {
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-slate-500">📁 Proyecto:</span>
                     <span className="font-bold text-slate-800">
-                      {proyectosList.find(p => p.id === selectedEventDetails.proyecto_id)?.nombre || 'Proyecto General'}
+                      {selectedEventDetails.proyecto_nombre}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-slate-500">👤 Integrante:</span>
-                    <span className="font-bold text-slate-800">{selectedEventDetails.empleado_nombre || 'Sin asignar'}</span>
+                    <span className="font-bold text-slate-800">{selectedEventDetails.empleado_nombre}</span>
                   </div>
 
                   <div className="flex justify-between items-center">

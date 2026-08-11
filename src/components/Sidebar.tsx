@@ -45,14 +45,14 @@ export default function Sidebar() {
 
       {/* Navegación Principal */}
       <nav className="flex-1 p-3 space-y-1">
+        <Link href="/admin/revisiones" className={getLinkClasses('/admin/revisiones')}>
+          ✅ Revisiones
+        </Link>
         <Link href="/" className={getLinkClasses('/')}>
           📊 Panel Principal
         </Link>
         <Link href="/admin/historial" className={getLinkClasses('/admin/historial')}>
           📝 Historial Tareas
-        </Link>
-        <Link href="/admin/revisiones" className={getLinkClasses('/admin/revisiones')}>
-          ✅ Revisiones
         </Link>
         <Link href="/admin/ruta-critica" className={getLinkClasses('/admin/ruta-critica')}>
           📍 Ruta Crítica
