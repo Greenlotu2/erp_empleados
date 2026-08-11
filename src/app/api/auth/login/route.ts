@@ -12,7 +12,6 @@ const corsHeaders = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    // 💡 Acepta tanto 'email' (extensión) como 'username' (formulario web)
     const emailInput = body.email || body.username;
     const passwordInput = body.password;
 
@@ -25,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     const cleanEmail = emailInput.trim().toLowerCase();
 
-    // Buscar el empleado por username o correo
+    // 1. Buscar al empleado por username o correo
     const { data: empleado, error } = await supabaseAdmin
       .from('empleados')
       .select('*')
@@ -39,12 +38,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🔒 Verificar contraseña con bcrypt (con fallback temporal a texto plano por compatibilidad)
+    // 2. Verificar contraseña y detectar si requiere migración a Bcrypt
     let isPasswordValid = false;
+    let needsPasswordMigration = false;
+
     if (empleado.password_hash) {
       isPasswordValid = await bcrypt.compare(passwordInput, empleado.password_hash);
     } else if (empleado.password) {
       isPasswordValid = empleado.password === passwordInput;
+      if (isPasswordValid) {
+        needsPasswordMigration = true;
+      }
     }
 
     if (!isPasswordValid) {
@@ -54,30 +58,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🔑 GENERAR JWT REAL CON EXPIRACIÓN (8h)
+    // 🔄 3. MIGRACIÓN AL VUELO: Si autenticó por texto plano, hashea y elimina el texto plano
+    if (needsPasswordMigration) {
+      const newHash = await bcrypt.hash(passwordInput, 10);
+      await supabaseAdmin
+        .from('empleados')
+        .update({
+          password_hash: newHash,
+          password: null,
+        })
+        .eq('id', empleado.id);
+    }
+
+    // 🔑 4. Generar Token JWT firmado
     const token = generateToken({
       id: empleado.id,
       email: empleado.username || empleado.email,
       rol: empleado.rol || 'Practicante',
     });
 
-    // 💡 Estructura unificada de respuesta para Web y Extensión
     return NextResponse.json(
       {
         success: true,
-        token: token, // Para panel.js -> data.token
+        token,
         employee: {
           id: empleado.id,
           nombre: empleado.nombre,
           email: empleado.username || empleado.email,
           rol: empleado.rol,
           horas_acumuladas: empleado.horas_acumuladas || 0,
-          horas_totales_objetivo: empleado.horas_totales_objetivo
-        }
+          horas_totales_objetivo: empleado.horas_totales_objetivo,
+        },
       },
       { status: 200, headers: corsHeaders }
     );
-
   } catch (err: any) {
     return NextResponse.json(
       { error: 'Error interno del servidor', details: err.message },

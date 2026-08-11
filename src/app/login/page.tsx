@@ -1,107 +1,118 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../lib/api-auth';
-import bcrypt from 'bcryptjs';
-import { generateToken } from '../../lib/auth';
+'use client';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '../../lib/supabase';
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const emailInput = body.email || body.username;
-    const passwordInput = body.password;
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-    if (!emailInput || !passwordInput) {
-      return NextResponse.json(
-        { error: 'Correo/Usuario y contraseña requeridos' },
-        { status: 400, headers: corsHeaders }
-      );
-    }
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
 
-    const cleanEmail = emailInput.trim().toLowerCase();
+    try {
+      // 1. Petición al endpoint de autenticación con migración de contraseñas
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    // 1. Buscar al empleado por username o correo
-    const { data: empleado, error } = await supabaseAdmin
-      .from('empleados')
-      .select('*')
-      .or(`username.ilike.${cleanEmail},email.ilike.${cleanEmail}`)
-      .maybeSingle();
+      const data = await res.json();
 
-    if (error || !empleado) {
-      return NextResponse.json(
-        { error: 'Credenciales inválidas' },
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    // 2. Verificar contraseña y detectar si requiere migración a Bcrypt
-    let isPasswordValid = false;
-    let needsPasswordMigration = false;
-
-    if (empleado.password_hash) {
-      isPasswordValid = await bcrypt.compare(passwordInput, empleado.password_hash);
-    } else if (empleado.password) {
-      isPasswordValid = empleado.password === passwordInput;
-      if (isPasswordValid) {
-        needsPasswordMigration = true; // Flag para migrar en este request
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Error al iniciar sesión');
       }
+
+      // 2. Sincronizar la sesión en el cliente de Supabase Web
+      const { error: supabaseAuthErr } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (supabaseAuthErr) {
+        console.warn('Sincronización de cliente parcial:', supabaseAuthErr.message);
+      }
+
+      // 3. Redirección según rol
+      const userRole = (data.employee?.rol || '').toLowerCase();
+      if (userRole === 'admin' || userRole === 'administrador') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Credenciales incorrectas o error en el servidor');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    if (!isPasswordValid) {
-      return NextResponse.json(
-        { error: 'Credenciales inválidas' },
-        { status: 401, headers: corsHeaders }
-      );
-    }
+  return (
+    <div className="min-h-screen w-full bg-slate-950 flex items-center justify-center p-4 font-sans">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-2xl">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-white mb-2">ERP - Acceso de Empleados</h1>
+          <p className="text-slate-400 text-xs">Ingresa tus credenciales para acceder al sistema</p>
+        </div>
 
-    // 🔄 3. MIGRACIÓN AL VUELO: Si entró por texto plano, guarda su hash con bcrypt y limpia el texto plano
-    if (needsPasswordMigration) {
-      const newHash = await bcrypt.hash(passwordInput, 10);
-      await supabaseAdmin
-        .from('empleados')
-        .update({
-          password_hash: newHash,
-          password: null, // Elimina la contraseña en texto plano
-        })
-        .eq('id', empleado.id);
-    }
+        {errorMsg && (
+          <div className="mb-6 p-3 bg-red-950/50 border border-red-800 text-red-300 text-xs rounded-lg text-center font-medium">
+            {errorMsg}
+          </div>
+        )}
 
-    // 🔑 4. Generar Token JWT firmado con expiración de 8 horas
-    const token = generateToken({
-      id: empleado.id,
-      email: empleado.username || empleado.email,
-      rol: empleado.rol || 'Practicante',
-    });
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Correo o Usuario
+            </label>
+            <input
+              type="text"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="ejemplo@empresa.com"
+              className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
 
-    // 5. Respuesta unificada
-    return NextResponse.json(
-      {
-        success: true,
-        token: token,
-        employee: {
-          id: empleado.id,
-          nombre: empleado.nombre,
-          email: empleado.username || empleado.email,
-          rol: empleado.rol,
-          horas_acumuladas: empleado.horas_acumuladas || 0,
-          horas_totales_objetivo: empleado.horas_totales_objetivo,
-        },
-      },
-      { status: 200, headers: corsHeaders }
-    );
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Contraseña
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
 
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: 'Error interno del servidor', details: err.message },
-      { status: 500, headers: corsHeaders }
-    );
-  }
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 200, headers: corsHeaders });
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-bold text-xs rounded-lg transition-colors shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Verificando...</span>
+              </>
+            ) : (
+              'Ingresar al ERP'
+            )}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 }
