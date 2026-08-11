@@ -1,3 +1,4 @@
+import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 import bcrypt from 'bcryptjs';
@@ -10,11 +11,48 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    // 🔒 1. Verificación estricta de Token JWT de Administrador
-    const caller = verifyAuthToken(request);
-    
-    // Si no hay token JWT válido en el header Bearer, denegar acceso
-    if (!caller || (caller.rol.toLowerCase() !== 'administrador' && caller.rol.toLowerCase() !== 'admin')) {
+    let isAuthorized = false;
+
+    // 1. Intento A: Verificar Token JWT en el encabezado Authorization (Bearer)
+    const jwtCaller = verifyAuthToken(request);
+    if (jwtCaller && (jwtCaller.rol.toLowerCase() === 'administrador' || jwtCaller.rol.toLowerCase() === 'admin')) {
+      isAuthorized = true;
+    }
+
+    // 2. Intento B: Verificar Sesión de Supabase vía Cookies (Panel Web Next.js)
+    if (!isAuthorized) {
+      const supabaseSsr = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return request.cookies.getAll();
+            },
+            setAll() {},
+          },
+        }
+      );
+
+      const { data: { user } } = await supabaseSsr.auth.getUser();
+
+      if (user) {
+        // Consultar rol en la tabla empleados
+        const { data: emp } = await supabaseAdmin
+          .from('empleados')
+          .select('rol')
+          .or(`user_id.eq.${user.id},username.ilike.${user.email}`)
+          .maybeSingle();
+
+        const role = emp?.rol?.toLowerCase();
+        if (role === 'admin' || role === 'administrador') {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    // Si ninguno de los dos métodos valida al Administrador, bloquear acceso
+    if (!isAuthorized) {
       return NextResponse.json(
         { error: 'Acceso denegado: Se requieren permisos de Administrador' },
         { status: 403 }
@@ -22,17 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { 
-      email, 
-      password, 
-      nombre, 
-      rol, 
-      especialidad, 
-      disponibilidad, 
-      horasTotalesObjetivo, 
-      avatarUrl,
-      color 
-    } = body;
+    const { email, password, nombre, rol, especialidad, disponibilidad, horasTotalesObjetivo, avatarUrl, color } = body;
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Correo y contraseña son obligatorios' }, { status: 400 });
@@ -40,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // 2. Crear usuario oficial en Supabase Auth
+    // Crear usuario en Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: cleanEmail,
       password,
@@ -53,10 +81,10 @@ export async function POST(request: NextRequest) {
 
     const userId = authData.user.id;
 
-    // 3. Hash de contraseña con bcrypt
+    // Generar hash de la contraseña con bcrypt
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 4. Inserción en la tabla empleados
+    // Insertar en la tabla empleados
     const { data: empData, error: empError } = await supabaseAdmin
       .from('empleados')
       .insert({
@@ -76,6 +104,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (empError) {
+      // Rollback: Borrar usuario de Auth si falla la tabla empleados
       await supabaseAdmin.auth.admin.deleteUser(userId);
       return NextResponse.json({ error: `Error en Empleados: ${empError.message}` }, { status: 400 });
     }

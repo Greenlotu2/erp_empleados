@@ -1,7 +1,49 @@
-import { NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuthToken } from '../../../../lib/auth';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    let isAuthorized = false;
+
+    // 🔒 1. Intento A: Verificar Token JWT en encabezado Authorization (Bearer)
+    const jwtCaller = verifyAuthToken(req);
+    if (jwtCaller) {
+      isAuthorized = true;
+    }
+
+    // 🔒 2. Intento B: Verificar Sesión de Supabase vía Cookies (Panel Web)
+    if (!isAuthorized) {
+      const supabaseSsr = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return req.cookies.getAll();
+            },
+            setAll() {},
+          },
+        }
+      );
+
+      const { data: { user } } = await supabaseSsr.auth.getUser();
+      if (user) {
+        isAuthorized = true;
+      }
+    }
+
+    // 🛡️ Bloquear acceso si no hay usuario autenticado (evita consumo no autorizado de la API de Groq)
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { error: 'No autorizado: Debes iniciar sesión para ejecutar este análisis' },
+        { status: 401 }
+      );
+    }
+
+    // =========================================================
+    // 👇 TU LÓGICA DE GROQ API PERMANECE INTACTA A CONTINUACIÓN
+    // =========================================================
     const body = await req.json();
     const { proyectoNombre, tareas, reuniones } = body;
 

@@ -1,173 +1,107 @@
-'use client';
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '../../lib/api-auth';
+import bcrypt from 'bcryptjs';
+import { generateToken } from '../../lib/auth';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createBrowserClient } from '@supabase/ssr'; // Usar cliente oficial de SSR para Cookies
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 
-export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const emailInput = body.email || body.username;
+    const passwordInput = body.password;
 
-  // Instanciar cliente de navegador (escribe y lee cookies en lugar de localStorage)
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    try {
-      // 1. Autenticación inicial con Supabase (asigna las cookies en el navegador)
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) {
-        throw new Error('Credenciales inválidas. Revisa tu correo y contraseña.');
-      }
-
-      const user = authData.user;
-      if (!user) {
-        throw new Error('No se pudo obtener la información de sesión.');
-      }
-
-      // 2. Consultar el ROL en la tabla 'empleados'
-      const { data: empleadoData, error: empError } = await supabase
-        .from('empleados')
-        .select('rol')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (empError) {
-        console.error('Error al consultar el perfil:', empError);
-      }
-
-      const userRole = empleadoData?.rol?.toLowerCase().trim();
-
-      // 3. RESTRICCIÓN DE EMPLEADOS: Si no es admin, revocar acceso
-      if (userRole !== 'admin' && userRole !== 'administrador') {
-        // Cerrar la sesión de Supabase de inmediato (borra cookies)
-        await supabase.auth.signOut();
-        throw new Error('Acceso denegado: Esta plataforma es exclusiva para Administradores.');
-      }
-
-      // 4. Forzar refresco de router para sincronizar las cookies con el Middleware y redirigir
-      router.refresh();
-      router.push('/'); // Ajusta a la ruta exacta de tu dashboard
-
-    } catch (error: any) {
-      console.error('Error durante inicio de sesión:', error);
-      setErrorMessage(error.message || 'Error al iniciar sesión.');
-      setIsLoading(false);
+    if (!emailInput || !passwordInput) {
+      return NextResponse.json(
+        { error: 'Correo/Usuario y contraseña requeridos' },
+        { status: 400, headers: corsHeaders }
+      );
     }
-  };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-r from-[#e94f1b] to-[#21388e] flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4">
-      
-      {/* Contenido */}
-      <div className="sm:mx-auto w-full sm:max-w-md text-center">
-        {/* Icono / Logo minimalista */}
-        <img src="logo_rocal_bl.png" alt="Logo" className="mx-auto" />
-        
-        <p className="mt-2 text-center text-sm text-white">
-          ERP Empresarial - Rocal S.A. de C.V. <br />
-        </p>
-      </div>
+    const cleanEmail = emailInput.trim().toLowerCase();
 
-      <div className="mt-8 sm:mx-auto w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-sm border border-slate-100 rounded-2xl sm:px-10">
-          
-          {/* Mensaje de Error (si existe) */}
-          {errorMessage && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-medium">
-              ⚠️ {errorMessage}
-            </div>
-          )}
+    // 1. Buscar al empleado por username o correo
+    const { data: empleado, error } = await supabaseAdmin
+      .from('empleados')
+      .select('*')
+      .or(`username.ilike.${cleanEmail},email.ilike.${cleanEmail}`)
+      .maybeSingle();
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-                Correo electrónico
-              </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black transition-all"
-                  placeholder="tu@empresa.com"
-                />
-              </div>
-            </div>
+    if (error || !empleado) {
+      return NextResponse.json(
+        { error: 'Credenciales inválidas' },
+        { status: 401, headers: corsHeaders }
+      );
+    }
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                Contraseña
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
+    // 2. Verificar contraseña y detectar si requiere migración a Bcrypt
+    let isPasswordValid = false;
+    let needsPasswordMigration = false;
 
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded"
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-slate-700 select-none">
-                  Recordarme
-                </label>
-              </div>
-            </div>
+    if (empleado.password_hash) {
+      isPasswordValid = await bcrypt.compare(passwordInput, empleado.password_hash);
+    } else if (empleado.password) {
+      isPasswordValid = empleado.password === passwordInput;
+      if (isPasswordValid) {
+        needsPasswordMigration = true; // Flag para migrar en este request
+      }
+    }
 
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Validando credenciales...
-                  </span>
-                ) : (
-                  'Ingresar al Panel'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
+    if (!isPasswordValid) {
+      return NextResponse.json(
+        { error: 'Credenciales inválidas' },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    // 🔄 3. MIGRACIÓN AL VUELO: Si entró por texto plano, guarda su hash con bcrypt y limpia el texto plano
+    if (needsPasswordMigration) {
+      const newHash = await bcrypt.hash(passwordInput, 10);
+      await supabaseAdmin
+        .from('empleados')
+        .update({
+          password_hash: newHash,
+          password: null, // Elimina la contraseña en texto plano
+        })
+        .eq('id', empleado.id);
+    }
+
+    // 🔑 4. Generar Token JWT firmado con expiración de 8 horas
+    const token = generateToken({
+      id: empleado.id,
+      email: empleado.username || empleado.email,
+      rol: empleado.rol || 'Practicante',
+    });
+
+    // 5. Respuesta unificada
+    return NextResponse.json(
+      {
+        success: true,
+        token: token,
+        employee: {
+          id: empleado.id,
+          nombre: empleado.nombre,
+          email: empleado.username || empleado.email,
+          rol: empleado.rol,
+          horas_acumuladas: empleado.horas_acumuladas || 0,
+          horas_totales_objetivo: empleado.horas_totales_objetivo,
+        },
+      },
+      { status: 200, headers: corsHeaders }
+    );
+
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: 'Error interno del servidor', details: err.message },
+      { status: 500, headers: corsHeaders }
+    );
+  }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 200, headers: corsHeaders });
 }
