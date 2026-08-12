@@ -4,27 +4,32 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeMainTab = 'tareas';
   let activeSubFilter = 'por_hacer';
 
-  // ⏱️ Variables para el Timer Automático de Servicio/Prácticas
+  // ⏱️ Variables para el Timer Automático
   let timerInterval = null;
   let todaySeconds = 0;
   let lastSyncTimestamp = Date.now();
   const MAX_DAILY_SECONDS = 5 * 3600; // 5 Horas = 18,000s
-  const API_BASE_URL = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL 
-  ? process.env.NEXT_PUBLIC_API_URL 
-  : "http://localhost:3000/api";
+
+  // 🌐 Carga dinámica de URL de API (Fallback a localhost)
+  let API_BASE_URL = "http://localhost:3000/api";
+  chrome.storage.local.get(['custom_api_url'], (res) => {
+    if (res?.custom_api_url) {
+      API_BASE_URL = res.custom_api_url.replace(/\/+$/, '');
+    }
+  });
 
   const screenContainer = document.getElementById('screen-container');
   const logoutBtn = document.getElementById('btn-logout');
   const popoutBtn = document.getElementById('btn-popout');
 
-  // Botón para desplegar en ventana flotante
+  // Abrir extensión en ventana flotante
   if (popoutBtn) {
     popoutBtn.onclick = () => {
       chrome.runtime.sendMessage({ type: 'OPEN_POPUP_WINDOW' });
     };
   }
 
-  // 🔒 Peticiones seguras inyectando la cabecera Authorization: Bearer <token>
+  // 🔒 Cliente de red inyectando Token JWT
   function apiRequest(url, options = {}) {
     options.headers = {
       'Content-Type': 'application/json',
@@ -42,20 +47,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ==========================================
+  // 1. RENDERIZADO DEL LOGIN
+  // ==========================================
   function renderLogin() {
+    if (!screenContainer) return;
+
     screenContainer.innerHTML = `
-      <div style="display:flex; flex-direction:column; gap:12px; margin-top:40px;">
-        <h3 style="margin:0; font-size:15px; text-align:center; color:#fff;">Acceso de Empleados</h3>
-        <input type="text" id="c-user" placeholder="Usuario o Correo" style="padding:10px; border-radius:8px; border:1px solid #374151; background:#111827; color:#fff; font-size:13px;">
-        <input type="password" id="c-pass" placeholder="Contraseña" style="padding:10px; border-radius:8px; border:1px solid #374151; background:#111827; color:#fff; font-size:13px;">
-        <button id="c-btnLogin" style="background:#2563eb; color:#fff; border:none; padding:11px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer;">Conectar al ERP</button>
+      <div class="login-container">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h3 style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Acceso de Empleados</h3>
+          <p style="font-size: 11px; color: #94a3b8;">Sincroniza tus tareas y jornada de trabajo</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Usuario o Correo</label>
+          <input type="text" id="c-user" placeholder="usuario o correo@empresa.com" class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <input type="password" id="c-pass" placeholder="••••••••" class="form-input">
+        </div>
+
+        <button id="c-btnLogin" class="btn-submit">Conectar al ERP</button>
       </div>
     `;
 
     document.getElementById('c-btnLogin').onclick = async () => {
       const email = document.getElementById('c-user').value.trim();
       const password = document.getElementById('c-pass').value.trim();
-      if (!email || !password) return alert('Ingresa tus datos.');
+      if (!email || !password) return alert('Por favor ingresa tus credenciales.');
 
       const res = await apiRequest(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
@@ -68,9 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res?.ok && user?.id && token) {
         usuarioAutenticado = user;
         jwtToken = token;
-        
+
         chrome.storage.local.set({ session_user: usuarioAutenticado, jwt_token: jwtToken });
-        if (logoutBtn) logoutBtn.style.display = 'block';
+        if (logoutBtn) logoutBtn.style.display = 'flex';
         renderDashboard();
       } else {
         alert(res?.data?.error || res?.data?.message || res?.error || 'Credenciales incorrectas.');
@@ -78,59 +100,81 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  // ==========================================
+  // 2. RENDERIZADO DEL DASHBOARD
+  // ==========================================
   async function renderDashboard() {
+    if (!screenContainer) return;
     if (!usuarioAutenticado?.id || !jwtToken) return renderLogin();
+// Reemplaza estas líneas al inicio de renderDashboard() en panel.js:
 
-    const rolLower = (usuarioAutenticado.rol || usuarioAutenticado.role || '').toLowerCase();
-    const isEstudiante = rolLower.includes('practicante') || rolLower.includes('servicio');
-    const targetHours = rolLower.includes('servicio') ? 480 : 250;
+const rolLower = (usuarioAutenticado.rol || usuarioAutenticado.role || '').toLowerCase().trim();
+
+// Detectar categoría
+const isServicio = rolLower.includes('servicio') || rolLower.includes('ss');
+const isPracticas = rolLower.includes('practicante') || rolLower.includes('práctica') || rolLower.includes('practica') || rolLower.includes('pp');
+const isEstudiante = isServicio || isPracticas;
+
+// Priorizar las horas por rol (PP = 250, SS = 480)
+const targetHours = isPracticas ? 250 : (isServicio ? 480 : (usuarioAutenticado.horas_totales_objetivo || 480));
+
+// Actualizar en el objeto local
+usuarioAutenticado.horas_totales_objetivo = targetHours;
 
     screenContainer.innerHTML = `
       <!-- Tarjeta de Usuario -->
-      <div style="background:#111827; border:1px solid #1f2937; border-radius:10px; padding:10px; display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-        <div style="font-size:18px;">👨‍💻</div>
-        <div style="flex:1; overflow:hidden;">
-          <h4 style="margin:0; font-size:12px; color:#fff;">${usuarioAutenticado.nombre || usuarioAutenticado.name || 'Empleado'}</h4>
-          <p style="margin:0; font-size:10px; color:#3b82f6;">${usuarioAutenticado.rol || usuarioAutenticado.role || 'Personal'}</p>
+      <div class="user-card">
+        <div class="avatar">
+          ${(usuarioAutenticado.nombre || usuarioAutenticado.name || 'E').charAt(0).toUpperCase()}
+        </div>
+        <div class="user-info">
+          <div class="user-name">${usuarioAutenticado.nombre || usuarioAutenticado.name || 'Empleado'}</div>
+          <div class="user-role-container">
+            <div class="status-dot"></div>
+            <span class="user-role">${usuarioAutenticado.rol || usuarioAutenticado.role || 'Personal'}</span>
+          </div>
         </div>
       </div>
 
-      <!-- TIMER AUTOMÁTICO (Solo visible para Practicantes / Servicio Social) -->
-      <div id="timer-box" style="display:${isEstudiante ? 'block' : 'none'}; background:linear-gradient(135deg, #0284c7, #4f46e5); border-radius:10px; padding:10px; color:white; margin-bottom:10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; opacity:0.9;">
-          <span>⏱️ Jornada Diaria (Máx 5 hrs)</span>
-          <span id="timer-status">🟢 Activo</span>
+      <!-- Widget de Timer Automático -->
+      <div id="timer-box" class="timer-widget" style="display: ${isEstudiante ? 'block' : 'none'};">
+        <div class="timer-header">
+          <span>⏱️ Jornada Diaria (Máx 5h)</span>
+          <span id="timer-status" class="timer-badge">🟢 Contando</span>
         </div>
-        <div id="timer-display" style="font-size:20px; font-weight:bold; font-family:monospace; margin:4px 0; text-align:center;">00:00:00</div>
-        <div style="display:flex; justify-content:space-between; font-size:9px; margin-top:2px;">
-          <span>Acumulado:</span>
-          <strong id="total-hours-text">0 / ${targetHours} hrs</strong>
+
+        <div id="timer-display" class="timer-clock">00:00:00</div>
+
+        <div class="timer-footer">
+          <span>Acumulado Total:</span>
+          <strong id="total-hours-text" style="color: #a5b4fc;">0.0 / ${targetHours} hrs</strong>
         </div>
-        <div style="width:100%; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; overflow:hidden; margin-top:4px;">
-          <div id="progress-fill" style="height:100%; background:#38bdf8; width:0%; transition:width 0.3s ease;"></div>
+
+        <div class="progress-bar-bg">
+          <div id="progress-fill" class="progress-bar-fill"></div>
         </div>
       </div>
 
       <!-- Pestañas Principales -->
-      <div style="display:flex; background:#111827; border-radius:8px; padding:3px; gap:4px; margin-bottom:10px;">
-        <button id="tab-tareas" style="flex:1; padding:6px; border:none; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">📋 Tareas</button>
-        <button id="tab-reuniones" style="flex:1; padding:6px; border:none; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">📅 Reuniones</button>
+      <div class="tabs-container">
+        <button id="tab-tareas" class="tab-btn">📋 Tareas</button>
+        <button id="tab-reuniones" class="tab-btn">📅 Reuniones</button>
       </div>
 
-      <!-- Sub-Filtros -->
-      <div style="display:flex; justify-content:space-between; gap:4px; margin-bottom:12px;">
-        <button id="sub-por_hacer" style="flex:1; padding:4px; border:1px solid #1f2937; border-radius:6px; font-size:9px; font-weight:600; cursor:pointer;">Por hacer</button>
-        <button id="sub-pendientes" style="flex:1; padding:4px; border:1px solid #1f2937; border-radius:6px; font-size:9px; font-weight:600; cursor:pointer;">Pendientes</button>
-        <button id="sub-completadas" style="flex:1; padding:4px; border:1px solid #1f2937; border-radius:6px; font-size:9px; font-weight:600; cursor:pointer;">Completadas</button>
+      <!-- Sub-filtros de Tareas -->
+      <div id="subfilters-container" class="subfilters-grid">
+        <button id="sub-por_hacer" class="subfilter-btn">Por hacer</button>
+        <button id="sub-pendientes" class="subfilter-btn">Pendientes</button>
+        <button id="sub-completadas" class="subfilter-btn">Completadas</button>
       </div>
 
       <!-- Contenedor Dinámico -->
-      <div id="c-contentList" style="flex:1; display:flex; flex-direction:column; gap:8px; overflow-y:auto;"></div>
+      <div id="c-contentList" class="content-list"></div>
     `;
 
     setupEvents();
     updateStyles();
-    
+
     if (isEstudiante) {
       setupAutoTimer(targetHours);
     }
@@ -138,37 +182,53 @@ document.addEventListener('DOMContentLoaded', () => {
     await loadData();
   }
 
+  // ==========================================
+  // 3. SELECCIÓN Y ESTILOS DE PESTAÑAS
+  // ==========================================
   function setupEvents() {
-    document.getElementById('tab-tareas').onclick = () => { activeMainTab = 'tareas'; updateStyles(); loadData(); };
-    document.getElementById('tab-reuniones').onclick = () => { activeMainTab = 'reuniones'; updateStyles(); loadData(); };
+    const btnT = document.getElementById('tab-tareas');
+    const btnR = document.getElementById('tab-reuniones');
+    if (btnT) btnT.onclick = () => { activeMainTab = 'tareas'; updateStyles(); loadData(); };
+    if (btnR) btnR.onclick = () => { activeMainTab = 'reuniones'; updateStyles(); loadData(); };
 
     ['por_hacer', 'pendientes', 'completadas'].forEach(filter => {
-      document.getElementById(`sub-${filter}`).onclick = () => { activeSubFilter = filter; updateStyles(); loadData(); };
+      const btn = document.getElementById(`sub-${filter}`);
+      if (btn) btn.onclick = () => { activeSubFilter = filter; updateStyles(); loadData(); };
     });
   }
 
   function updateStyles() {
     const btnT = document.getElementById('tab-tareas');
     const btnR = document.getElementById('tab-reuniones');
+    const subContainer = document.getElementById('subfilters-container');
+
     if (btnT && btnR) {
-      btnT.style.background = activeMainTab === 'tareas' ? '#2563eb' : 'transparent';
-      btnT.style.color = activeMainTab === 'tareas' ? '#fff' : '#9ca3af';
-      btnR.style.background = activeMainTab === 'reuniones' ? '#2563eb' : 'transparent';
-      btnR.style.color = activeMainTab === 'reuniones' ? '#fff' : '#9ca3af';
+      if (activeMainTab === 'tareas') {
+        btnT.classList.add('active');
+        btnR.classList.remove('active');
+        if (subContainer) subContainer.style.display = 'grid';
+      } else {
+        btnR.classList.add('active');
+        btnT.classList.remove('active');
+        if (subContainer) subContainer.style.display = 'none';
+      }
     }
 
     ['por_hacer', 'pendientes', 'completadas'].forEach(f => {
       const btn = document.getElementById(`sub-${f}`);
       if (btn) {
-        const isActive = activeSubFilter === f;
-        btn.style.background = isActive ? '#1f2937' : '#0b0f19';
-        btn.style.color = isActive ? '#60a5fa' : '#6b7280';
-        btn.style.borderColor = isActive ? '#3b82f6' : '#1f2937';
+        if (activeSubFilter === f) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
       }
     });
   }
 
-  // ⏱️ Lógica del Temporizador Automático Diario
+  // ==========================================
+  // 4. TEMPORIZADOR AUTOMÁTICO DE SERVICIO
+  // ==========================================
   function setupAutoTimer(targetHours) {
     if (timerInterval) clearInterval(timerInterval);
 
@@ -178,13 +238,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusEl = document.getElementById('timer-status');
         if (statusEl) {
           statusEl.innerText = '🟢 Contando';
-          statusEl.style.color = '#86efac';
+          statusEl.style.color = '#34d399';
         }
       } else {
         const statusEl = document.getElementById('timer-status');
         if (statusEl) {
           statusEl.innerText = '🛑 Límite diario (5h max)';
-          statusEl.style.color = '#fca5a5';
+          statusEl.style.color = '#f87171';
         }
       }
 
@@ -197,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       chrome.storage.local.set({ todaySeconds });
 
-      // Sincronizar horas con el backend cada 60 segundos
+      // Sincronizar horas con el servidor cada 60 segundos
       if (Date.now() - lastSyncTimestamp >= 60000) {
         syncHoursToBackend(targetHours);
         lastSyncTimestamp = Date.now();
@@ -234,6 +294,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ==========================================
+  // 5. CARGA Y DIBUJO DE TAREAS Y REUNIONES
+  // ==========================================
   async function loadData() {
     const list = document.getElementById('c-contentList');
     if (!list) return;
@@ -247,47 +310,53 @@ document.addEventListener('DOMContentLoaded', () => {
       const filtered = tareas.filter(t => {
         const st = (t.estado || '').toLowerCase();
         if (activeSubFilter === 'por_hacer') return st === 'por hacer' || st === 'todo' || st === 'nueva';
-        if (activeSubFilter === 'pendientes') return st === 'en proceso' || st === 'pendiente';
+        if (activeSubFilter === 'pendientes') return st === 'en proceso' || st === 'pendiente' || st === 'en revisión';
         if (activeSubFilter === 'completadas') return st === 'completada' || st === 'finalizada';
         return true;
       });
 
       if (filtered.length === 0) {
-        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#4b5563; margin-top:20px;">Sin tareas en esta categoría.</p>`;
+        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:20px;">Sin tareas en esta categoría.</p>`;
       } else {
         list.innerHTML = '';
         filtered.forEach(t => {
           const item = document.createElement('div');
-          item.style.cssText = 'background:#111827; border:1px solid #1f2937; border-radius:8px; padding:10px; font-size:11px; display:flex; flex-direction:column; gap:6px;';
-          
+          item.className = 'card-item';
+
           const isDone = (t.estado || '').toLowerCase().includes('completa');
+          const desc = t.descripcion ? `<div class="card-desc">${t.descripcion}</div>` : '';
+          const fechaLim = t.fecha_limite ? `<span>📅 Límite: ${t.fecha_limite}</span>` : '';
 
           item.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="color:#f1f5f9; font-size:11px;">${t.titulo || t.descripcion}</strong>
-              <span style="font-size:9px; background:#1e1b4b; color:#818cf8; padding:2px 6px; border-radius:4px;">
-                📁 ${t.proyectos?.nombre || t.proyecto_nombre || 'General'}
-              </span>
+            <div class="card-header">
+              <span class="card-title">${t.titulo || t.descripcion || 'Tarea sin título'}</span>
+              <span class="card-badge">📁 ${t.proyectos?.nombre || t.proyecto_nombre || 'General'}</span>
             </div>
             
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-              <span style="font-size:9px; color:#9ca3af;">Estado: <b style="color:${isDone ? '#4ade80' : '#fbbf24'};">${t.estado}</b></span>
+            ${desc}
+            
+            <div class="card-footer">
+              <div class="card-meta">
+                ${fechaLim}
+              </div>
               ${!isDone ? `
-                <button class="btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}" style="background:#2563eb; color:white; border:none; padding:4px 8px; border-radius:6px; font-size:9px; font-weight:bold; cursor:pointer;">
-                  🚀 Enviar a Revisión
+                <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
+                  🚀 Enviar a revisión
                 </button>
-              ` : ''}
+              ` : `
+                <span style="font-size:9px; color:#4ade80; font-weight:bold;">✓ Finalizada</span>
+              `}
             </div>
           `;
 
           list.appendChild(item);
         });
 
-        // Event listener para enviar tareas a revisión
+        // Event listener para envío de revisiones
         document.querySelectorAll('.btn-review').forEach(btn => {
           btn.onclick = async (e) => {
-            const taskId = e.target.dataset.id;
-            const taskTitle = e.target.dataset.title;
+            const taskId = e.currentTarget.dataset.id;
+            const taskTitle = e.currentTarget.dataset.title;
 
             const resRev = await apiRequest(`${API_BASE_URL}/revisiones`, {
               method: 'POST',
@@ -309,18 +378,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
     } else {
-      list.innerHTML = `<p style="text-align:center; font-size:11px; color:#4b5563; margin-top:20px;">Sin reuniones programadas.</p>`;
+      // Pestaña de Reuniones
+      const resR = await apiRequest(`${API_BASE_URL}/reuniones?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
+      const reuniones = (resR?.ok && Array.isArray(resR.data)) ? resR.data : [];
+
+      if (reuniones.length === 0) {
+        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:20px;">Sin reuniones programadas.</p>`;
+      } else {
+        list.innerHTML = '';
+        reuniones.forEach(m => {
+          const item = document.createElement('div');
+          item.className = 'card-item';
+          item.innerHTML = `
+            <div class="card-header">
+              <span class="card-title" style="color:#a5b4fc;">${m.titulo || 'Reunión'}</span>
+              <span class="card-badge" style="background:#1e293b; color:#e2e8f0;">⏰ ${m.hora || 'Por definir'}</span>
+            </div>
+            <div class="card-desc">${m.descripcion || 'Sin orden del día.'}</div>
+            ${m.link ? `
+              <div class="card-footer">
+                <a href="${m.link}" target="_blank" style="font-size:10px; color:#60a5fa; text-decoration:none; font-weight:bold;">
+                  🔗 Unirme a la reunión
+                </a>
+              </div>
+            ` : ''}
+          `;
+          list.appendChild(item);
+        });
+      }
     }
   }
 
-  // Cargar sesión inicial (recuperando tanto el usuario como el token JWT)
+  // ==========================================
+  // 6. CONTROL DE SESIÓN Y LOGOUT
+  // ==========================================
   chrome.storage.local.get(['session_user', 'jwt_token', 'todaySeconds'], (res) => {
     if (res?.session_user?.id && res?.jwt_token) {
       usuarioAutenticado = res.session_user;
       jwtToken = res.jwt_token;
       todaySeconds = res.todaySeconds || 0;
 
-      if (logoutBtn) logoutBtn.style.display = 'block';
+      if (logoutBtn) logoutBtn.style.display = 'flex';
       renderDashboard();
     } else {
       renderLogin();

@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'rocal_lum_inova_inge_891225'; // Valor por defecto para desarrollo
 
 if (!JWT_SECRET) {
   console.warn('⚠️ ATENCIÓN: JWT_SECRET no está definido en las variables de entorno (.env.local)');

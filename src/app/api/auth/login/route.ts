@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../../../lib/api-auth';
+import { supabaseAdmin } from '../../../../lib/api-auth'
 import bcrypt from 'bcryptjs';
-import { generateToken } from '../../../../lib/auth';
+import { generateToken } from '../../../../lib/auth'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +12,7 @@ const corsHeaders = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    // La extensión envía { email, password }, este fallback acepta ambos
     const emailInput = body.email || body.username;
     const passwordInput = body.password;
 
@@ -24,21 +25,38 @@ export async function POST(req: NextRequest) {
 
     const cleanEmail = emailInput.trim().toLowerCase();
 
-    // 1. Buscar al empleado por username o correo
-    const { data: empleado, error } = await supabaseAdmin
+    // 1. Buscar primero en la columna 'username' (donde se guarda el correo/usuario)
+    let { data: empleado } = await supabaseAdmin
       .from('empleados')
       .select('*')
-      .or(`username.ilike.${cleanEmail},email.ilike.${cleanEmail}`)
+      .ilike('username', cleanEmail)
       .maybeSingle();
 
-    if (error || !empleado) {
+    // 2. Si no se encontró en 'username', intentar por la columna 'email' de forma segura
+    if (!empleado) {
+      try {
+        const { data: empByEmail } = await supabaseAdmin
+          .from('empleados')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+
+        if (empByEmail) {
+          empleado = empByEmail;
+        }
+      } catch (e) {
+        // Ignorar si la columna 'email' no existe en la base de datos
+      }
+    }
+
+    if (!empleado) {
       return NextResponse.json(
         { error: 'Credenciales inválidas' },
         { status: 401, headers: corsHeaders }
       );
     }
 
-    // 2. Verificar contraseña y detectar si requiere migración a Bcrypt
+    // 3. Verificar contraseña y detectar si requiere migración a Bcrypt
     let isPasswordValid = false;
     let needsPasswordMigration = false;
 
@@ -58,7 +76,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🔄 3. MIGRACIÓN AL VUELO: Si autenticó por texto plano, hashea y elimina el texto plano
+    // 🔄 4. MIGRACIÓN AL VUELO: Si autenticó por texto plano, hashea y elimina el texto plano
     if (needsPasswordMigration) {
       const newHash = await bcrypt.hash(passwordInput, 10);
       await supabaseAdmin
@@ -70,10 +88,10 @@ export async function POST(req: NextRequest) {
         .eq('id', empleado.id);
     }
 
-    // 🔑 4. Generar Token JWT firmado
+    // 🔑 5. Generar Token JWT firmado
     const token = generateToken({
       id: empleado.id,
-      email: empleado.username || empleado.email,
+      email: empleado.username || empleado.email || cleanEmail,
       rol: empleado.rol || 'Practicante',
     });
 
@@ -84,7 +102,7 @@ export async function POST(req: NextRequest) {
         employee: {
           id: empleado.id,
           nombre: empleado.nombre,
-          email: empleado.username || empleado.email,
+          email: empleado.username || empleado.email || cleanEmail,
           rol: empleado.rol,
           horas_acumuladas: empleado.horas_acumuladas || 0,
           horas_totales_objetivo: empleado.horas_totales_objetivo,
