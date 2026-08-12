@@ -5,7 +5,6 @@ import Sidebar from '../../../components/Sidebar';
 import CalendarioRevisiones from '../../../components/calendar/CalendarioRevisiones'; 
 import { createClient } from '@supabase/supabase-js';
 
-// Cliente de Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = 
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
@@ -21,6 +20,8 @@ interface HistorialRevision {
   fecha: string;
   estado: string;
   notas: string;
+  modalidad: 'presencial' | 'virtual';
+  link?: string;
 }
 
 interface OptionItem {
@@ -35,35 +36,36 @@ export default function RevisionesPage() {
   const [historial, setHistorial] = useState<HistorialRevision[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 📢 ESTADOS PARA EL MODAL DE AGENDAR REUNIÓN GRUPAL
+  // Estados del Modal Único
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [isSavingMeeting, setIsSavingTask] = useState(false);
+  const [isSavingMeeting, setIsSavingMeeting] = useState(false);
+  const [isGeneratingZoom, setIsGeneratingZoom] = useState(false);
   
   const [dbProjects, setDbProjects] = useState<OptionItem[]>([]);
   const [dbEmployees, setDbEmployees] = useState<OptionItem[]>([]);
 
   const [meetingFormData, setMeetingFormData] = useState({
     titulo: '',
-    proyectoId: '', // Vacío por defecto para representar "Todos los Proyectos"
+    proyectoId: '',
     fechaInicio: '',
     descripcion: '',
-    targetType: 'todos', // 'todos' | 'seleccionados'
+    modalidad: 'presencial' as 'presencial' | 'virtual',
+    link: '',
+    targetType: 'todos',
     selectedEmployeeIds: [] as string[],
   });
 
-  // 🔄 CARGA DE REVISIONES Y REUNIONES DESDE SUPABASE
+  // Carga inicial de datos desde Supabase
   const fetchRevisiones = async () => {
     try {
       setLoading(true);
 
-      // 1. Cargar proyectos y empleados para los selectores del modal
       const { data: projData } = await supabase.from('proyectos').select('id, nombre');
       if (projData) setDbProjects(projData);
 
       const { data: empData } = await supabase.from('empleados').select('id, nombre');
       if (empData) setDbEmployees(empData);
 
-      // 2. Cargar historial de reuniones
       const { data, error } = await supabase
         .from('reuniones')
         .select(`
@@ -72,6 +74,7 @@ export default function RevisionesPage() {
           descripcion,
           fecha_inicio,
           estado,
+          link,
           empleados!reuniones_empleado_id_fkey (nombre),
           proyectos (nombre)
         `)
@@ -84,15 +87,17 @@ export default function RevisionesPage() {
           id: item.id,
           title: item.titulo || 'Sin título',
           project: item.proyectos?.nombre ? `📁 ${item.proyectos.nombre}` : '🌐 Todos los Proyectos',
-          empleado: item.empleados?.nombre || 'Todo el equipo (Grupal)',
+          empleado: item.empleados?.nombre || '👥 Todo el equipo (Grupal)',
           fecha: item.fecha_inicio ? item.fecha_inicio.replace('T', ' ').substring(0, 16) : 'Sin fecha',
           estado: item.estado || 'Programada',
           notas: item.descripcion || 'Sin notas registradas.',
+          modalidad: item.link ? 'virtual' : 'presencial',
+          link: item.link || '',
         }));
         setHistorial(mapped);
       }
     } catch (err) {
-      console.error('Error al cargar historial de reuniones/revisiones:', err);
+      console.error('Error cargando historial:', err);
     } finally {
       setLoading(false);
     }
@@ -102,79 +107,160 @@ export default function RevisionesPage() {
     fetchRevisiones();
   }, []);
 
-  // 📅 CREAR REUNIÓN GRUPAL / INDIVIDUAL Y NOTIFICAR A LAS EXTENSIONES
-  const handleCreateMeeting = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!meetingFormData.titulo.trim() || !meetingFormData.fechaInicio) {
-      alert('Por favor completa el título y la fecha/hora de la reunión.');
+  // 🗑️ Eliminar Reunión/Revisión
+  const handleDeleteMeeting = async (id: string, titulo: string) => {
+    if (!confirm(`¿Estás seguro de que deseas eliminar la sesión "${titulo}"?`)) {
       return;
     }
 
     try {
-      setIsSavingTask(true);
+      const { error } = await supabase.from('reuniones').delete().eq('id', id);
+      if (error) throw error;
 
-      // Determinar lista de empleados a convocar
-      let targetEmployeeIds: string[] = [];
-      if (meetingFormData.targetType === 'todos') {
-        targetEmployeeIds = dbEmployees.map(e => e.id);
-      } else {
-        targetEmployeeIds = meetingFormData.selectedEmployeeIds;
-      }
-
-      if (targetEmployeeIds.length === 0) {
-        alert('Debes seleccionar al menos un integrante para convocar la reunión.');
-        setIsSavingTask(false);
-        return;
-      }
-
-      // Si no seleccionó un proyecto específico, se guarda como NULL (Aplica a Todos los Proyectos)
-      const targetProjectId = meetingFormData.proyectoId ? meetingFormData.proyectoId : null;
-
-      // 1. Insertar las reuniones en Supabase para los empleados convocados
-      const meetingsToInsert = targetEmployeeIds.map(empId => ({
-        titulo: meetingFormData.titulo.trim(),
-        descripcion: meetingFormData.descripcion.trim() || 'Reunión de revisión general de proyectos',
-        fecha_inicio: meetingFormData.fechaInicio,
-        estado: 'Programada',
-        empleado_id: empId,
-        proyecto_id: targetProjectId,
-      }));
-
-      const { error: meetingErr } = await supabase.from('reuniones').insert(meetingsToInsert);
-      if (meetingErr) throw meetingErr;
-
-      // 2. Generar Notificaciones en tiempo real para la extensión de cada empleado
-      const notificationsToInsert = targetEmployeeIds.map(empId => ({
-        empleado_id: empId,
-        proyecto_id: targetProjectId,
-        titulo_tarea: `📅 Convocatoria a Reunión: ${meetingFormData.titulo.trim()}`,
-        estado: 'Pendiente',
-      }));
-
-      await supabase.from('notificaciones').insert(notificationsToInsert);
-
-      alert(`✅ Reunión programada y notificación enviada a ${targetEmployeeIds.length} integrante(s).`);
-
-      // Resetear y cerrar modal
-      setMeetingFormData({
-        titulo: '',
-        proyectoId: '',
-        fechaInicio: '',
-        descripcion: '',
-        targetType: 'todos',
-        selectedEmployeeIds: [],
-      });
-      setIsScheduleModalOpen(false);
-
+      alert('🗑️ Sesión eliminada correctamente.');
       await fetchRevisiones();
-
     } catch (err: any) {
-      console.error('Error al agendar la reunión:', err);
-      alert(`Error al agendar reunión: ${err.message || 'Error de conexión'}`);
-    } finally {
-      setIsSavingTask(false);
+      console.error('Error al eliminar reunión:', err);
+      alert(`Error al eliminar: ${err.message || 'Error de conexión'}`);
     }
   };
+
+  // Generación dinámica de enlace de Zoom vía API Server-to-Server
+  const handleGenerateZoomMeeting = async () => {
+    if (!meetingFormData.titulo.trim() || !meetingFormData.fechaInicio) {
+      alert('Ingresa el título y la fecha/hora de inicio antes de generar el enlace de Zoom.');
+      return;
+    }
+
+    try {
+      setIsGeneratingZoom(true);
+
+      const res = await fetch('/api/zoom/meeting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: meetingFormData.titulo,
+          descripcion: meetingFormData.descripcion,
+          fechaInicio: meetingFormData.fechaInicio,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.link) {
+        setMeetingFormData(prev => ({ ...prev, link: data.link }));
+        alert('✨ Enlace de Zoom generado exitosamente.');
+      } else {
+        alert(`Error al generar enlace: ${data.error || 'Revisa la configuración de Zoom.'}`);
+      }
+    } catch (err) {
+      console.error('Error al conectar con la API de Zoom:', err);
+      alert('Error de conexión al generar la sala de Zoom.');
+    } finally {
+      setIsGeneratingZoom(false);
+    }
+  };
+
+  // Guardar reunión o revisión en Supabase
+// En app/revisiones/page.tsx -> handleCreateMeeting:
+
+const handleCreateMeeting = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!meetingFormData.titulo.trim() || !meetingFormData.fechaInicio) {
+    alert('Por favor completa el título y la fecha/hora.');
+    return;
+  }
+
+  if (meetingFormData.modalidad === 'virtual' && !meetingFormData.link.trim()) {
+    alert('Genera o ingresa un enlace de Zoom para la revisión virtual.');
+    return;
+  }
+
+  try {
+    setIsSavingMeeting(true);
+
+    let targetEmployeeIds: string[] = [];
+    if (meetingFormData.targetType === 'todos') {
+      targetEmployeeIds = dbEmployees.map(e => e.id);
+    } else {
+      targetEmployeeIds = meetingFormData.selectedEmployeeIds;
+    }
+
+    if (targetEmployeeIds.length === 0) {
+      alert('Selecciona al menos un integrante para convocar.');
+      setIsSavingMeeting(false);
+      return;
+    }
+
+    const targetProjectId = meetingFormData.proyectoId ? meetingFormData.proyectoId : null;
+
+    const dtInicio = new Date(meetingFormData.fechaInicio);
+    const dtFin = new Date(dtInicio.getTime() + 60 * 60 * 1000);
+
+    const fechaInicioISO = dtInicio.toISOString();
+    const fechaFinISO = dtFin.toISOString();
+    const fechaTexto = dtInicio.toISOString().split('T')[0];
+    const horaTexto = dtInicio.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const esPresencial = meetingFormData.modalidad === 'presencial';
+    const tipoEtiqueta = esPresencial ? 'REUNIÓN PRESENCIAL' : 'REVISIÓN VIRTUAL (ZOOM)';
+    const notasFormateadas = esPresencial
+      ? `🏢 [Reunión Presencial en Oficina Ing. Luis] ${meetingFormData.descripcion.trim()}`
+      : meetingFormData.descripcion.trim();
+
+    // 🎯 INSERTAR UN REGISTRO EN 'reuniones' PARA CADA UNO DE LOS INTEGRANTES CONVOCADOS
+    const meetingsToInsert = targetEmployeeIds.map(empId => ({
+      titulo: meetingFormData.titulo.trim(),
+      descripcion: meetingFormData.targetType === 'todos' 
+        ? `👥 [Convocatoria Grupal] ${notasFormateadas}`
+        : notasFormateadas,
+      fecha_inicio: fechaInicioISO,
+      fecha_fin: fechaFinISO,
+      fecha: fechaTexto,
+      hora: horaTexto,
+      link: esPresencial ? null : meetingFormData.link.trim(),
+      estado: 'Programada',
+      empleado_id: empId, // 👈 Se guarda individualmente para que la API de cada practicante la reconozca
+      proyecto_id: targetProjectId,
+    }));
+
+    const { error: meetingErr } = await supabase.from('reuniones').insert(meetingsToInsert as any);
+    if (meetingErr) throw meetingErr;
+
+    // 🔔 Notificaciones enviadas a la extensión
+    const icon = esPresencial ? '🏢' : '🎥';
+    const notificationsToInsert = targetEmployeeIds.map(empId => ({
+      empleado_id: empId,
+      proyecto_id: targetProjectId,
+      titulo_tarea: `${icon} ${tipoEtiqueta}: ${meetingFormData.titulo.trim()}`,
+      estado: 'Pendiente',
+    }));
+
+    await supabase.from('notificaciones').insert(notificationsToInsert as any);
+
+    alert(`✅ ${esPresencial ? 'Reunión Presencial' : 'Revisión Virtual'} agendada y notificada a todos con éxito.`);
+
+    setMeetingFormData({
+      titulo: '',
+      proyectoId: '',
+      fechaInicio: '',
+      descripcion: '',
+      modalidad: 'presencial',
+      link: '',
+      targetType: 'todos',
+      selectedEmployeeIds: [],
+    });
+    setIsScheduleModalOpen(false);
+
+    await fetchRevisiones();
+
+  } catch (err: any) {
+    console.error('Error al guardar:', err);
+    alert(`Error al agendar: ${err.message || 'Error de conexión'}`);
+  } finally {
+    setIsSavingMeeting(false);
+  }
+};
 
   const handleToggleEmployeeSelection = (empId: string) => {
     setMeetingFormData(prev => ({
@@ -185,7 +271,6 @@ export default function RevisionesPage() {
     }));
   };
 
-  // Filtrado de la tabla del historial
   const filteredHistorial = historial.filter((item) => {
     const matchesSearch =
       item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -199,7 +284,6 @@ export default function RevisionesPage() {
 
   const renderBadge = (estado: string) => {
     let colorClass = 'bg-blue-50 text-blue-700 border-blue-200';
-    
     if (estado === 'Completado' || estado === 'Aprobado') {
       colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
     } else if (estado === 'Ajuste por tiempo' || estado === 'Pendiente') {
@@ -217,34 +301,27 @@ export default function RevisionesPage() {
 
   return (
     <div className="h-screen w-screen bg-slate-50 flex font-sans overflow-hidden select-none">
-      
-      {/* SIDEBAR */}
       <Sidebar />
 
-      {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden h-full min-w-0">
-        
-        {/* ENCABEZADO CON BOTÓN DE CONVOCATORIA MASIVA */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 shrink-0">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Gestión de Revisiones</h1>
+            <h1 className="text-xl font-bold text-slate-900">Gestión de Revisiones y Reuniones</h1>
             <p className="text-xs text-slate-500">
-              Supervisa reuniones en el calendario y convoca sesiones grupales para todo el equipo
+              Coagenda reuniones presenciales en oficina o revisiones virtuales vía Zoom
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* 📢 BOTÓN AGENDAR REUNIÓN GRUPAL */}
             <button
               onClick={() => setIsScheduleModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
             >
               <span>📢</span>
-              <span>+ Agendar Reunión Grupal</span>
+              <span>+ Agendar Sesión</span>
             </button>
 
-            {/* BOTONES DE PESTAÑA (TABS) */}
-            <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 shadow-2xs">
+            <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 shadow-2xs ml-1">
               <button
                 onClick={() => setActiveTab('calendario')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -269,18 +346,14 @@ export default function RevisionesPage() {
           </div>
         </header>
 
-        {/* CONTENIDO PESTAÑA 1: CALENDARIO COMPLETO */}
         {activeTab === 'calendario' && (
           <div className="flex-1 min-h-0 overflow-hidden">
             <CalendarioRevisiones />
           </div>
         )}
 
-        {/* CONTENIDO PESTAÑA 2: TABLA DE HISTORIAL */}
         {activeTab === 'historial' && (
           <div className="flex-1 bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col min-h-0 overflow-hidden">
-            
-            {/* BUSCADOR Y FILTROS */}
             <div className="flex flex-col sm:flex-row justify-between gap-3 mb-4 shrink-0">
               <input
                 type="text"
@@ -303,22 +376,23 @@ export default function RevisionesPage() {
               </select>
             </div>
 
-            {/* TABLA DE REGISTROS */}
             <div className="flex-1 overflow-y-auto border border-slate-100 rounded-xl min-h-0">
               {loading ? (
                 <div className="flex items-center justify-center h-48 text-xs font-bold text-slate-500 gap-2">
                   <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  Cargando reuniones de Supabase...
+                  Cargando historial de sesiones...
                 </div>
               ) : (
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold sticky top-0 uppercase text-[10px]">
                     <tr>
-                      <th className="p-3">Revisión / Proyecto</th>
-                      <th className="p-3">Convocados / Empleado</th>
+                      <th className="p-3">Sesión / Proyecto</th>
+                      <th className="p-3">Tipo / Modalidad</th>
+                      <th className="p-3">Convocados</th>
                       <th className="p-3">Fecha y Hora</th>
                       <th className="p-3">Estado</th>
                       <th className="p-3">Notas</th>
+                      <th className="p-3 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -328,71 +402,126 @@ export default function RevisionesPage() {
                           <div className="font-bold text-slate-900">{rev.title}</div>
                           <div className="text-[10px] text-blue-600 font-semibold">{rev.project}</div>
                         </td>
+                        <td className="p-3">
+                          {rev.modalidad === 'virtual' ? (
+                            rev.link ? (
+                              <a href={rev.link} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline inline-flex items-center gap-1">
+                                🎥 Entrar a Zoom
+                              </a>
+                            ) : (
+                              <span className="text-indigo-600 font-semibold">🎥 Revisión Virtual</span>
+                            )
+                          ) : (
+                            <span className="text-slate-700 font-semibold">🏢 Reunión Presencial</span>
+                          )}
+                        </td>
                         <td className="p-3 font-semibold text-slate-800">👤 {rev.empleado}</td>
                         <td className="p-3 font-mono text-[11px]">{rev.fecha}</td>
-                        <td className="p-3">
-                          {renderBadge(rev.estado)}
-                        </td>
+                        <td className="p-3">{renderBadge(rev.estado)}</td>
                         <td className="p-3 text-slate-500 max-w-xs truncate">{rev.notas}</td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => handleDeleteMeeting(rev.id, rev.title)}
+                            title="Eliminar sesión"
+                            className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors cursor-pointer"
+                          >
+                            🗑️
+                          </button>
+                        </td>
                       </tr>
                     ))}
-                    {filteredHistorial.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="text-center py-8 text-slate-400 font-medium">
-                          No se encontraron registros de revisiones.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               )}
             </div>
-
           </div>
         )}
-
       </main>
 
-      {/* 📝 MODAL CONVOCATORIA DE REUNIÓN GRUPAL / INDIVIDUAL */}
+      {/* Modal Único para Agendar */}
       {isScheduleModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Agendar Reunión / Revisión</h3>
-                <p className="text-[11px] text-slate-500">Convoca a todo el equipo o a integrantes específicos</p>
+                <h3 className="text-sm font-bold text-slate-900">Agendar Sesión de Trabajo</h3>
+                <p className="text-[11px] text-slate-500">Selecciona si la sesión será presencial o una revisión online</p>
               </div>
-              <button 
-                onClick={() => setIsScheduleModalOpen(false)} 
-                className="text-slate-400 font-bold cursor-pointer hover:text-slate-600"
-              >
-                ✕
-              </button>
+              <button onClick={() => setIsScheduleModalOpen(false)} className="text-slate-400 font-bold cursor-pointer hover:text-slate-600">✕</button>
             </div>
 
             <form onSubmit={handleCreateMeeting} className="space-y-3.5 text-xs">
               
-              {/* Título */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Tipo de Sesión</label>
+                <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setMeetingFormData({ ...meetingFormData, modalidad: 'presencial' })}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                      meetingFormData.modalidad === 'presencial' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                    }`}
+                  >
+                    🏢 Reunión (Presencial)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMeetingFormData({ ...meetingFormData, modalidad: 'virtual' })}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                      meetingFormData.modalidad === 'virtual' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
+                    }`}
+                  >
+                    🎥 Revisión (Virtual Zoom)
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Título de la Reunión
+                  {meetingFormData.modalidad === 'presencial' ? 'Título de la Reunión' : 'Título de la Revisión'}
                 </label>
                 <input 
                   type="text" 
                   required 
-                  placeholder="Ej. Sincronización Semanal General de Avances" 
+                  placeholder={meetingFormData.modalidad === 'presencial' ? "Ej. Reunión de Alineación General" : "Ej. Revisión de Avances del Proyecto"}
                   value={meetingFormData.titulo} 
                   onChange={(e) => setMeetingFormData({ ...meetingFormData, titulo: e.target.value })} 
-                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
                 />
               </div>
 
-              {/* Proyecto (Con opción de Todos los Proyectos por defecto) */}
+              {meetingFormData.modalidad === 'presencial' ? (
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[11px] text-slate-600 flex items-center gap-2">
+                  <span>📍</span>
+                  <span>Lugar: <strong>Oficina Ing. Luis</strong></span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase">Enlace de Zoom</label>
+                    <button
+                      type="button"
+                      onClick={handleGenerateZoomMeeting}
+                      disabled={isGeneratingZoom}
+                      className="text-[10px] text-blue-600 font-bold hover:underline bg-blue-50 px-2.5 py-1 rounded-md cursor-pointer transition-colors"
+                    >
+                      {isGeneratingZoom ? 'Generando...' : '✨ Generar Enlace Zoom'}
+                    </button>
+                  </div>
+                  <input 
+                    type="url" 
+                    required
+                    placeholder="https://us05web.zoom.us/j/123456789..." 
+                    value={meetingFormData.link} 
+                    onChange={(e) => setMeetingFormData({ ...meetingFormData, link: e.target.value })} 
+                    className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  />
+                </div>
+              )}
+
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Proyecto Asociado
-                </label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Proyecto Asociado</label>
                 <select 
                   value={meetingFormData.proyectoId} 
                   onChange={(e) => setMeetingFormData({ ...meetingFormData, proyectoId: e.target.value })} 
@@ -405,33 +534,25 @@ export default function RevisionesPage() {
                 </select>
               </div>
 
-              {/* Fecha y Hora de Inicio */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Fecha y Hora de Inicio
-                </label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Fecha y Hora de Inicio</label>
                 <input 
                   type="datetime-local" 
                   required 
                   value={meetingFormData.fechaInicio} 
                   onChange={(e) => setMeetingFormData({ ...meetingFormData, fechaInicio: e.target.value })} 
-                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
                 />
               </div>
 
-              {/* Selección de Convocados (Todos o Específicos) */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Tipo de Convocatoria
-                </label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Convocados</label>
                 <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
                   <button
                     type="button"
                     onClick={() => setMeetingFormData({ ...meetingFormData, targetType: 'todos' })}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      meetingFormData.targetType === 'todos'
-                        ? 'bg-white text-blue-600 shadow-2xs'
-                        : 'text-slate-600'
+                      meetingFormData.targetType === 'todos' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
                     }`}
                   >
                     👥 Todo el Equipo
@@ -440,9 +561,7 @@ export default function RevisionesPage() {
                     type="button"
                     onClick={() => setMeetingFormData({ ...meetingFormData, targetType: 'seleccionados' })}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      meetingFormData.targetType === 'seleccionados'
-                        ? 'bg-white text-blue-600 shadow-2xs'
-                        : 'text-slate-600'
+                      meetingFormData.targetType === 'seleccionados' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
                     }`}
                   >
                     👤 Seleccionar
@@ -450,65 +569,37 @@ export default function RevisionesPage() {
                 </div>
               </div>
 
-              {/* Lista de Checkboxes si eligió 'seleccionados' */}
               {meetingFormData.targetType === 'seleccionados' && (
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Selecciona Integrantes ({meetingFormData.selectedEmployeeIds.length})
-                  </label>
-                  <div className="max-h-32 overflow-y-auto border border-slate-300 rounded-xl p-2 space-y-1 bg-white">
-                    {dbEmployees.map((emp) => {
-                      const isChecked = meetingFormData.selectedEmployeeIds.includes(emp.id);
-                      return (
-                        <label 
-                          key={emp.id} 
-                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs ${
-                            isChecked ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50'
-                          }`}
-                        >
-                          <input 
-                            type="checkbox" 
-                            checked={isChecked} 
-                            onChange={() => handleToggleEmployeeSelection(emp.id)} 
-                            className="rounded text-blue-600" 
-                          />
-                          <span>👤 {emp.nombre}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                <div className="max-h-32 overflow-y-auto border border-slate-300 rounded-xl p-2 space-y-1 bg-white">
+                  {dbEmployees.map((emp) => {
+                    const isChecked = meetingFormData.selectedEmployeeIds.includes(emp.id);
+                    return (
+                      <label key={emp.id} className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs ${isChecked ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50'}`}>
+                        <input type="checkbox" checked={isChecked} onChange={() => handleToggleEmployeeSelection(emp.id)} className="rounded text-blue-600" />
+                        <span>👤 {emp.nombre}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* Descripción / Notas */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Notas / Orden del Día
-                </label>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Notas / Orden del Día</label>
                 <textarea 
-                  rows={3} 
-                  placeholder="Temas generales a tratar, avance por proyectos, enlace de Google Meet..." 
+                  rows={2} 
+                  placeholder="Puntos clave de la sesión..." 
                   value={meetingFormData.descripcion} 
                   onChange={(e) => setMeetingFormData({ ...meetingFormData, descripcion: e.target.value })} 
-                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20 resize-none" 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20 resize-none" 
                 />
               </div>
 
-              {/* Botones de Acción */}
               <div className="flex gap-2 pt-3 border-t border-slate-100">
-                <button 
-                  type="button" 
-                  onClick={() => setIsScheduleModalOpen(false)} 
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold cursor-pointer"
-                >
+                <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold cursor-pointer">
                   Cancelar
                 </button>
-                <button 
-                  type="submit" 
-                  disabled={isSavingMeeting}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold cursor-pointer transition-colors shadow-xs"
-                >
-                  {isSavingMeeting ? 'Enviando...' : 'Confirmar & Notificar'}
+                <button type="submit" disabled={isSavingMeeting} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold cursor-pointer transition-colors shadow-xs">
+                  {isSavingMeeting ? 'Guardando...' : 'Confirmar & Notificar'}
                 </button>
               </div>
 

@@ -136,8 +136,11 @@ export default function CalendarioRevisiones() {
           const startDate = r.fecha_inicio || new Date().toISOString();
           const endDate = r.fecha_fin || new Date(new Date(startDate).getTime() + 30 * 60000).toISOString();
 
-          // Asignar color dinámico distintivo según el empleado asignado
-          const colorObj = getEmpleadoColor(r.empleados?.nombre || r.empleado_id || 'default');
+          // 🎯 Evaluación explícita de Convocatoria Grupal
+          const esGrupal = r.descripcion?.includes('[Convocatoria Grupal') || r.empleado_id === null;
+          const nombreIntegrante = esGrupal ? 'Todo el equipo' : (r.empleados?.nombre || 'Todo el equipo');
+
+          const colorObj = getEmpleadoColor(nombreIntegrante);
 
           return {
             id: r.id,
@@ -145,7 +148,7 @@ export default function CalendarioRevisiones() {
             proyecto_id: r.proyecto_id,
             proyecto_nombre: r.proyectos?.nombre || 'General',
             empleado_id: r.empleado_id,
-            empleado_nombre: r.empleados?.nombre || 'Sin asignar',
+            empleado_nombre: nombreIntegrante,
             descripcion: r.descripcion || '',
             estado: r.estado || 'Programada',
             start: startDate,
@@ -260,6 +263,26 @@ export default function CalendarioRevisiones() {
     if (foundEvent) {
       setSelectedEventDetails(foundEvent);
       setIsEditing(false);
+    }
+  };
+
+  // 🗑️ ELIMINAR REVISIÓN
+  const handleDeleteMeeting = async (id: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta revisión?')) return;
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.from('reuniones').delete().eq('id', id);
+      if (error) throw error;
+
+      alert('🗑️ Revisión eliminada correctamente.');
+      setSelectedEventDetails(null);
+      await fetchCalendarData();
+    } catch (err: any) {
+      console.error('Error al eliminar revisión:', err);
+      alert('Error al eliminar: ' + (err.message || 'Ocurrió un error.'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -418,6 +441,7 @@ export default function CalendarioRevisiones() {
       <header className="flex flex-wrap justify-between items-center gap-3 shrink-0 bg-white border border-slate-200/80 rounded-2xl p-3 shadow-2xs">
         <div className="flex items-center gap-2">
           <h1 className="text-base font-bold text-slate-900">Calendario de Revisiones</h1>
+          
           <button 
             onClick={() => {
               const today = new Date();
@@ -432,6 +456,17 @@ export default function CalendarioRevisiones() {
             className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-200 transition-colors shadow-2xs cursor-pointer"
           >
             Hoy
+          </button>
+
+          {/* 🔄 BOTÓN DE ACTUALIZAR SIN RECARGAR PÁGINA */}
+          <button 
+            onClick={fetchCalendarData}
+            disabled={fetchingData}
+            className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-200 transition-colors shadow-2xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
+            title="Actualizar datos sin recargar la página"
+          >
+            <span className={fetchingData ? "animate-spin" : ""}>🔄</span>
+            <span>{fetchingData ? 'Cargando...' : 'Actualizar'}</span>
           </button>
         </div>
 
@@ -557,7 +592,7 @@ export default function CalendarioRevisiones() {
           </div>
         </div>
 
-        {/* 2. PANEL INFERIOR: MINI CALENDARIO + HISTORIAL DEL DÍA (CON COLORES DE EMPLEADOS) */}
+        {/* 2. PANEL INFERIOR: MINI CALENDARIO + HISTORIAL DEL DÍA */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col lg:flex-row gap-5 shrink-0">
           
           {/* A) Mini Calendario Interactivo */}
@@ -618,7 +653,7 @@ export default function CalendarioRevisiones() {
             </div>
           </div>
 
-          {/* B) Historial y Detalle del Día Seleccionado con Distinción de Colores por Empleado */}
+          {/* B) Historial y Detalle del Día Seleccionado */}
           <div className="flex-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-3 lg:pt-0 lg:pl-5 flex flex-col min-w-0">
             
             <div className="flex justify-between items-center mb-3">
@@ -660,17 +695,19 @@ export default function CalendarioRevisiones() {
                   return (
                     <div 
                       key={rev.id}
-                      onClick={() => {
-                        setSelectedEventDetails(rev);
-                        setIsEditing(false);
-                      }}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer hover:shadow-xs flex items-center justify-between gap-3 ${empColor.bg} ${empColor.border}`}
+                      className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${empColor.bg} ${empColor.border}`}
                     >
-                      <div className="space-y-1 min-w-0">
+                      <div 
+                        onClick={() => {
+                          setSelectedEventDetails(rev);
+                          setIsEditing(false);
+                        }}
+                        className="space-y-1 min-w-0 flex-1 cursor-pointer"
+                      >
                         <div className="flex items-center gap-2">
                           <h4 className="font-bold text-slate-900 text-xs truncate">{rev.title}</h4>
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border bg-white ${empColor.text} ${empColor.border}`}>
-                            👤 {rev.empleado_nombre}
+                            👤 {rev.descripcion?.includes('[Convocatoria Grupal') || rev.empleado_nombre?.includes('Todo el equipo') ? 'Todo el equipo' : rev.empleado_nombre}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-slate-500">
@@ -682,10 +719,19 @@ export default function CalendarioRevisiones() {
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className="font-mono text-xs font-bold text-slate-800 bg-white/80 border border-slate-200 px-2 py-1 rounded-lg">
                           ⏱️ {new Date(rev.start).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                         </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMeeting(rev.id)}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200 text-xs cursor-pointer transition-colors"
+                          title="Eliminar revisión"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     </div>
                   );
@@ -854,7 +900,7 @@ export default function CalendarioRevisiones() {
         </div>
       )}
 
-      {/* MODAL DETALLES Y EDICIÓN DE REUNIÓN */}
+      {/* MODAL DETALLES Y EDICIÓN DE REUNIÓN CON BOTÓN DE ELIMINAR */}
       {selectedEventDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -1000,9 +1046,14 @@ export default function CalendarioRevisiones() {
                     </span>
                   </div>
 
+                  {/* 🎯 INTEGRANTE: Garantiza 'Todo el equipo' en convocatorias grupales */}
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-slate-500">👤 Integrante:</span>
-                    <span className="font-bold text-slate-800">{selectedEventDetails.empleado_nombre}</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedEventDetails.descripcion?.includes('[Convocatoria Grupal') || selectedEventDetails.empleado_nombre?.includes('Todo el equipo')
+                        ? 'Todo el equipo'
+                        : selectedEventDetails.empleado_nombre}
+                    </span>
                   </div>
 
                   <div className="flex justify-between items-center">
@@ -1020,22 +1071,34 @@ export default function CalendarioRevisiones() {
                   </p>
                 </div>
 
-                <div className="pt-2 flex justify-between gap-2">
+                {/* ACCIONES DEL MODAL: ELIMINAR, EDITAR Y CERRAR */}
+                <div className="pt-2 flex items-center justify-between gap-2 flex-wrap border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={handleStartEdit}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                    onClick={() => handleDeleteMeeting(selectedEventDetails.id)}
+                    disabled={loading}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1"
                   >
-                    ✏️ Editar Horario / Notas
+                    🗑️ Eliminar
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedEventDetails(null)}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
-                  >
-                    Cerrar
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleStartEdit}
+                      className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      ✏️ Editar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEventDetails(null)}
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

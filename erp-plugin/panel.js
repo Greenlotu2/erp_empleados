@@ -297,117 +297,155 @@ usuarioAutenticado.horas_totales_objetivo = targetHours;
   // ==========================================
   // 5. CARGA Y DIBUJO DE TAREAS Y REUNIONES
   // ==========================================
-  async function loadData() {
-    const list = document.getElementById('c-contentList');
-    if (!list) return;
+async function loadData() {
+  const list = document.getElementById('c-contentList');
+  if (!list) return;
 
-    if (activeMainTab === 'tareas') {
-      const res = await apiRequest(`${API_BASE_URL}/tareas?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
-      const tareas = (res?.ok && (Array.isArray(res.data) || Array.isArray(res.data?.tareas)))
-        ? (res.data.tareas || res.data)
-        : [];
+  if (activeMainTab === 'tareas') {
+    const res = await apiRequest(`${API_BASE_URL}/tareas?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
+    const tareas = (res?.ok && (Array.isArray(res.data) || Array.isArray(res.data?.tareas)))
+      ? (res.data.tareas || res.data)
+      : [];
 
-      const filtered = tareas.filter(t => {
-        const st = (t.estado || '').toLowerCase();
-        if (activeSubFilter === 'por_hacer') return st === 'por hacer' || st === 'todo' || st === 'nueva';
-        if (activeSubFilter === 'pendientes') return st === 'en proceso' || st === 'pendiente' || st === 'en revisión';
-        if (activeSubFilter === 'completadas') return st === 'completada' || st === 'finalizada';
-        return true;
+    const filtered = tareas.filter(t => {
+      const st = (t.estado || '').toLowerCase();
+      if (activeSubFilter === 'por_hacer') return st === 'por hacer' || st === 'todo' || st === 'nueva' || st === 'por_hacer';
+      if (activeSubFilter === 'pendientes') return st === 'en proceso' || st === 'pendiente' || st === 'en revisión' || st === 'en_revision';
+      if (activeSubFilter === 'completadas') return st === 'completada' || st === 'finalizada';
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin tareas en esta categoría.</p>`;
+    } else {
+      list.innerHTML = '';
+      filtered.forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'card-item';
+
+        const statusLower = (t.estado || '').toLowerCase();
+        const isDone = statusLower.includes('completa');
+        const isReview = statusLower.includes('revisi') || statusLower.includes('pendiente');
+        
+        // Detectar fecha límite vencida
+        const hoy = new Date().toISOString().split('T')[0];
+        const isOverdue = t.fecha_limite && t.fecha_limite < hoy && !isDone;
+
+        // Determinar badge de estado
+        let statusBadgeClass = 'badge-status-pending';
+        let statusText = 'Por hacer';
+
+        if (isDone) {
+          statusBadgeClass = 'badge-status-completed';
+          statusText = '✓ Completada';
+        } else if (isReview) {
+          statusBadgeClass = 'badge-status-review';
+          statusText = '⏳ En revisión';
+        } else if (isOverdue) {
+          statusBadgeClass = 'badge-status-overdue';
+          statusText = '⚠️ Vencida';
+        }
+
+        const desc = t.descripcion ? `<div class="card-desc">${t.descripcion}</div>` : '';
+        const fechaLim = t.fecha_limite ? `<span>📅 ${t.fecha_limite}</span>` : '<span>📅 Sin fecha límite</span>';
+        const proyectoNombre = t.proyectos?.nombre || t.proyecto_nombre || 'General';
+
+        item.innerHTML = `
+          <div class="card-header">
+            <span class="card-title">${t.titulo || t.descripcion || 'Tarea sin título'}</span>
+            <span class="card-badge badge-project">📁 ${proyectoNombre}</span>
+          </div>
+          
+          ${desc}
+          
+          <div class="card-footer">
+            <div class="card-meta">
+              <span class="card-badge ${statusBadgeClass}">${statusText}</span>
+              ${fechaLim}
+            </div>
+
+            ${!isDone && !isReview ? `
+              <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
+                🚀 Enviar a revisión
+              </button>
+            ` : ''}
+          </div>
+        `;
+
+        list.appendChild(item);
       });
 
-      if (filtered.length === 0) {
-        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:20px;">Sin tareas en esta categoría.</p>`;
-      } else {
-        list.innerHTML = '';
-        filtered.forEach(t => {
-          const item = document.createElement('div');
-          item.className = 'card-item';
+      // Event Listener para enviar solicitudes de revisión
+      document.querySelectorAll('.btn-review').forEach(btn => {
+        btn.onclick = async (e) => {
+          const taskId = e.currentTarget.dataset.id;
+          const taskTitle = e.currentTarget.dataset.title;
 
-          const isDone = (t.estado || '').toLowerCase().includes('completa');
-          const desc = t.descripcion ? `<div class="card-desc">${t.descripcion}</div>` : '';
-          const fechaLim = t.fecha_limite ? `<span>📅 Límite: ${t.fecha_limite}</span>` : '';
+          const resRev = await apiRequest(`${API_BASE_URL}/revisiones`, {
+            method: 'POST',
+            body: JSON.stringify({
+              taskId,
+              taskTitle,
+              employeeId: usuarioAutenticado.id,
+              employeeName: usuarioAutenticado.nombre || usuarioAutenticado.name
+            })
+          });
 
-          item.innerHTML = `
-            <div class="card-header">
-              <span class="card-title">${t.titulo || t.descripcion || 'Tarea sin título'}</span>
-              <span class="card-badge">📁 ${t.proyectos?.nombre || t.proyecto_nombre || 'General'}</span>
-            </div>
-            
-            ${desc}
-            
-            <div class="card-footer">
-              <div class="card-meta">
-                ${fechaLim}
-              </div>
-              ${!isDone ? `
-                <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
-                  🚀 Enviar a revisión
-                </button>
-              ` : `
-                <span style="font-size:9px; color:#4ade80; font-weight:bold;">✓ Finalizada</span>
-              `}
-            </div>
-          `;
+          if (resRev?.ok) {
+            alert('✅ Tarea enviada a revisión');
+            loadData();
+          } else {
+            alert('Error enviando la tarea a revisión');
+          }
+        };
+      });
+    }
+  } else {
+    // ⬇️ PESTAÑA DE REUNIONES (BLOQUE AJUSTADO)
+    const resR = await apiRequest(`${API_BASE_URL}/reuniones?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
+    
+    // 1. Extraer el arreglo soportando respuesta directa [...] o envuelta { reuniones: [...] }
+    const reuniones = (resR?.ok && (Array.isArray(resR.data) || Array.isArray(resR.data?.reuniones)))
+      ? (resR.data.reuniones || resR.data)
+      : [];
 
-          list.appendChild(item);
-        });
-
-        // Event listener para envío de revisiones
-        document.querySelectorAll('.btn-review').forEach(btn => {
-          btn.onclick = async (e) => {
-            const taskId = e.currentTarget.dataset.id;
-            const taskTitle = e.currentTarget.dataset.title;
-
-            const resRev = await apiRequest(`${API_BASE_URL}/revisiones`, {
-              method: 'POST',
-              body: JSON.stringify({
-                taskId,
-                taskTitle,
-                employeeId: usuarioAutenticado.id,
-                employeeName: usuarioAutenticado.nombre || usuarioAutenticado.name
-              })
-            });
-
-            if (resRev?.ok) {
-              alert('✅ Solicitud de revisión enviada al Administrador');
-              loadData();
-            } else {
-              alert('Error enviando la revisión');
-            }
-          };
-        });
-      }
+    if (reuniones.length === 0) {
+      list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin reuniones programadas.</p>`;
     } else {
-      // Pestaña de Reuniones
-      const resR = await apiRequest(`${API_BASE_URL}/reuniones?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
-      const reuniones = (resR?.ok && Array.isArray(resR.data)) ? resR.data : [];
+      list.innerHTML = '';
+      reuniones.forEach(m => {
+        const item = document.createElement('div');
+        item.className = 'card-item';
 
-      if (reuniones.length === 0) {
-        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:20px;">Sin reuniones programadas.</p>`;
-      } else {
-        list.innerHTML = '';
-        reuniones.forEach(m => {
-          const item = document.createElement('div');
-          item.className = 'card-item';
-          item.innerHTML = `
-            <div class="card-header">
-              <span class="card-title" style="color:#a5b4fc;">${m.titulo || 'Reunión'}</span>
-              <span class="card-badge" style="background:#1e293b; color:#e2e8f0;">⏰ ${m.hora || 'Por definir'}</span>
+        // 2. Fallbacks de Hora y Fecha desde fecha_inicio por si hora/fecha vienen nulos
+        const horaDisplay = m.hora || (m.fecha_inicio ? new Date(m.fecha_inicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Por definir');
+        const fechaDisplay = m.fecha || (m.fecha_inicio ? m.fecha_inicio.split('T')[0] : 'Hoy');
+
+        item.innerHTML = `
+          <div class="card-header">
+            <span class="card-title" style="color:#a5b4fc;">${m.titulo || 'Reunión de equipo'}</span>
+            <span class="card-badge badge-time">⏰ ${horaDisplay}</span>
+          </div>
+
+          <div class="card-desc">${m.descripcion || 'Sin orden del día.'}</div>
+
+          <div class="card-footer">
+            <div class="card-meta">
+              <span>📅 ${fechaDisplay}</span>
             </div>
-            <div class="card-desc">${m.descripcion || 'Sin orden del día.'}</div>
             ${m.link ? `
-              <div class="card-footer">
-                <a href="${m.link}" target="_blank" style="font-size:10px; color:#60a5fa; text-decoration:none; font-weight:bold;">
-                  🔗 Unirme a la reunión
-                </a>
-              </div>
-            ` : ''}
-          `;
-          list.appendChild(item);
-        });
-      }
+              <a href="${m.link}" target="_blank" class="btn-meeting-link">
+                🔗 Unirme a sesión
+              </a>
+            ` : '<span style="font-size:9px; color:#64748b;">Sin enlace asignado</span>'}
+          </div>
+        `;
+
+        list.appendChild(item);
+      });
     }
   }
+}
 
   // ==========================================
   // 6. CONTROL DE SESIÓN Y LOGOUT
