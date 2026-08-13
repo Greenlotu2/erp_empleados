@@ -16,28 +16,6 @@ const supabaseAnonKey =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 🎨 Paleta de colores para asignar dinámicamente por empleado
-const PALETA_COLORES_EMPLEADOS = [
-  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', hex: '#2563eb' },
-  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', hex: '#059669' },
-  { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', hex: '#7c3aed' },
-  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', hex: '#d97706' },
-  { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200', hex: '#db2777' },
-  { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', hex: '#4f46e5' },
-  { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', hex: '#0891b2' },
-  { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', hex: '#0d9488' },
-];
-
-const getEmpleadoColor = (idOrName?: string) => {
-  if (!idOrName) return PALETA_COLORES_EMPLEADOS[0];
-  let hash = 0;
-  for (let i = 0; i < idOrName.length; i++) {
-    hash = idOrName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const index = Math.abs(hash) % PALETA_COLORES_EMPLEADOS.length;
-  return PALETA_COLORES_EMPLEADOS[index];
-};
-
 interface MeetingEvent {
   id: string;
   title: string;
@@ -61,6 +39,8 @@ interface ProyectoSelect {
 interface EmpleadoSelect {
   id: string;
   nombre: string;
+  color?: string;
+  role?: string;
 }
 
 export default function CalendarioRevisiones() {
@@ -71,6 +51,7 @@ export default function CalendarioRevisiones() {
   const [empleadosList, setEmpleadosList] = useState<EmpleadoSelect[]>([]);
   
   const [selectedProjectFilter, setSelectedProjectFilter] = useState('all');
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('all'); 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
@@ -103,7 +84,7 @@ export default function CalendarioRevisiones() {
     empleado_id: '',
   });
 
-  // 🔄 CARGA DE DATOS DESDE SUPABASE
+  // 🔄 CARGA DE DATOS DESDE SUPABASE (INCLUYENDO COLOR Y ROL)
   const fetchCalendarData = async () => {
     try {
       setFetchingData(true);
@@ -111,7 +92,8 @@ export default function CalendarioRevisiones() {
       const { data: projData } = await supabase.from('proyectos').select('id, nombre');
       if (projData) setProyectosList(projData);
 
-      const { data: empData } = await supabase.from('empleados').select('id, nombre');
+      // Traemos el campo 'color' y 'rol' directamente de la tabla empleados
+      const { data: empData } = await supabase.from('empleados').select('id, nombre, color, rol');
       if (empData) setEmpleadosList(empData);
 
       const { data: reunionesData, error: reunionesErr } = await supabase
@@ -125,7 +107,7 @@ export default function CalendarioRevisiones() {
           estado,
           empleado_id,
           proyecto_id,
-          empleados!reuniones_empleado_id_fkey (nombre),
+          empleados!reuniones_empleado_id_fkey (nombre, color),
           proyectos (nombre)
         `);
 
@@ -136,11 +118,11 @@ export default function CalendarioRevisiones() {
           const startDate = r.fecha_inicio || new Date().toISOString();
           const endDate = r.fecha_fin || new Date(new Date(startDate).getTime() + 30 * 60000).toISOString();
 
-          // 🎯 Evaluación explícita de Convocatoria Grupal
           const esGrupal = r.descripcion?.includes('[Convocatoria Grupal') || r.empleado_id === null;
           const nombreIntegrante = esGrupal ? 'Todo el equipo' : (r.empleados?.nombre || 'Todo el equipo');
 
-          const colorObj = getEmpleadoColor(nombreIntegrante);
+          const customColor = r.empleados?.color || '#2563eb';
+          const bgFinal = r.estado === 'Completada' ? '#059669' : customColor;
 
           return {
             id: r.id,
@@ -153,8 +135,8 @@ export default function CalendarioRevisiones() {
             estado: r.estado || 'Programada',
             start: startDate,
             end: endDate,
-            backgroundColor: colorObj.hex,
-            borderColor: colorObj.hex,
+            backgroundColor: bgFinal,
+            borderColor: bgFinal,
           };
         });
 
@@ -170,6 +152,91 @@ export default function CalendarioRevisiones() {
   useEffect(() => {
     fetchCalendarData();
   }, []);
+
+  // 🧹 Filtrar para excluir administradores (dejar solo empleados/practicantes)
+  const soloEmpleadosList = useMemo(() => {
+    return empleadosList.filter(emp => {
+      const rolLower = (emp as any).rol?.toLowerCase() || '';
+      return !rolLower.includes('admin');
+    });
+  }, [empleadosList]);
+
+  // 🎯 ACTUALIZACIÓN DE ESTATUS EN REUNIONES + TABLA TAREAS (PARA LA EXTENSIÓN)
+  const handleUpdateStatus = async (id: string, nuevoEstado: string) => {
+    try {
+      setLoading(true);
+
+      const { error: reunErr } = await supabase
+        .from('reuniones')
+        .update({ estado: nuevoEstado })
+        .eq('id', id);
+
+      if (reunErr) throw reunErr;
+
+      const targetMeeting = eventsList.find(e => e.id === id);
+      const targetEmpId = targetMeeting?.empleado_id;
+      const meetingTitle = targetMeeting?.title || '';
+
+      if (nuevoEstado === 'Completada') {
+        const cleanTaskTitle = meetingTitle.replace(/^Revisión:\s*/i, '').trim();
+
+        if (targetEmpId) {
+          await supabase
+            .from('tareas')
+            .update({ estado: 'Completada', porcentaje_avance: 100 })
+            .eq('empleado_id', targetEmpId)
+            .ilike('titulo', `%${cleanTaskTitle}%`);
+
+          await supabase
+            .from('tareas')
+            .update({ estado: 'Completada', porcentaje_avance: 100 })
+            .eq('empleado_id', targetEmpId)
+            .eq('estado', 'En Proceso');
+
+          try {
+            const { data: tareasRestantes } = await supabase
+              .from('tareas')
+              .select('id')
+              .eq('empleado_id', targetEmpId)
+              .eq('estado', 'En Proceso');
+
+            if (!tareasRestantes || tareasRestantes.length === 0) {
+              await supabase
+                .from('empleados')
+                .update({ disponibilidad: true })
+                .eq('id', targetEmpId);
+            }
+          } catch (e) {
+            console.warn('Omitiendo actualización de disponibilidad:', e);
+          }
+
+          try {
+            await supabase.from('notificaciones').insert([{
+              empleado_id: targetEmpId,
+              proyecto_id: targetMeeting?.proyecto_id || null,
+              titulo_tarea: `✅ Tarea y Revisión Completadas: ${cleanTaskTitle}`,
+              estado: 'Aprobado',
+            }] as any);
+          } catch (e) {
+            console.warn('Omitiendo notificación opcional:', e);
+          }
+        }
+      }
+
+      if (selectedEventDetails && selectedEventDetails.id === id) {
+        setSelectedEventDetails(prev => prev ? { ...prev, estado: nuevoEstado } : null);
+      }
+
+      alert(`✅ Estado cambiado a "${nuevoEstado}" con éxito.`);
+      await fetchCalendarData();
+
+    } catch (err: any) {
+      console.error('❌ Error en handleUpdateStatus:', err);
+      alert('Error al actualizar: ' + (err.message || 'Error de conexión'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const monthName = currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
   const formattedMonthTitle = monthName.charAt(0).toUpperCase() + monthName.slice(1);
@@ -248,13 +315,15 @@ export default function CalendarioRevisiones() {
     return eventsList.filter(ev => ev.proyecto_id === selectedProjectFilter);
   }, [selectedProjectFilter, eventsList]);
 
-  // 📋 FILTRAR TAREAS / REVISIONES DEL DÍA SELECCIONADO EN EL HISTORIAL INFERIOR
+  // 📋 FILTRAR TAREAS / REVISIONES DEL DÍA SELECCIONADO Y POR EMPLEADO SELECCIONADO
   const eventsOfSelectedDay = useMemo(() => {
     return filteredEvents.filter(ev => {
       const evDateStr = ev.start.split('T')[0];
-      return evDateStr === selectedFormattedDate;
+      const matchDate = evDateStr === selectedFormattedDate;
+      const matchEmp = selectedEmployeeFilter === 'all' || ev.empleado_id === selectedEmployeeFilter;
+      return matchDate && matchEmp;
     });
-  }, [filteredEvents, selectedFormattedDate]);
+  }, [filteredEvents, selectedFormattedDate, selectedEmployeeFilter]);
 
   const handleEventClick = (clickInfo: EventClickArg) => {
     const fcEvent = clickInfo.event;
@@ -302,7 +371,7 @@ export default function CalendarioRevisiones() {
     setEditFormData({
       titulo: selectedEventDetails.title,
       proyecto_id: selectedEventDetails.proyecto_id || (proyectosList[0]?.id || ''),
-      empleado_id: selectedEventDetails.empleado_id || (empleadosList[0]?.id || ''),
+      empleado_id: selectedEventDetails.empleado_id || (soloEmpleadosList[0]?.id || ''),
       fecha: `${yyyy}-${mm}-${dd}`,
       hora_inicio: `${hh}:${min}`,
       duracion_minutos: String(durationMin > 0 ? durationMin : 30),
@@ -394,8 +463,8 @@ export default function CalendarioRevisiones() {
       const startDateTime = new Date(`${formData.fecha}T${formData.hora_inicio}:00`);
       const endDateTime = new Date(startDateTime.getTime() + parseInt(formData.duracion_minutos) * 60000);
 
-      if (!formData.proyecto_id || !formData.empleado_id) {
-        alert('Debes seleccionar un proyecto y un empleado.');
+      if (!formData.proyecto_id) {
+        alert('Debes seleccionar un proyecto.');
         return;
       }
 
@@ -404,8 +473,8 @@ export default function CalendarioRevisiones() {
         .insert({
           titulo: formData.titulo.trim(),
           proyecto_id: formData.proyecto_id,
-          empleado_id: formData.empleado_id,
-          creado_por: formData.empleado_id,
+          empleado_id: formData.empleado_id || null,
+          creado_por: formData.empleado_id || null,
           descripcion: formData.descripcion.trim() || null,
           fecha_inicio: startDateTime.toISOString(),
           fecha_fin: endDateTime.toISOString(),
@@ -563,14 +632,20 @@ export default function CalendarioRevisiones() {
               }}
               eventContent={(eventInfo) => {
                 const isTimeGrid = eventInfo.view.type.startsWith('timeGrid');
+                const isCompleted = eventInfo.event.extendedProps.estado === 'Completada';
 
                 if (isTimeGrid) {
                   return (
                     <div className="flex flex-col h-full w-full p-2.5 overflow-hidden justify-start gap-1.5 leading-snug text-white select-none">
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center justify-between gap-1 shrink-0">
                         <span className="font-mono text-[10px] font-bold bg-white/20 border border-white/20 px-1.5 py-0.5 rounded-md text-white tracking-tight">
                           ⏱️ {eventInfo.timeText}
                         </span>
+                        {isCompleted && (
+                          <span className="text-[9px] font-bold bg-emerald-800 text-white px-1.5 py-0.5 rounded-md">
+                            ✓ COMPLETADA
+                          </span>
+                        )}
                       </div>
                       <span className="font-bold text-[12px] leading-snug text-white line-clamp-3 break-words drop-shadow-xs">
                         {eventInfo.event.title}
@@ -584,7 +659,7 @@ export default function CalendarioRevisiones() {
                     <span className="opacity-90 font-mono text-[10px] shrink-0 bg-black/20 px-1 rounded">
                       {eventInfo.timeText}
                     </span>
-                    <span className="truncate">{eventInfo.event.title}</span>
+                    <span className="truncate">{isCompleted ? '✓ ' : ''}{eventInfo.event.title}</span>
                   </div>
                 );
               }}
@@ -592,7 +667,7 @@ export default function CalendarioRevisiones() {
           </div>
         </div>
 
-        {/* 2. PANEL INFERIOR: MINI CALENDARIO + HISTORIAL DEL DÍA */}
+        {/* 2. PANEL INFERIOR: MINI CALENDARIO + HISTORIAL DEL DÍA CON FILTRO DE EMPLEADOS */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col lg:flex-row gap-5 shrink-0">
           
           {/* A) Mini Calendario Interactivo */}
@@ -653,10 +728,10 @@ export default function CalendarioRevisiones() {
             </div>
           </div>
 
-          {/* B) Historial y Detalle del Día Seleccionado */}
+          {/* B) Historial y Detalle del Día Seleccionado con Menú Desplegable y Scroll de Empleados */}
           <div className="flex-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-3 lg:pt-0 lg:pl-5 flex flex-col min-w-0">
             
-            <div className="flex justify-between items-center mb-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
               <div>
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                   📜 Revisiones del Día ({selectedFormattedDate})
@@ -666,36 +741,71 @@ export default function CalendarioRevisiones() {
                 </p>
               </div>
 
-              {/* Leyenda rápida de colores por empleado */}
-              <div className="hidden sm:flex items-center gap-2 overflow-x-auto max-w-xs">
-                {empleadosList.slice(0, 4).map(emp => {
-                  const color = getEmpleadoColor(emp.nombre);
-                  return (
-                    <span 
-                      key={emp.id} 
-                      className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${color.bg} ${color.text} ${color.border} truncate`}
-                    >
-                      ● {emp.nombre}
-                    </span>
-                  );
-                })}
-              </div>
+              {/* 🔍 Menú desplegable para filtrar por todos o un empleado específico (Solo Practicantes) */}
+              <select
+                value={selectedEmployeeFilter}
+                onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold py-1.5 px-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer w-full sm:w-52"
+              >
+                <option value="all">👥 Todos los integrantes ({soloEmpleadosList.length})</option>
+                {soloEmpleadosList.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    ● {emp.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* BARRA HORIZONTAL CON SCROLL PARA VER A TODOS LOS INTEGRANTES SIN ADMINS */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-thin">
+              <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0 mr-1">Equipo:</span>
+              {soloEmpleadosList.map(emp => {
+                const empColor = emp.color || '#2563eb';
+                const isSelected = selectedEmployeeFilter === emp.id;
+                return (
+                  <button
+                    key={emp.id} 
+                    type="button"
+                    onClick={() => setSelectedEmployeeFilter(isSelected ? 'all' : emp.id)}
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-full border truncate shrink-0 shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all ${
+                      isSelected ? 'bg-slate-900 text-white border-slate-900' : 'bg-white hover:bg-slate-50'
+                    }`}
+                    style={!isSelected ? { color: empColor, borderColor: empColor } : {}}
+                  >
+                    <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ backgroundColor: isSelected ? '#ffffff' : empColor }}></span>
+                    <span>{emp.nombre}</span>
+                  </button>
+                );
+              })}
+              {selectedEmployeeFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedEmployeeFilter('all')}
+                  className="text-[10px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-full shrink-0 cursor-pointer"
+                >
+                  ✕ Ver todos
+                </button>
+              )}
             </div>
 
             {/* LISTA DE REVISIONES DEL DÍA */}
             <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
               {eventsOfSelectedDay.length === 0 ? (
                 <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl text-center text-xs text-slate-400">
-                  No hay revisiones agendadas para el <strong className="text-slate-700">{selectedFormattedDate}</strong>.
+                  No hay revisiones agendadas para este filtro en el <strong className="text-slate-700">{selectedFormattedDate}</strong>.
                 </div>
               ) : (
                 eventsOfSelectedDay.map((rev) => {
-                  const empColor = getEmpleadoColor(rev.empleado_nombre);
+                  const isCompleted = rev.estado === 'Completada';
+                  
+                  const empleadoAsignado = empleadosList.find(e => e.id === rev.empleado_id);
+                  const colorBadge = empleadoAsignado?.color || rev.backgroundColor || '#2563eb';
 
                   return (
                     <div 
                       key={rev.id}
-                      className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${empColor.bg} ${empColor.border}`}
+                      className="p-3 rounded-xl border transition-all flex items-center justify-between gap-3 bg-white shadow-2xs"
+                      style={{ borderLeftWidth: '4px', borderLeftColor: isCompleted ? '#059669' : colorBadge }}
                     >
                       <div 
                         onClick={() => {
@@ -705,8 +815,12 @@ export default function CalendarioRevisiones() {
                         className="space-y-1 min-w-0 flex-1 cursor-pointer"
                       >
                         <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-slate-900 text-xs truncate">{rev.title}</h4>
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border bg-white ${empColor.text} ${empColor.border}`}>
+                          <h4 className={`font-bold text-xs truncate ${isCompleted ? 'line-through text-slate-500' : 'text-slate-900'}`}>{rev.title}</h4>
+                          
+                          <span 
+                            className="text-[9px] font-bold px-2 py-0.5 rounded-full border bg-white truncate"
+                            style={{ color: colorBadge, borderColor: colorBadge }}
+                          >
                             👤 {rev.descripcion?.includes('[Convocatoria Grupal') || rev.empleado_nombre?.includes('Todo el equipo') ? 'Todo el equipo' : rev.empleado_nombre}
                           </span>
                         </div>
@@ -715,11 +829,32 @@ export default function CalendarioRevisiones() {
                             📁 {rev.proyecto_nombre}
                           </span>
                           <span>•</span>
-                          <span>Estado: <strong>{rev.estado}</strong></span>
+                          <span>Estado: <strong className={isCompleted ? 'text-emerald-700' : ''}>{rev.estado}</strong></span>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
+                        {/* 🎯 BOTONES RÁPIDOS PARA MARCAR COMPLETADA/REABRIR */}
+                        {!isCompleted ? (
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(rev.id, 'Completada')}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                            title="Marcar como Completada"
+                          >
+                            ✓ Completar
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(rev.id, 'Programada')}
+                            className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                            title="Reabrir reunión"
+                          >
+                            ↩ Reabrir
+                          </button>
+                        )}
+
                         <span className="font-mono text-xs font-bold text-slate-800 bg-white/80 border border-slate-200 px-2 py-1 rounded-lg">
                           ⏱️ {new Date(rev.start).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -801,17 +936,17 @@ export default function CalendarioRevisiones() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Empleado <span className="text-red-500">*</span>
+                    Empleado{' '}
+                    <span className="text-slate-400 font-normal">(opcional — vacío = todos)</span>
                   </label>
                   <select
                     name="empleado_id"
-                    required
                     value={formData.empleado_id}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
                   >
-                    <option value="" className="text-slate-400">Seleccionar...</option>
-                    {empleadosList.map((e) => (
+                    <option value="" className="text-slate-700 font-semibold">🌐 Todos los empleados (General)</option>
+                    {soloEmpleadosList.map((e) => (
                       <option key={e.id} value={e.id} className="text-slate-900">{e.nombre}</option>
                     ))}
                   </select>
@@ -900,7 +1035,7 @@ export default function CalendarioRevisiones() {
         </div>
       )}
 
-      {/* MODAL DETALLES Y EDICIÓN DE REUNIÓN CON BOTÓN DE ELIMINAR */}
+      {/* MODAL DETALLES Y EDICIÓN DE REUNIÓN CON BOTÓN DE ELIMINAR, COMPLETAR Y AJUSTAR TIEMPO */}
       {selectedEventDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -955,7 +1090,7 @@ export default function CalendarioRevisiones() {
                       onChange={(e) => setEditFormData({ ...editFormData, empleado_id: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
                     >
-                      {empleadosList.map(e => (
+                      {soloEmpleadosList.map(e => (
                         <option key={e.id} value={e.id} className="text-slate-900">{e.nombre}</option>
                       ))}
                     </select>
@@ -1033,7 +1168,13 @@ export default function CalendarioRevisiones() {
                   <h3 className="text-base font-bold text-slate-900 leading-snug">
                     {selectedEventDetails.title}
                   </h3>
-                  <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                  <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    selectedEventDetails.estado === 'Completada'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : selectedEventDetails.estado === 'Ajuste por tiempo'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-slate-100 text-slate-700 border-slate-200'
+                  }`}>
                     Estado: {selectedEventDetails.estado || 'Programada'}
                   </span>
                 </div>
@@ -1046,7 +1187,6 @@ export default function CalendarioRevisiones() {
                     </span>
                   </div>
 
-                  {/* 🎯 INTEGRANTE: Garantiza 'Todo el equipo' en convocatorias grupales */}
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-slate-500">👤 Integrante:</span>
                     <span className="font-bold text-slate-800">
@@ -1071,35 +1211,58 @@ export default function CalendarioRevisiones() {
                   </p>
                 </div>
 
-                {/* ACCIONES DEL MODAL: ELIMINAR, EDITAR Y CERRAR */}
-                <div className="pt-2 flex items-center justify-between gap-2 flex-wrap border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteMeeting(selectedEventDetails.id)}
-                    disabled={loading}
-                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1"
-                  >
-                    🗑️ Eliminar
-                  </button>
-
+                {/* ACCIONES DEL MODAL: COMPLETAR, AJUSTAR TIEMPO, EDITAR Y ELIMINAR */}
+                <div className="pt-2 flex flex-col gap-2 border-t border-slate-100">
                   <div className="flex gap-2">
+                    {selectedEventDetails.estado !== 'Completada' ? (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateStatus(selectedEventDetails.id, 'Completada')}
+                        disabled={loading}
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1"
+                      >
+                        ✅ Marcar Completada
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateStatus(selectedEventDetails.id, 'Programada')}
+                        disabled={loading}
+                        className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                      >
+                        ↩ Reabrir Revisión
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={handleStartEdit}
-                      className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                      className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1"
                     >
-                      ✏️ Editar
+                      ⏳ Ajustar Tiempo / Editar
+                    </button>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMeeting(selectedEventDetails.id)}
+                      disabled={loading}
+                      className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      🗑️ Eliminar
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setSelectedEventDetails(null)}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                     >
                       Cerrar
                     </button>
                   </div>
                 </div>
+
               </div>
             )}
 

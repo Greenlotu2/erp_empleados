@@ -113,8 +113,10 @@ interface Employee {
 
 interface PluginNotification {
   id: string;
+  employeeId?: string;
   employeeName: string;
   taskTitle: string;
+  projectId?: string;
   projectName: string;
   duration?: string;
   timestamp: string;
@@ -389,6 +391,8 @@ export default function AdminDashboard() {
           titulo_tarea,
           estado,
           created_at,
+          empleado_id,
+          proyecto_id,
           empleados (nombre),
           proyectos (nombre)
         `)
@@ -398,8 +402,10 @@ export default function AdminDashboard() {
       if (!notifErr && notifData) {
         const mappedNotifs: PluginNotification[] = notifData.map((n: any) => ({
           id: n.id,
+          employeeId: n.empleado_id,
           employeeName: n.empleados?.nombre || 'Integrante',
           taskTitle: n.titulo_tarea || 'Revisión de código',
+          projectId: n.proyecto_id,
           projectName: n.proyectos?.nombre || 'Proyecto General',
           timestamp: formatDateTime(n.created_at),
           estado: n.estado
@@ -943,9 +949,18 @@ export default function AdminDashboard() {
                             </span>
                             
                             <div className="flex gap-1 w-full justify-end mt-1">
+                              {/* 🎯 Redirección a /admin/revisiones y auto-aprobación de la notificación */}
                               <button
-                                onClick={() => {
-                                  window.location.href = `/admin/revisiones?agendar=true&empleado=${encodeURIComponent(notif.employeeName)}&tarea=${encodeURIComponent(notif.taskTitle)}`;
+                                onClick={async () => {
+                                  await handleResolveNotification(notif.id, 'Aprobado');
+
+                                  const queryParams = new URLSearchParams({
+                                    agendar: 'true',
+                                    titulo: notif.taskTitle || '',
+                                    empleadoId: notif.employeeId || '',
+                                    proyectoId: notif.projectId || '',
+                                  });
+                                  window.location.href = `/admin/revisiones?${queryParams.toString()}`;
                                 }}
                                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1"
                               >
@@ -1300,7 +1315,13 @@ export default function AdminDashboard() {
                             isCritical={task.isCritical}
                             slackDays={task.slackDays}
                             onRequestReview={() => {
-                              window.location.href = `/admin/revisiones?agendar=true&empleado=${encodeURIComponent(selectedEmployee.name)}&tarea=${encodeURIComponent(task.title)}`;
+                              const queryParams = new URLSearchParams({
+                                agendar: 'true',
+                                titulo: task.title || '',
+                                empleadoId: selectedEmployee.id || '',
+                                proyectoId: task.projectId || '',
+                              });
+                              window.location.href = `/admin/revisiones?${queryParams.toString()}`;
                             }}
                             onRequestExtension={() => {
                               alert(`Se enviará una solicitud de prórroga para la tarea "${task.title}".`);
@@ -1994,7 +2015,7 @@ export default function AdminDashboard() {
                   const allCompletedTasks = employees.flatMap(emp => 
                     emp.taskHistory
                       .filter(t => t.status === 'Completada')
-                      .map(t => ({ ...t, employeeName: emp.name }))
+                      .map(t => ({ ...t, employeeId: emp.id, employeeName: emp.name }))
                   );
 
                   if (allCompletedTasks.length === 0) {

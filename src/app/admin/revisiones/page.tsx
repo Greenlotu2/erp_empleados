@@ -107,6 +107,116 @@ export default function RevisionesPage() {
     fetchRevisiones();
   }, []);
 
+  // 📌 REDIRECCIÓN DESDE NOTIFICACIONES DEL DASHBOARD
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const agendar = params.get('agendar');
+
+      if (agendar === 'true') {
+        const rawTitulo = params.get('titulo') || '';
+        const empleadoIdParam = params.get('empleadoId') || '';
+        const proyectoIdParam = params.get('proyectoId') || '';
+
+        // Limpiar textos tipo: "🚀 Juancarlos solicitó revisión: Desarrollo UI"
+        let cleanTitle = rawTitulo;
+        if (cleanTitle.includes(':')) {
+          cleanTitle = cleanTitle.split(':').slice(1).join(':').replace(/[""]/g, '').trim();
+        }
+
+        setMeetingFormData(prev => ({
+          ...prev,
+          titulo: cleanTitle ? `Revisión: ${cleanTitle}` : prev.titulo,
+          proyectoId: proyectoIdParam || prev.proyectoId,
+          targetType: empleadoIdParam ? 'seleccionados' : 'todos',
+          selectedEmployeeIds: empleadoIdParam ? [empleadoIdParam] : [],
+        }));
+
+        // Abrir automáticamente el modal
+        setIsScheduleModalOpen(true);
+
+        // Limpiar los query params para evitar re-aperturas al recargar la página
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
+
+  // 🎯 CAMBIAR ESTATUS DIRECTAMENTE DESDE EL HISTORIAL (ACTUALIZA REUNIONES Y TAREAS)
+  const handleUpdateStatusInHistorial = async (id: string, nuevoEstado: string) => {
+    try {
+      setLoading(true);
+
+      // 1. Actualización en la tabla 'reuniones'
+      const { data: reunUpdated, error: reunErr } = await supabase
+        .from('reuniones')
+        .update({ estado: nuevoEstado })
+        .eq('id', id)
+        .select();
+
+      if (reunErr) throw reunErr;
+
+      // 2. Si se marca como Completada, sincronizar también la tabla 'tareas'
+      if (nuevoEstado === 'Completada') {
+        const targetRev = historial.find(item => item.id === id);
+        const emp = dbEmployees.find(e => targetRev?.empleado?.includes(e.nombre));
+        const cleanTitle = (targetRev?.title || '').replace(/^Revisión:\s*/i, '').trim();
+
+        if (emp) {
+          // Actualizar 'tareas'
+          await supabase
+            .from('tareas')
+            .update({ estado: 'Completada', porcentaje_avance: 100 })
+            .eq('empleado_id', emp.id)
+            .ilike('titulo', `%${cleanTitle}%`);
+
+          await supabase
+            .from('tareas')
+            .update({ estado: 'Completada', porcentaje_avance: 100 })
+            .eq('empleado_id', emp.id)
+            .eq('estado', 'En Proceso');
+
+          // Liberar disponibilidad
+          try {
+            const { data: tareasPendientes } = await supabase
+              .from('tareas')
+              .select('id')
+              .eq('empleado_id', emp.id)
+              .eq('estado', 'En Proceso');
+
+            if (!tareasPendientes || tareasPendientes.length === 0) {
+              await supabase
+                .from('empleados')
+                .update({ disponibilidad: true })
+                .eq('id', emp.id);
+            }
+          } catch (e) {
+            console.warn('Omitiendo actualización de disponibilidad:', e);
+          }
+
+          // Notificación
+          try {
+            await supabase.from('notificaciones').insert([{
+              empleado_id: emp.id,
+              titulo_tarea: `✅ Revisión Aprobada: ${cleanTitle}`,
+              estado: 'Aprobado',
+            }] as any);
+          } catch (e) {
+            console.warn('Omitiendo notificación opcional:', e);
+          }
+        }
+      }
+
+      alert(`✅ Estado cambiado a "${nuevoEstado}" en Supabase.`);
+      await fetchRevisiones();
+
+    } catch (err: any) {
+      console.error('Error actualizando historial:', err);
+      alert(`Error al actualizar: ${err.message || 'Error de conexión'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 🗑️ Eliminar Reunión/Revisión
   const handleDeleteMeeting = async (id: string, titulo: string) => {
     if (!confirm(`¿Estás seguro de que deseas eliminar la sesión "${titulo}"?`)) {
@@ -162,105 +272,92 @@ export default function RevisionesPage() {
   };
 
   // Guardar reunión o revisión en Supabase
-// En app/revisiones/page.tsx -> handleCreateMeeting:
-
-const handleCreateMeeting = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!meetingFormData.titulo.trim() || !meetingFormData.fechaInicio) {
-    alert('Por favor completa el título y la fecha/hora.');
-    return;
-  }
-
-  if (meetingFormData.modalidad === 'virtual' && !meetingFormData.link.trim()) {
-    alert('Genera o ingresa un enlace de Zoom para la revisión virtual.');
-    return;
-  }
-
-  try {
-    setIsSavingMeeting(true);
-
-    let targetEmployeeIds: string[] = [];
-    if (meetingFormData.targetType === 'todos') {
-      targetEmployeeIds = dbEmployees.map(e => e.id);
-    } else {
-      targetEmployeeIds = meetingFormData.selectedEmployeeIds;
-    }
-
-    if (targetEmployeeIds.length === 0) {
-      alert('Selecciona al menos un integrante para convocar.');
-      setIsSavingMeeting(false);
+  const handleCreateMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!meetingFormData.titulo.trim() || !meetingFormData.fechaInicio) {
+      alert('Por favor completa el título y la fecha/hora.');
       return;
     }
 
-    const targetProjectId = meetingFormData.proyectoId ? meetingFormData.proyectoId : null;
+    if (meetingFormData.modalidad === 'virtual' && !meetingFormData.link.trim()) {
+      alert('Genera o ingresa un enlace de Zoom para la revisión virtual.');
+      return;
+    }
 
-    const dtInicio = new Date(meetingFormData.fechaInicio);
-    const dtFin = new Date(dtInicio.getTime() + 60 * 60 * 1000);
+    try {
+      setIsSavingMeeting(true);
 
-    const fechaInicioISO = dtInicio.toISOString();
-    const fechaFinISO = dtFin.toISOString();
-    const fechaTexto = dtInicio.toISOString().split('T')[0];
-    const horaTexto = dtInicio.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const targetProjectId = meetingFormData.proyectoId ? meetingFormData.proyectoId : null;
 
-    const esPresencial = meetingFormData.modalidad === 'presencial';
-    const tipoEtiqueta = esPresencial ? 'REUNIÓN PRESENCIAL' : 'REVISIÓN VIRTUAL (ZOOM)';
-    const notasFormateadas = esPresencial
-      ? `🏢 [Reunión Presencial en Oficina Ing. Luis] ${meetingFormData.descripcion.trim()}`
-      : meetingFormData.descripcion.trim();
+      const dtInicio = new Date(meetingFormData.fechaInicio);
+      const dtFin = new Date(dtInicio.getTime() + 60 * 60 * 1000);
 
-    // 🎯 INSERTAR UN REGISTRO EN 'reuniones' PARA CADA UNO DE LOS INTEGRANTES CONVOCADOS
-    const meetingsToInsert = targetEmployeeIds.map(empId => ({
-      titulo: meetingFormData.titulo.trim(),
-      descripcion: meetingFormData.targetType === 'todos' 
-        ? `👥 [Convocatoria Grupal] ${notasFormateadas}`
-        : notasFormateadas,
-      fecha_inicio: fechaInicioISO,
-      fecha_fin: fechaFinISO,
-      fecha: fechaTexto,
-      hora: horaTexto,
-      link: esPresencial ? null : meetingFormData.link.trim(),
-      estado: 'Programada',
-      empleado_id: empId, // 👈 Se guarda individualmente para que la API de cada practicante la reconozca
-      proyecto_id: targetProjectId,
-    }));
+      const fechaInicioISO = dtInicio.toISOString();
+      const fechaFinISO = dtFin.toISOString();
+      const fechaTexto = dtInicio.toISOString().split('T')[0];
+      const horaTexto = dtInicio.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-    const { error: meetingErr } = await supabase.from('reuniones').insert(meetingsToInsert as any);
-    if (meetingErr) throw meetingErr;
+      const esPresencial = meetingFormData.modalidad === 'presencial';
+      const notasFormateadas = esPresencial
+        ? `🏢 [Reunión Presencial en Oficina Ing. Luis] ${meetingFormData.descripcion.trim()}`
+        : meetingFormData.descripcion.trim();
 
-    // 🔔 Notificaciones enviadas a la extensión
-    const icon = esPresencial ? '🏢' : '🎥';
-    const notificationsToInsert = targetEmployeeIds.map(empId => ({
-      empleado_id: empId,
-      proyecto_id: targetProjectId,
-      titulo_tarea: `${icon} ${tipoEtiqueta}: ${meetingFormData.titulo.trim()}`,
-      estado: 'Pendiente',
-    }));
+      let meetingsToInsert: any[] = [];
 
-    await supabase.from('notificaciones').insert(notificationsToInsert as any);
+      if (meetingFormData.targetType === 'todos') {
+        meetingsToInsert = [{
+          titulo: meetingFormData.titulo.trim(),
+          descripcion: `👥 [Convocatoria Grupal - Todo el Equipo] ${notasFormateadas || (esPresencial ? 'Reunión presencial en oficina' : 'Revisión virtual de avances')}`,
+          fecha_inicio: fechaInicioISO,
+          fecha_fin: fechaFinISO,
+          fecha: fechaTexto,
+          hora: horaTexto,
+          link: esPresencial ? null : meetingFormData.link.trim(),
+          estado: 'Programada',
+          empleado_id: null,
+          proyecto_id: targetProjectId,
+        }];
+      } else {
+        meetingsToInsert = meetingFormData.selectedEmployeeIds.map(empId => ({
+          titulo: meetingFormData.titulo.trim(),
+          descripcion: notasFormateadas || (esPresencial ? 'Reunión presencial en oficina' : 'Revisión virtual de avances'),
+          fecha_inicio: fechaInicioISO,
+          fecha_fin: fechaFinISO,
+          fecha: fechaTexto,
+          hora: horaTexto,
+          link: esPresencial ? null : meetingFormData.link.trim(),
+          estado: 'Programada',
+          empleado_id: empId || null,
+          proyecto_id: targetProjectId,
+        }));
+      }
 
-    alert(`✅ ${esPresencial ? 'Reunión Presencial' : 'Revisión Virtual'} agendada y notificada a todos con éxito.`);
+      const { error: meetingErr } = await supabase.from('reuniones').insert(meetingsToInsert as any);
+      if (meetingErr) throw meetingErr;
 
-    setMeetingFormData({
-      titulo: '',
-      proyectoId: '',
-      fechaInicio: '',
-      descripcion: '',
-      modalidad: 'presencial',
-      link: '',
-      targetType: 'todos',
-      selectedEmployeeIds: [],
-    });
-    setIsScheduleModalOpen(false);
+      alert(`✅ ${esPresencial ? 'Reunión Presencial' : 'Revisión Virtual'} agendada con éxito.`);
 
-    await fetchRevisiones();
+      setMeetingFormData({
+        titulo: '',
+        proyectoId: '',
+        fechaInicio: '',
+        descripcion: '',
+        modalidad: 'presencial',
+        link: '',
+        targetType: 'todos',
+        selectedEmployeeIds: [],
+      });
+      setIsScheduleModalOpen(false);
 
-  } catch (err: any) {
-    console.error('Error al guardar:', err);
-    alert(`Error al agendar: ${err.message || 'Error de conexión'}`);
-  } finally {
-    setIsSavingMeeting(false);
-  }
-};
+      await fetchRevisiones();
+
+    } catch (err: any) {
+      console.error('Error al guardar:', err);
+      alert(`Error al agendar: ${err.message || 'Error de conexión'}`);
+    } finally {
+      setIsSavingMeeting(false);
+    }
+  };
 
   const handleToggleEmployeeSelection = (empId: string) => {
     setMeetingFormData(prev => ({
@@ -284,7 +381,7 @@ const handleCreateMeeting = async (e: React.FormEvent) => {
 
   const renderBadge = (estado: string) => {
     let colorClass = 'bg-blue-50 text-blue-700 border-blue-200';
-    if (estado === 'Completado' || estado === 'Aprobado') {
+    if (estado === 'Completada' || estado === 'Completado' || estado === 'Aprobado') {
       colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
     } else if (estado === 'Ajuste por tiempo' || estado === 'Pendiente') {
       colorClass = 'bg-amber-50 text-amber-700 border-amber-200';
@@ -370,7 +467,7 @@ const handleCreateMeeting = async (e: React.FormEvent) => {
               >
                 <option value="all">Todos los estados</option>
                 <option value="Programada">Programada</option>
-                <option value="Completado">Completado</option>
+                <option value="Completada">Completada</option>
                 <option value="Ajuste por tiempo">Ajuste por tiempo</option>
                 <option value="Pendiente">Pendiente</option>
               </select>
@@ -419,7 +516,25 @@ const handleCreateMeeting = async (e: React.FormEvent) => {
                         <td className="p-3 font-mono text-[11px]">{rev.fecha}</td>
                         <td className="p-3">{renderBadge(rev.estado)}</td>
                         <td className="p-3 text-slate-500 max-w-xs truncate">{rev.notas}</td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center flex items-center justify-center gap-1.5">
+                          {rev.estado !== 'Completada' ? (
+                            <button
+                              onClick={() => handleUpdateStatusInHistorial(rev.id, 'Completada')}
+                              title="Marcar como Completada"
+                              className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] border border-emerald-200 transition-colors cursor-pointer"
+                            >
+                              ✅ Completar
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleUpdateStatusInHistorial(rev.id, 'Programada')}
+                              title="Reabrir reunión"
+                              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] border border-slate-200 transition-colors cursor-pointer"
+                            >
+                              ↩ Reabrir
+                            </button>
+                          )}
+
                           <button
                             onClick={() => handleDeleteMeeting(rev.id, rev.title)}
                             title="Eliminar sesión"
