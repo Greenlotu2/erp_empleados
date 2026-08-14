@@ -40,10 +40,10 @@ interface EmpleadoSelect {
   id: string;
   nombre: string;
   color?: string;
-  role?: string;
+  rol?: string;
 }
 
-export default function CalendarioRevisiones() {
+export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigger?: number }) {
   const calendarRef = useRef<FullCalendar | null>(null);
 
   const [eventsList, setEventsList] = useState<MeetingEvent[]>([]);
@@ -52,7 +52,6 @@ export default function CalendarioRevisiones() {
   
   const [selectedProjectFilter, setSelectedProjectFilter] = useState('all');
   const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('all'); 
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
 
@@ -74,17 +73,7 @@ export default function CalendarioRevisiones() {
     new Date().toISOString().split('T')[0]
   );
 
-  const [formData, setFormData] = useState({
-    titulo: '',
-    proyecto_id: '',
-    descripcion: '',
-    fecha: new Date().toISOString().split('T')[0],
-    hora_inicio: '10:00',
-    duracion_minutos: '30',
-    empleado_id: '',
-  });
-
-  // 🔄 CARGA DE DATOS DESDE SUPABASE (INCLUYENDO COLOR Y ROL)
+  // 🔄 CARGA DE DATOS DESDE SUPABASE
   const fetchCalendarData = async () => {
     try {
       setFetchingData(true);
@@ -92,7 +81,6 @@ export default function CalendarioRevisiones() {
       const { data: projData } = await supabase.from('proyectos').select('id, nombre');
       if (projData) setProyectosList(projData);
 
-      // Traemos el campo 'color' y 'rol' directamente de la tabla empleados
       const { data: empData } = await supabase.from('empleados').select('id, nombre, color, rol');
       if (empData) setEmpleadosList(empData);
 
@@ -151,9 +139,9 @@ export default function CalendarioRevisiones() {
 
   useEffect(() => {
     fetchCalendarData();
-  }, []);
+  }, [refreshTrigger]);
 
-  // 🧹 Filtrar para excluir administradores (dejar solo empleados/practicantes)
+  // 🧹 Excluir administradores
   const soloEmpleadosList = useMemo(() => {
     return empleadosList.filter(emp => {
       const rolLower = (emp as any).rol?.toLowerCase() || '';
@@ -161,7 +149,7 @@ export default function CalendarioRevisiones() {
     });
   }, [empleadosList]);
 
-  // 🎯 ACTUALIZACIÓN DE ESTATUS EN REUNIONES + TABLA TAREAS (PARA LA EXTENSIÓN)
+  // 🎯 ACTUALIZACIÓN DE ESTATUS EN REUNIONES + TABLA TAREAS
   const handleUpdateStatus = async (id: string, nuevoEstado: string) => {
     try {
       setLoading(true);
@@ -301,7 +289,6 @@ export default function CalendarioRevisiones() {
     const formattedDate = `${yyyy}-${mm}-${dd}`;
 
     setSelectedFormattedDate(formattedDate);
-    setFormData(prev => ({ ...prev, fecha: formattedDate }));
 
     if (calendarRef.current) {
       calendarRef.current.getApi().gotoDate(formattedDate);
@@ -315,7 +302,6 @@ export default function CalendarioRevisiones() {
     return eventsList.filter(ev => ev.proyecto_id === selectedProjectFilter);
   }, [selectedProjectFilter, eventsList]);
 
-  // 📋 FILTRAR TAREAS / REVISIONES DEL DÍA SELECCIONADO Y POR EMPLEADO SELECCIONADO
   const eventsOfSelectedDay = useMemo(() => {
     return filteredEvents.filter(ev => {
       const evDateStr = ev.start.split('T')[0];
@@ -335,7 +321,6 @@ export default function CalendarioRevisiones() {
     }
   };
 
-  // 🗑️ ELIMINAR REVISIÓN
   const handleDeleteMeeting = async (id: string) => {
     if (!confirm('¿Estás seguro de que deseas eliminar esta revisión?')) return;
 
@@ -371,7 +356,7 @@ export default function CalendarioRevisiones() {
     setEditFormData({
       titulo: selectedEventDetails.title,
       proyecto_id: selectedEventDetails.proyecto_id || (proyectosList[0]?.id || ''),
-      empleado_id: selectedEventDetails.empleado_id || '',
+      empleado_id: selectedEventDetails.empleado_id || (soloEmpleadosList[0]?.id || ''),
       fecha: `${yyyy}-${mm}-${dd}`,
       hora_inicio: `${hh}:${min}`,
       duracion_minutos: String(durationMin > 0 ? durationMin : 30),
@@ -396,7 +381,7 @@ export default function CalendarioRevisiones() {
         .update({
           titulo: editFormData.titulo.trim(),
           proyecto_id: editFormData.proyecto_id,
-          empleado_id: editFormData.empleado_id || null,
+          empleado_id: editFormData.empleado_id,
           descripcion: editFormData.descripcion.trim() || null,
           fecha_inicio: startDateTime.toISOString(),
           fecha_fin: endDateTime.toISOString(),
@@ -426,22 +411,6 @@ export default function CalendarioRevisiones() {
 
     if (!newStart || !newEnd) return;
 
-    // 🛡️ Validación de duración: evita guardar arrastres accidentales
-    // que crucen días completos (ej. estirar el borde sin querer).
-    const durationMs = new Date(newEnd).getTime() - new Date(newStart).getTime();
-    const durationHours = durationMs / (1000 * 60 * 60);
-    const MAX_DURATION_HOURS = 4;
-
-    if (durationHours <= 0 || durationHours > MAX_DURATION_HOURS) {
-      changeInfo.revert();
-      alert(
-        `No se guardó el cambio: la duración quedó en ${durationHours.toFixed(1)} horas, ` +
-        `lo cual parece un arrastre accidental. El máximo permitido es ${MAX_DURATION_HOURS} horas. ` +
-        `Si necesitas una duración mayor, edítala manualmente desde el formulario.`
-      );
-      return;
-    }
-
     try {
       const { error } = await supabase
         .from('reuniones')
@@ -461,61 +430,6 @@ export default function CalendarioRevisiones() {
     } catch (err: any) {
       console.error('Error actualizando fecha de reunión arrastrada:', err);
       alert('No se pudo mover la reunión: ' + (err.message || 'Error de conexión.'));
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const startDateTime = new Date(`${formData.fecha}T${formData.hora_inicio}:00`);
-      const endDateTime = new Date(startDateTime.getTime() + parseInt(formData.duracion_minutos) * 60000);
-
-      if (!formData.proyecto_id) {
-        alert('Debes seleccionar un proyecto.');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('reuniones')
-        .insert({
-          titulo: formData.titulo.trim(),
-          proyecto_id: formData.proyecto_id,
-          empleado_id: formData.empleado_id || null,
-          creado_por: formData.empleado_id || null,
-          descripcion: formData.descripcion.trim() || null,
-          fecha_inicio: startDateTime.toISOString(),
-          fecha_fin: endDateTime.toISOString(),
-          estado: 'Programada'
-        });
-
-      if (error) throw error;
-
-      setIsModalOpen(false);
-      setFormData({
-        titulo: '',
-        proyecto_id: '',
-        descripcion: '',
-        fecha: new Date().toISOString().split('T')[0],
-        hora_inicio: '10:00',
-        duracion_minutos: '30',
-        empleado_id: '',
-      });
-
-      await fetchCalendarData();
-    } catch (error: any) {
-      console.error('Error al agendar la reunión:', error);
-      alert('Error al agendar la reunión: ' + (error.message || 'Ocurrió un error.'));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -543,7 +457,6 @@ export default function CalendarioRevisiones() {
             Hoy
           </button>
 
-          {/* 🔄 BOTÓN DE ACTUALIZAR SIN RECARGAR PÁGINA */}
           <button 
             onClick={fetchCalendarData}
             disabled={fetchingData}
@@ -568,13 +481,6 @@ export default function CalendarioRevisiones() {
               </option>
             ))}
           </select>
-
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3.5 rounded-xl text-xs shadow-xs flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer"
-          >
-            <span className="text-sm leading-none">+</span> Agendar Revisión
-          </button>
         </div>
       </header>
 
@@ -617,8 +523,6 @@ export default function CalendarioRevisiones() {
               }}
               locale="es"
               editable={true}
-              eventResizableFromStart={false}
-              eventDurationEditable={false} 
               selectable={true}
               height="100%"
               slotMinTime="09:00:00"
@@ -746,7 +650,7 @@ export default function CalendarioRevisiones() {
             </div>
           </div>
 
-          {/* B) Historial y Detalle del Día Seleccionado con Menú Desplegable y Scroll de Empleados */}
+          {/* B) Historial y Detalle del Día Seleccionado */}
           <div className="flex-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-3 lg:pt-0 lg:pl-5 flex flex-col min-w-0">
             
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
@@ -759,7 +663,7 @@ export default function CalendarioRevisiones() {
                 </p>
               </div>
 
-              {/* 🔍 Menú desplegable para filtrar por todos o un empleado específico (Solo Practicantes) */}
+              {/* 🔍 Menú desplegable para filtrar por colaborador */}
               <select
                 value={selectedEmployeeFilter}
                 onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
@@ -774,7 +678,7 @@ export default function CalendarioRevisiones() {
               </select>
             </div>
 
-            {/* BARRA HORIZONTAL CON SCROLL PARA VER A TODOS LOS INTEGRANTES SIN ADMINS */}
+            {/* BARRA HORIZONTAL CON SCROLL DE INTEGRANTES Y SUS COLORES */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-thin">
               <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0 mr-1">Equipo:</span>
               {soloEmpleadosList.map(emp => {
@@ -852,7 +756,6 @@ export default function CalendarioRevisiones() {
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {/* 🎯 BOTONES RÁPIDOS PARA MARCAR COMPLETADA/REABRIR */}
                         {!isCompleted ? (
                           <button
                             type="button"
@@ -898,162 +801,7 @@ export default function CalendarioRevisiones() {
 
       </div>
 
-      {/* MODAL AGENDAR REVISIÓN */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Agendar Revisión</h2>
-                <p className="text-xs text-slate-500">Selecciona el proyecto y empleado a revisar.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 h-8 w-8 rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Título de la Revisión <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="titulo"
-                  required
-                  value={formData.titulo}
-                  onChange={handleInputChange}
-                  placeholder="Ej. Revisión Módulo de Autenticación"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all placeholder:text-slate-400"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Proyecto <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="proyecto_id"
-                    required
-                    value={formData.proyecto_id}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
-                  >
-                    <option value="" className="text-slate-400">Seleccionar...</option>
-                    {proyectosList.map((p) => (
-                      <option key={p.id} value={p.id} className="text-slate-900">{p.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Empleado{' '}
-                    <span className="text-slate-400 font-normal">(opcional — vacío = todos)</span>
-                  </label>
-                  <select
-                    name="empleado_id"
-                    value={formData.empleado_id}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
-                  >
-                    <option value="" className="text-slate-700 font-semibold">🌐 Todos los empleados (General)</option>
-                    {soloEmpleadosList.map((e) => (
-                      <option key={e.id} value={e.id} className="text-slate-900">{e.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Fecha <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    name="fecha"
-                    required
-                    value={formData.fecha}
-                    onChange={handleInputChange}
-                    className="w-full px-2 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Hora <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="time"
-                    name="hora_inicio"
-                    required
-                    value={formData.hora_inicio}
-                    onChange={handleInputChange}
-                    className="w-full px-2 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Duración
-                  </label>
-                  <select
-                    name="duracion_minutos"
-                    value={formData.duracion_minutos}
-                    onChange={handleInputChange}
-                    className="w-full px-2 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
-                  >
-                    <option value="15">15 min</option>
-                    <option value="30">30 min</option>
-                    <option value="45">45 min</option>
-                    <option value="60">1 hora</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Notas / Temas a tratar
-                </label>
-                <textarea
-                  name="descripcion"
-                  rows={2}
-                  value={formData.descripcion}
-                  onChange={handleInputChange}
-                  placeholder="Detalles sobre las tareas finalizadas que se van a revisar..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all resize-none placeholder:text-slate-400"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  {loading ? 'Guardando...' : 'Guardar Revisión'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DETALLES Y EDICIÓN DE REUNIÓN CON BOTÓN DE ELIMINAR, COMPLETAR Y AJUSTAR TIEMPO */}
+      {/* MODAL DETALLES Y EDICIÓN DE REUNIÓN EXISTENTE */}
       {selectedEventDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -1108,7 +856,6 @@ export default function CalendarioRevisiones() {
                       onChange={(e) => setEditFormData({ ...editFormData, empleado_id: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
                     >
-                      <option value="">🌐 Todos los empleados (General)</option>
                       {soloEmpleadosList.map(e => (
                         <option key={e.id} value={e.id} className="text-slate-900">{e.nombre}</option>
                       ))}
@@ -1230,7 +977,6 @@ export default function CalendarioRevisiones() {
                   </p>
                 </div>
 
-                {/* ACCIONES DEL MODAL: COMPLETAR, AJUSTAR TIEMPO, EDITAR Y ELIMINAR */}
                 <div className="pt-2 flex flex-col gap-2 border-t border-slate-100">
                   <div className="flex gap-2">
                     {selectedEventDetails.estado !== 'Completada' ? (

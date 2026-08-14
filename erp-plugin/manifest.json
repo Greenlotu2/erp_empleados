@@ -6,7 +6,9 @@
   "permissions": [
     "sidePanel",
     "storage",
-    "windows"
+    "windows",
+    "alarms"
+
   ],
   "host_permissions": [
     "http://localhost:3000/*",
