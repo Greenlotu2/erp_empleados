@@ -44,6 +44,10 @@ export default function RevisionesPage() {
   const [dbProjects, setDbProjects] = useState<OptionItem[]>([]);
   const [dbEmployees, setDbEmployees] = useState<OptionItem[]>([]);
 
+  // 🕒 Controla la apertura automática del modal SOLO cuando los datos ya cargaron
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [pendingAutoOpen, setPendingAutoOpen] = useState(false);
+
   const [meetingFormData, setMeetingFormData] = useState({
     titulo: '',
     proyectoId: '',
@@ -100,6 +104,7 @@ export default function RevisionesPage() {
       console.error('Error cargando historial:', err);
     } finally {
       setLoading(false);
+      setDataLoaded(true);
     }
   };
 
@@ -108,6 +113,8 @@ export default function RevisionesPage() {
   }, []);
 
   // 📌 REDIRECCIÓN DESDE NOTIFICACIONES DEL DASHBOARD
+  // Lee los query params de inmediato, pero NO abre el modal todavía:
+  // solo lo marca como "pendiente" hasta que dbProjects/dbEmployees ya existan.
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -132,14 +139,23 @@ export default function RevisionesPage() {
           selectedEmployeeIds: empleadoIdParam ? [empleadoIdParam] : [],
         }));
 
-        // Abrir automáticamente el modal
-        setIsScheduleModalOpen(true);
+        // Ya no abrimos el modal aquí — solo marcamos que hay una apertura pendiente
+        setPendingAutoOpen(true);
 
         // Limpiar los query params para evitar re-aperturas al recargar la página
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
   }, []);
+
+  // 🚦 Abre el modal SOLO cuando los datos (proyectos/empleados) ya están cargados
+  // Esto evita que el modal se abra con los dropdowns vacíos.
+  useEffect(() => {
+    if (dataLoaded && pendingAutoOpen) {
+      setIsScheduleModalOpen(true);
+      setPendingAutoOpen(false);
+    }
+  }, [dataLoaded, pendingAutoOpen]);
 
   // 🎯 CAMBIAR ESTATUS DIRECTAMENTE DESDE EL HISTORIAL (ACTUALIZA REUNIONES Y TAREAS)
   const handleUpdateStatusInHistorial = async (id: string, nuevoEstado: string) => {
@@ -689,7 +705,7 @@ export default function RevisionesPage() {
                   {dbEmployees.map((emp) => {
                     const isChecked = meetingFormData.selectedEmployeeIds.includes(emp.id);
                     return (
-                      <label key={emp.id} className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs ${isChecked ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50'}`}>
+                      <label key={emp.id} className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs ${isChecked ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50 text-slate-800'}`}>
                         <input type="checkbox" checked={isChecked} onChange={() => handleToggleEmployeeSelection(emp.id)} className="rounded text-blue-600" />
                         <span>👤 {emp.nombre}</span>
                       </label>

@@ -371,7 +371,7 @@ export default function CalendarioRevisiones() {
     setEditFormData({
       titulo: selectedEventDetails.title,
       proyecto_id: selectedEventDetails.proyecto_id || (proyectosList[0]?.id || ''),
-      empleado_id: selectedEventDetails.empleado_id || (soloEmpleadosList[0]?.id || ''),
+      empleado_id: selectedEventDetails.empleado_id || '',
       fecha: `${yyyy}-${mm}-${dd}`,
       hora_inicio: `${hh}:${min}`,
       duracion_minutos: String(durationMin > 0 ? durationMin : 30),
@@ -396,7 +396,7 @@ export default function CalendarioRevisiones() {
         .update({
           titulo: editFormData.titulo.trim(),
           proyecto_id: editFormData.proyecto_id,
-          empleado_id: editFormData.empleado_id,
+          empleado_id: editFormData.empleado_id || null,
           descripcion: editFormData.descripcion.trim() || null,
           fecha_inicio: startDateTime.toISOString(),
           fecha_fin: endDateTime.toISOString(),
@@ -425,6 +425,22 @@ export default function CalendarioRevisiones() {
       : (fcEvent.start ? new Date(fcEvent.start.getTime() + 30 * 60000).toISOString() : null);
 
     if (!newStart || !newEnd) return;
+
+    // 🛡️ Validación de duración: evita guardar arrastres accidentales
+    // que crucen días completos (ej. estirar el borde sin querer).
+    const durationMs = new Date(newEnd).getTime() - new Date(newStart).getTime();
+    const durationHours = durationMs / (1000 * 60 * 60);
+    const MAX_DURATION_HOURS = 4;
+
+    if (durationHours <= 0 || durationHours > MAX_DURATION_HOURS) {
+      changeInfo.revert();
+      alert(
+        `No se guardó el cambio: la duración quedó en ${durationHours.toFixed(1)} horas, ` +
+        `lo cual parece un arrastre accidental. El máximo permitido es ${MAX_DURATION_HOURS} horas. ` +
+        `Si necesitas una duración mayor, edítala manualmente desde el formulario.`
+      );
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -601,6 +617,8 @@ export default function CalendarioRevisiones() {
               }}
               locale="es"
               editable={true}
+              eventResizableFromStart={false}
+              eventDurationEditable={false} 
               selectable={true}
               height="100%"
               slotMinTime="09:00:00"
@@ -1090,6 +1108,7 @@ export default function CalendarioRevisiones() {
                       onChange={(e) => setEditFormData({ ...editFormData, empleado_id: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all"
                     >
+                      <option value="">🌐 Todos los empleados (General)</option>
                       {soloEmpleadosList.map(e => (
                         <option key={e.id} value={e.id} className="text-slate-900">{e.nombre}</option>
                       ))}
