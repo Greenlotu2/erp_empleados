@@ -6,17 +6,28 @@ chrome.sidePanel
   ?.catch((error) => console.error('Error al configurar SidePanel:', error));
 
 // ==========================================
+// 1.5 ESTADO DEL PANEL (🛡️ Fix #4: Evita doble conteo)
+// ==========================================
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === 'PANEL_ACTIVE') {
+    chrome.storage.local.set({ panelActive: true, inicioTurnoTimestamp: Date.now() });
+  }
+
+  if (request.type === 'PANEL_INACTIVE') {
+    chrome.storage.local.set({ panelActive: false, inicioTurnoTimestamp: Date.now() });
+  }
+});
+
+// ==========================================
 // 2. FUNCIÓN DE INICIO AUTOMÁTICO DE TURNO
 // ==========================================
 function asegurarTurnoActivo() {
   chrome.storage.local.get(['session_user', 'turnoActivo', 'inicioTurnoTimestamp'], (res) => {
-    // Si hay una sesión iniciada (usuario logueado)
     const empleadoId = res.session_user?.id || res.session_user?.user_id;
 
     if (empleadoId) {
       const ahora = Date.now();
       
-      // Si no estaba activo o no tenía timestamp, lo inicializamos
       if (!res.turnoActivo || !res.inicioTurnoTimestamp) {
         chrome.storage.local.set({
           turnoActivo: true,
@@ -25,12 +36,17 @@ function asegurarTurnoActivo() {
         });
       }
 
-      // Asegurar que la alarma exista
+      // 🛡️ Fix #8: Asegurar que la alarma no esté atascada ni vencida
       if (chrome.alarms) {
         chrome.alarms.get('SYNC_HORAS_SUPABASE', (alarma) => {
-          if (!alarma) {
-            chrome.alarms.create('SYNC_HORAS_SUPABASE', { periodInMinutes: 5 });
-            console.log("⏰ Alarma automática de horas activada (cada 5 min).");
+          const cincoMinutosMs = 5 * 60 * 1000;
+          const alarmaAtascada = alarma && alarma.scheduledTime && (Date.now() - alarma.scheduledTime > cincoMinutosMs);
+
+          if (!alarma || alarmaAtascada) {
+            chrome.alarms.clear('SYNC_HORAS_SUPABASE', () => {
+              chrome.alarms.create('SYNC_HORAS_SUPABASE', { periodInMinutes: 5 });
+              console.log("⏰ Alarma de horas reprogramada exitosamente (cada 5 min).");
+            });
           }
         });
       }
@@ -39,30 +55,26 @@ function asegurarTurnoActivo() {
 }
 
 // ==========================================
-// 3. EVENTOS DEL NAVEGADOR (AUTO-START)
+// 3. EVENTOS DEL NAVEGADOR
 // ==========================================
-
-// A) Cuando se abre el navegador Chrome
 chrome.runtime.onStartup.addListener(() => {
-  console.log("🚀 Navegador abierto: Verificando turno automático...");
+  console.log("🚀 Navegador abierto: Verificando turno...");
   asegurarTurnoActivo();
 });
 
-// B) Cuando se instala o actualiza la extensión
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("📦 Extensión iniciada: Verificando turno automático...");
+  console.log("📦 Extensión iniciada: Verificando turno...");
   asegurarTurnoActivo();
 });
 
-// C) Escuchar cambios en Storage (ej. cuando el usuario inicia/cierra sesión)
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local') {
     if (changes.session_user) {
       if (changes.session_user.newValue) {
-        console.log("🔑 Inicio de sesión detectado -> Activando turno automático.");
+        console.log("🔑 Sesión detectada -> Activando turno.");
         asegurarTurnoActivo();
       } else {
-        console.log("🚪 Cierre de sesión detectado -> Deteniendo turno.");
+        console.log("🚪 Cierre de sesión -> Deteniendo turno.");
         detenerTurnoAutomatico();
       }
     }
@@ -90,25 +102,37 @@ async function detenerTurnoAutomatico() {
 }
 
 // ==========================================
-// 5. SINCRONIZACIÓN PERIÓDICA EN SEGUNDO PLANO
+// 5. SINCRONIZACIÓN EN SEGUNDO PLANO (Con horario 9am-5pm)
 // ==========================================
 if (chrome.alarms) {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'SYNC_HORAS_SUPABASE') {
-      chrome.storage.local.get(['session_user', 'inicioTurnoTimestamp'], async (res) => {
+      const ahora = new Date();
+      const horaActual = ahora.getHours();
+      const esHorarioLaboral = horaActual >= 9 && horaActual < 17; // ⏰ 9:00 a 17:00
+
+      chrome.storage.local.get(['session_user', 'inicioTurnoTimestamp', 'panelActive'], async (res) => {
         const empleadoId = res.session_user?.id || res.session_user?.user_id;
 
-        if (empleadoId && res.inicioTurnoTimestamp) {
+        // 🛡️ Fix #4: Si el panel está abierto, panel.js ya suma, background solo adelanta el reloj
+        if (res.panelActive) {
+          chrome.storage.local.set({ inicioTurnoTimestamp: Date.now() });
+          return;
+        }
+
+        if (empleadoId && res.inicioTurnoTimestamp && esHorarioLaboral) {
           const tiempoActual = Date.now();
           const lapsoMs = tiempoActual - res.inicioTurnoTimestamp;
           const horasParciales = lapsoMs / (1000 * 60 * 60);
 
           if (horasParciales > 0) {
             await acumularHorasEnSupabase(empleadoId, horasParciales);
-            // Avanzar el timestamp para no duplicar horas en la siguiente alarma
             chrome.storage.local.set({ inicioTurnoTimestamp: tiempoActual });
-            console.log(`⏱️ Sincronización automática: +${horasParciales.toFixed(3)} hrs añadidas.`);
+            console.log(`⏱️ Sincronización automática: +${horasParciales.toFixed(3)} hrs.`);
           }
+        } else if (!esHorarioLaboral) {
+          // Si estamos fuera de horario, solo adelantamos el timestamp para no acumular horas no trabajadas
+          chrome.storage.local.set({ inicioTurnoTimestamp: Date.now() });
         }
       });
     }
@@ -116,12 +140,14 @@ if (chrome.alarms) {
 }
 
 // ==========================================
-// 6. FUNCIÓN AUXILIAR PARA SUMAR HORAS EN BD
+// 6. FUNCIÓN AUXILIAR PARA SUMAR HORAS EN SUPABASE
 // ==========================================
 async function acumularHorasEnSupabase(empleadoId, horasIncremento) {
+  if (!horasIncremento || horasIncremento <= 0) return;
+
   try {
-    const SUPABASE_URL = "https://twrvbdxudbmzdimxgjnz.supabase.co";       // 👈 Tu URL de Supabase
-    const SUPABASE_KEY = "sb_publishable_vNP-W2Qk4VMjw4Cx4GNdXw_g9jGPy_w";  // 👈 Tu Anon Key de Supabase
+    const SUPABASE_URL = "https://twrvbdxudbmzdimxgjnz.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_vNP-W2Qk4VMjw4Cx4GNdXw_g9jGPy_w";
 
     // 1. Obtener horas actuales
     const res = await fetch(`${SUPABASE_URL}/rest/v1/empleados?id=eq.${empleadoId}&select=horas_acumuladas`, {
@@ -132,7 +158,7 @@ async function acumularHorasEnSupabase(empleadoId, horasIncremento) {
     });
     const data = await res.json();
     const horasActuales = data[0]?.horas_acumuladas || 0;
-    const nuevasHoras = Number((horasActuales + horasIncremento).toFixed(2));
+    const nuevasHoras = Number((horasActuales + horasIncremento).toFixed(4));
 
     // 2. Actualizar en Supabase
     await fetch(`${SUPABASE_URL}/rest/v1/empleados?id=eq.${empleadoId}`, {

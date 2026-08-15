@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let timerInterval = null;
   let todaySeconds = 0;
   let lastSyncTimestamp = Date.now();
+  let lastSyncedSeconds = 0; // 🛡️ Fix #5: Marca hasta dónde ya se sincronizó realmente
+  let syncInProgress = false; // 🛡️ Fix #9: Candado para evitar carreras y errores de null
+  const SYNC_INTERVAL_MS = 15000; // ⏱️ Fix #7: Cada 15s
   const MAX_DAILY_SECONDS = 5 * 3600; // 5 Horas = 18,000s
 
   // 🌐 Carga dinámica de URL de API (Fallback a localhost)
@@ -106,20 +109,17 @@ document.addEventListener('DOMContentLoaded', () => {
   async function renderDashboard() {
     if (!screenContainer) return;
     if (!usuarioAutenticado?.id || !jwtToken) return renderLogin();
-// Reemplaza estas líneas al inicio de renderDashboard() en panel.js:
 
-const rolLower = (usuarioAutenticado.rol || usuarioAutenticado.role || '').toLowerCase().trim();
+    const rolLower = (usuarioAutenticado.rol || usuarioAutenticado.role || '').toLowerCase().trim();
 
-// Detectar categoría
-const isServicio = rolLower.includes('servicio') || rolLower.includes('ss');
-const isPracticas = rolLower.includes('practicante') || rolLower.includes('práctica') || rolLower.includes('practica') || rolLower.includes('pp');
-const isEstudiante = isServicio || isPracticas;
+    // Detectar categoría
+    const isServicio = rolLower.includes('servicio') || rolLower.includes('ss');
+    const isPracticas = rolLower.includes('practicante') || rolLower.includes('práctica') || rolLower.includes('practica') || rolLower.includes('pp');
+    const isEstudiante = isServicio || isPracticas;
 
-// Priorizar las horas por rol (PP = 250, SS = 480)
-const targetHours = isPracticas ? 250 : (isServicio ? 480 : (usuarioAutenticado.horas_totales_objetivo || 480));
-
-// Actualizar en el objeto local
-usuarioAutenticado.horas_totales_objetivo = targetHours;
+    // Priorizar horas por rol (PP = 250, SS = 480)
+    const targetHours = isPracticas ? 250 : (isServicio ? 480 : (usuarioAutenticado.horas_totales_objetivo || 480));
+    usuarioAutenticado.horas_totales_objetivo = targetHours;
 
     screenContainer.innerHTML = `
       <!-- Tarjeta de Usuario -->
@@ -232,16 +232,28 @@ usuarioAutenticado.horas_totales_objetivo = targetHours;
   function setupAutoTimer(targetHours) {
     if (timerInterval) clearInterval(timerInterval);
 
+    // 🛡️ Fix #4: Avisar a background.js que el panel está activo
+    chrome.runtime.sendMessage({ type: 'PANEL_ACTIVE', employeeId: usuarioAutenticado?.id });
+
     timerInterval = setInterval(() => {
-      if (todaySeconds < MAX_DAILY_SECONDS) {
+      const ahora = new Date();
+      const horaActual = ahora.getHours();
+      const esHorarioLaboral = horaActual >= 9 && horaActual < 17; // ⏰ 9 AM a 5 PM
+
+      const statusEl = document.getElementById('timer-status');
+
+      if (!esHorarioLaboral) {
+        if (statusEl) {
+          statusEl.innerText = '⏸️ Fuera de horario (9am-5pm)';
+          statusEl.style.color = '#fbbf24';
+        }
+      } else if (todaySeconds < MAX_DAILY_SECONDS) {
         todaySeconds++;
-        const statusEl = document.getElementById('timer-status');
         if (statusEl) {
           statusEl.innerText = '🟢 Contando';
           statusEl.style.color = '#34d399';
         }
       } else {
-        const statusEl = document.getElementById('timer-status');
         if (statusEl) {
           statusEl.innerText = '🛑 Límite diario (5h max)';
           statusEl.style.color = '#f87171';
@@ -257,13 +269,13 @@ usuarioAutenticado.horas_totales_objetivo = targetHours;
 
       chrome.storage.local.set({ todaySeconds });
 
-      // Sincronizar horas con el servidor cada 60 segundos
-      if (Date.now() - lastSyncTimestamp >= 60000) {
-        syncHoursToBackend(targetHours);
+      // Sincronizar horas con el servidor cada SYNC_INTERVAL_MS (15s)
+      if (Date.now() - lastSyncTimestamp >= SYNC_INTERVAL_MS) {
+        syncHoursToBackend(targetHours, todaySeconds);
         lastSyncTimestamp = Date.now();
       }
 
-      const accumulatedHours = (usuarioAutenticado.horas_acumuladas || 0) + (todaySeconds / 3600);
+      const accumulatedHours = (usuarioAutenticado?.horas_acumuladas || 0) + (todaySeconds / 3600);
       const percent = Math.min(Math.round((accumulatedHours / targetHours) * 100), 100);
 
       const totalText = document.getElementById('total-hours-text');
@@ -274,178 +286,190 @@ usuarioAutenticado.horas_totales_objetivo = targetHours;
     }, 1000);
   }
 
-  async function syncHoursToBackend(targetHours) {
-    if (!usuarioAutenticado?.id) return;
-    const newTotalHours = (usuarioAutenticado.horas_acumuladas || 0) + (1 / 60);
+  async function syncHoursToBackend(targetHours, currentTodaySeconds) {
+    // 🛡️ Fix #9: Evitar colisiones de sync simultáneas
+    if (!usuarioAutenticado?.id || syncInProgress) return;
+
+    const secondsToSync = currentTodaySeconds - lastSyncedSeconds;
+    if (secondsToSync <= 0) return;
+
+    syncInProgress = true;
+    const incrementHours = secondsToSync / 3600;
+    const newTotalHours = (usuarioAutenticado.horas_acumuladas || 0) + incrementHours;
 
     try {
-      await apiRequest(`${API_BASE_URL}/empleados/horas`, {
+      const res = await apiRequest(`${API_BASE_URL}/empleados/horas`, {
         method: 'PATCH',
         body: JSON.stringify({
           employeeId: usuarioAutenticado.id,
-          horasAcumuladas: parseFloat(newTotalHours.toFixed(2)),
+          horasAcumuladas: parseFloat(newTotalHours.toFixed(4)),
           targetHours
         })
       });
-      usuarioAutenticado.horas_acumuladas = newTotalHours;
-      chrome.storage.local.set({ session_user: usuarioAutenticado });
+
+      // 🛡️ Fix #9: Verificar que el usuario no haya cerrado sesión mientras esperaba
+      if (!usuarioAutenticado) return;
+
+      if (res?.ok) {
+        usuarioAutenticado.horas_acumuladas = newTotalHours;
+        lastSyncedSeconds = currentTodaySeconds; // ✅ Fix #5: Solo avanza si el servidor confirmó éxito
+        chrome.storage.local.set({ session_user: usuarioAutenticado });
+      } else {
+        console.warn('Sync de horas no confirmado, se reintentará en el próximo ciclo.');
+      }
     } catch (err) {
       console.error('Error sincronizando horas:', err);
+    } finally {
+      syncInProgress = false;
     }
   }
 
   // ==========================================
   // 5. CARGA Y DIBUJO DE TAREAS Y REUNIONES
   // ==========================================
-async function loadData() {
-  const list = document.getElementById('c-contentList');
-  if (!list) return;
+  async function loadData() {
+    const list = document.getElementById('c-contentList');
+    if (!list) return;
 
-  if (activeMainTab === 'tareas') {
-    const res = await apiRequest(`${API_BASE_URL}/tareas?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
-    const tareas = (res?.ok && (Array.isArray(res.data) || Array.isArray(res.data?.tareas)))
-      ? (res.data.tareas || res.data)
-      : [];
+    if (activeMainTab === 'tareas') {
+      const res = await apiRequest(`${API_BASE_URL}/tareas?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
+      const tareas = (res?.ok && (Array.isArray(res.data) || Array.isArray(res.data?.tareas)))
+        ? (res.data.tareas || res.data)
+        : [];
 
-    const filtered = tareas.filter(t => {
-      const st = (t.estado || '').toLowerCase();
-      if (activeSubFilter === 'por_hacer') return st === 'por hacer' || st === 'todo' || st === 'nueva' || st === 'por_hacer';
-      if (activeSubFilter === 'pendientes') return st === 'en proceso' || st === 'pendiente' || st === 'en revisión' || st === 'en_revision';
-      if (activeSubFilter === 'completadas') return st === 'completada' || st === 'finalizada';
-      return true;
-    });
-
-    if (filtered.length === 0) {
-      list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin tareas en esta categoría.</p>`;
-    } else {
-      list.innerHTML = '';
-      filtered.forEach(t => {
-        const item = document.createElement('div');
-        item.className = 'card-item';
-
-        const statusLower = (t.estado || '').toLowerCase();
-        const isDone = statusLower.includes('completa');
-        const isReview = statusLower.includes('revisi') || statusLower.includes('pendiente');
-        
-        // Detectar fecha límite vencida
-        const hoy = new Date().toISOString().split('T')[0];
-        const isOverdue = t.fecha_limite && t.fecha_limite < hoy && !isDone;
-
-        // Determinar badge de estado
-        let statusBadgeClass = 'badge-status-pending';
-        let statusText = 'Por hacer';
-
-        if (isDone) {
-          statusBadgeClass = 'badge-status-completed';
-          statusText = '✓ Completada';
-        } else if (isReview) {
-          statusBadgeClass = 'badge-status-review';
-          statusText = '⏳ En revisión';
-        } else if (isOverdue) {
-          statusBadgeClass = 'badge-status-overdue';
-          statusText = '⚠️ Vencida';
-        }
-
-        const desc = t.descripcion ? `<div class="card-desc">${t.descripcion}</div>` : '';
-        const fechaLim = t.fecha_limite ? `<span>📅 ${t.fecha_limite}</span>` : '<span>📅 Sin fecha límite</span>';
-        const proyectoNombre = t.proyectos?.nombre || t.proyecto_nombre || 'General';
-
-        item.innerHTML = `
-          <div class="card-header">
-            <span class="card-title">${t.titulo || t.descripcion || 'Tarea sin título'}</span>
-            <span class="card-badge badge-project">📁 ${proyectoNombre}</span>
-          </div>
-          
-          ${desc}
-          
-          <div class="card-footer">
-            <div class="card-meta">
-              <span class="card-badge ${statusBadgeClass}">${statusText}</span>
-              ${fechaLim}
-            </div>
-
-            ${!isDone && !isReview ? `
-              <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
-                🚀 Enviar a revisión
-              </button>
-            ` : ''}
-          </div>
-        `;
-
-        list.appendChild(item);
+      const filtered = tareas.filter(t => {
+        const st = (t.estado || '').toLowerCase();
+        if (activeSubFilter === 'por_hacer') return st === 'por hacer' || st === 'todo' || st === 'nueva' || st === 'por_hacer';
+        if (activeSubFilter === 'pendientes') return st === 'en proceso' || st === 'pendiente' || st === 'en revisión' || st === 'en_revision';
+        if (activeSubFilter === 'completadas') return st === 'completada' || st === 'finalizada';
+        return true;
       });
 
-      // Event Listener para enviar solicitudes de revisión
-      document.querySelectorAll('.btn-review').forEach(btn => {
-        btn.onclick = async (e) => {
-          const taskId = e.currentTarget.dataset.id;
-          const taskTitle = e.currentTarget.dataset.title;
+      if (filtered.length === 0) {
+        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin tareas en esta categoría.</p>`;
+      } else {
+        list.innerHTML = '';
+        filtered.forEach(t => {
+          const item = document.createElement('div');
+          item.className = 'card-item';
 
-          const resRev = await apiRequest(`${API_BASE_URL}/revisiones`, {
-            method: 'POST',
-            body: JSON.stringify({
-              taskId,
-              taskTitle,
-              employeeId: usuarioAutenticado.id,
-              employeeName: usuarioAutenticado.nombre || usuarioAutenticado.name
-            })
-          });
+          const statusLower = (t.estado || '').toLowerCase();
+          const isDone = statusLower.includes('completa');
+          const isReview = statusLower.includes('revisi') || statusLower.includes('pendiente');
+          
+          const hoy = new Date().toISOString().split('T')[0];
+          const isOverdue = t.fecha_limite && t.fecha_limite < hoy && !isDone;
 
-          if (resRev?.ok) {
-            alert('✅ Tarea enviada a revisión');
-            loadData();
-          } else {
-            alert('Error enviando la tarea a revisión');
+          let statusBadgeClass = 'badge-status-pending';
+          let statusText = 'Por hacer';
+
+          if (isDone) {
+            statusBadgeClass = 'badge-status-completed';
+            statusText = '✓ Completada';
+          } else if (isReview) {
+            statusBadgeClass = 'badge-status-review';
+            statusText = '⏳ En revisión';
+          } else if (isOverdue) {
+            statusBadgeClass = 'badge-status-overdue';
+            statusText = '⚠️ Vencida';
           }
-        };
-      });
-    }
-  } else {
-    // ⬇️ PESTAÑA DE REUNIONES (BLOQUE AJUSTADO)
-    const resR = await apiRequest(`${API_BASE_URL}/reuniones?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
-    
-    // 1. Extraer el arreglo soportando respuesta directa [...] o envuelta { reuniones: [...] }
-    const reuniones = (resR?.ok && (Array.isArray(resR.data) || Array.isArray(resR.data?.reuniones)))
-      ? (resR.data.reuniones || resR.data)
-      : [];
 
-    if (reuniones.length === 0) {
-      list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin reuniones programadas.</p>`;
-    } else {
-      list.innerHTML = '';
-      reuniones.forEach(m => {
-        const item = document.createElement('div');
-        item.className = 'card-item';
+          const desc = t.descripcion ? `<div class="card-desc">${t.descripcion}</div>` : '';
+          const fechaLim = t.fecha_limite ? `<span>📅 ${t.fecha_limite}</span>` : '<span>📅 Sin fecha límite</span>';
+          const proyectoNombre = t.proyectos?.nombre || t.proyecto_nombre || 'General';
 
-        // 2. Fallbacks de Hora y Fecha desde fecha_inicio por si hora/fecha vienen nulos
-        const horaDisplay = m.hora || (m.fecha_inicio ? new Date(m.fecha_inicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Por definir');
-        const fechaDisplay = m.fecha || (m.fecha_inicio ? m.fecha_inicio.split('T')[0] : 'Hoy');
-
-        item.innerHTML = `
-          <div class="card-header">
-            <span class="card-title" style="color:#a5b4fc;">${m.titulo || 'Reunión de equipo'}</span>
-            <span class="card-badge badge-time">⏰ ${horaDisplay}</span>
-          </div>
-
-          <div class="card-desc">${m.descripcion || 'Sin orden del día.'}</div>
-
-          <div class="card-footer">
-            <div class="card-meta">
-              <span>📅 ${fechaDisplay}</span>
+          item.innerHTML = `
+            <div class="card-header">
+              <span class="card-title">${t.titulo || t.descripcion || 'Tarea sin título'}</span>
+              <span class="card-badge badge-project">📁 ${proyectoNombre}</span>
             </div>
-            ${m.link ? `
-              <a href="${m.link}" target="_blank" class="btn-meeting-link">
-                🔗 Unirme a sesión
-              </a>
-            ` : '<span style="font-size:9px; color:#64748b;">Sin enlace asignado</span>'}
-          </div>
-        `;
+            
+            ${desc}
+            
+            <div class="card-footer">
+              <div class="card-meta">
+                <span class="card-badge ${statusBadgeClass}">${statusText}</span>
+                ${fechaLim}
+              </div>
 
-        list.appendChild(item);
-      });
+              ${!isDone && !isReview ? `
+                <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
+                  🚀 Enviar a revisión
+                </button>
+              ` : ''}
+            </div>
+          `;
+
+          list.appendChild(item);
+        });
+
+        document.querySelectorAll('.btn-review').forEach(btn => {
+          btn.onclick = async (e) => {
+            const taskId = e.currentTarget.dataset.id;
+            const taskTitle = e.currentTarget.dataset.title;
+
+            const resRev = await apiRequest(`${API_BASE_URL}/revisiones`, {
+              method: 'POST',
+              body: JSON.stringify({
+                taskId,
+                taskTitle,
+                employeeId: usuarioAutenticado.id,
+                employeeName: usuarioAutenticado.nombre || usuarioAutenticado.name
+              })
+            });
+
+            if (resRev?.ok) {
+              alert('✅ Tarea enviada a revisión');
+              loadData();
+            } else {
+              alert('Error enviando la tarea a revisión');
+            }
+          };
+        });
+      }
+    } else {
+      const resR = await apiRequest(`${API_BASE_URL}/reuniones?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
+      
+      const reuniones = (resR?.ok && (Array.isArray(resR.data) || Array.isArray(resR.data?.reuniones)))
+        ? (resR.data.reuniones || resR.data)
+        : [];
+
+      if (reuniones.length === 0) {
+        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin reuniones programadas.</p>`;
+      } else {
+        list.innerHTML = '';
+        reuniones.forEach(m => {
+          const item = document.createElement('div');
+          item.className = 'card-item';
+
+          const horaDisplay = m.hora || (m.fecha_inicio ? new Date(m.fecha_inicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Por definir');
+          const fechaDisplay = m.fecha || (m.fecha_inicio ? m.fecha_inicio.split('T')[0] : 'Hoy');
+
+          item.innerHTML = `
+            <div class="card-header">
+              <span class="card-title" style="color:#a5b4fc;">${m.titulo || 'Reunión de equipo'}</span>
+              <span class="card-badge badge-time">⏰ ${horaDisplay}</span>
+            </div>
+
+            <div class="card-desc">${m.descripcion || 'Sin orden del día.'}</div>
+
+            <div class="card-footer">
+              <div class="card-meta">
+                <span>📅 ${fechaDisplay}</span>
+              </div>
+              ${m.link ? `
+                <a href="${m.link}" target="_blank" class="btn-meeting-link">
+                  🔗 Unirme a sesión
+                </a>
+              ` : '<span style="font-size:9px; color:#64748b;">Sin enlace asignado</span>'}
+            </div>
+          `;
+
+          list.appendChild(item);
+        });
+      }
     }
   }
-}
 
   // ==========================================
   // 6. CONTROL DE SESIÓN Y LOGOUT
@@ -455,6 +479,7 @@ async function loadData() {
       usuarioAutenticado = res.session_user;
       jwtToken = res.jwt_token;
       todaySeconds = res.todaySeconds || 0;
+      lastSyncedSeconds = todaySeconds;
 
       if (logoutBtn) logoutBtn.style.display = 'flex';
       renderDashboard();
@@ -463,9 +488,17 @@ async function loadData() {
     }
   });
 
-  function handleLogout() {
+  async function handleLogout() {
     if (timerInterval) clearInterval(timerInterval);
-    chrome.storage.local.remove(['session_user', 'jwt_token', 'todaySeconds'], () => {
+
+    // 🛡️ Fix #6: Sync final con await para no perder segundos al cerrar sesión
+    if (usuarioAutenticado?.id && todaySeconds > lastSyncedSeconds) {
+      const targetHours = usuarioAutenticado.horas_totales_objetivo || 480;
+      await syncHoursToBackend(targetHours, todaySeconds);
+    }
+
+    chrome.runtime.sendMessage({ type: 'PANEL_INACTIVE', employeeId: usuarioAutenticado?.id });
+    chrome.storage.local.remove(['session_user', 'jwt_token', 'todaySeconds', 'turnoActivo', 'inicioTurnoTimestamp'], () => {
       usuarioAutenticado = null;
       jwtToken = null;
       if (logoutBtn) logoutBtn.style.display = 'none';
@@ -476,4 +509,9 @@ async function loadData() {
   if (logoutBtn) {
     logoutBtn.onclick = handleLogout;
   }
+
+  // 🛡️ Fix #4: Avisar a background.js que el panel se cerró para que retome el conteo
+  window.addEventListener('beforeunload', () => {
+    chrome.runtime.sendMessage({ type: 'PANEL_INACTIVE', employeeId: usuarioAutenticado?.id });
+  });
 });
