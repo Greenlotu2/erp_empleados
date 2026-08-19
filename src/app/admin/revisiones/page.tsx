@@ -48,6 +48,10 @@ export default function RevisionesPage() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [pendingAutoOpen, setPendingAutoOpen] = useState(false);
 
+  // 🔄 Se incrementa cada vez que se crea/edita una reunión desde este formulario,
+  // para avisarle al calendario embebido que debe recargar sus datos.
+  const [calendarRefreshTrigger, setCalendarRefreshTrigger] = useState(0);
+
   const [meetingFormData, setMeetingFormData] = useState({
     titulo: '',
     proyectoId: '',
@@ -364,6 +368,7 @@ export default function RevisionesPage() {
         selectedEmployeeIds: [],
       });
       setIsScheduleModalOpen(false);
+      setCalendarRefreshTrigger(prev => prev + 1); // 🔄 Avisa al calendario embebido que debe recargar
 
       await fetchRevisiones();
 
@@ -461,7 +466,7 @@ export default function RevisionesPage() {
 
         {activeTab === 'calendario' && (
           <div className="flex-1 min-h-0 overflow-hidden">
-            <CalendarioRevisiones />
+            <CalendarioRevisiones refreshTrigger={calendarRefreshTrigger} />
           </div>
         )}
 
