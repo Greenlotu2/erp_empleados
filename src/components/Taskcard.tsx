@@ -162,7 +162,7 @@ export default function TaskCard({
                 type="button"
                 onClick={onRequestExtension}
                 className="bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 hover:border-amber-300 font-bold px-2.5 py-1 rounded-xl text-[10px] transition-all cursor-pointer"
-                title="Solicitar extensión de tiempo al Administrador"
+                title="Extender la fecha límite de esta tarea"
               >
                 ⏱️ Tiempo Extra
               </button>

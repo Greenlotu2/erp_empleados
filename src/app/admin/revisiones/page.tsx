@@ -2,15 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../../../components/Sidebar';
-import CalendarioRevisiones from '../../../components/calendar/CalendarioRevisiones'; 
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = 
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import CalendarioRevisiones from '../../../components/calendar/CalendarioRevisiones';
+import KpisPanel from '../../../components/kpis/KpisPanel';
+import { formatFechaLimite } from '../../../lib/dates';
+import { supabase } from '../../../lib/supabaseClient';
 
 interface HistorialRevision {
   id: string;
@@ -22,11 +17,20 @@ interface HistorialRevision {
   notas: string;
   modalidad: 'presencial' | 'virtual';
   link?: string;
+  tareaId?: number | null;
+  taskDueDate?: string | null;
 }
 
 interface OptionItem {
   id: string;
   nombre: string;
+}
+
+interface TareaOption {
+  id: string;
+  titulo: string;
+  empleadoNombre: string;
+  fechaLimite: string | null;
 }
 
 export default function RevisionesPage() {
@@ -40,9 +44,10 @@ export default function RevisionesPage() {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isSavingMeeting, setIsSavingMeeting] = useState(false);
   const [isGeneratingZoom, setIsGeneratingZoom] = useState(false);
-  
+
   const [dbProjects, setDbProjects] = useState<OptionItem[]>([]);
   const [dbEmployees, setDbEmployees] = useState<OptionItem[]>([]);
+  const [dbTasks, setDbTasks] = useState<TareaOption[]>([]);
 
   // 🕒 Controla la apertura automática del modal SOLO cuando los datos ya cargaron
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -61,6 +66,8 @@ export default function RevisionesPage() {
     link: '',
     targetType: 'todos',
     selectedEmployeeIds: [] as string[],
+    tareaId: '' as string,
+    tareaDueDate: '' as string,
   });
 
   // Carga inicial de datos desde Supabase
@@ -68,14 +75,26 @@ export default function RevisionesPage() {
     try {
       setLoading(true);
 
-      const { data: projData } = await supabase.from('proyectos').select('id, nombre');
+      const { data: projData } = await (supabase.from('proyectos') as any).select('id, nombre');
       if (projData) setDbProjects(projData);
 
-      const { data: empData } = await supabase.from('empleados').select('id, nombre');
+      const { data: empData } = await (supabase.from('empleados') as any).select('id, nombre');
       if (empData) setDbEmployees(empData);
 
-      const { data, error } = await supabase
-        .from('reuniones')
+      const { data: tareasData } = await (supabase.from('tareas') as any)
+        .select('id, titulo, fecha_limite, empleados (nombre)')
+        .neq('estado', 'Completada')
+        .order('titulo', { ascending: true });
+      if (tareasData) {
+        setDbTasks(tareasData.map((t: any) => ({
+          id: String(t.id),
+          titulo: t.titulo || 'Sin título',
+          empleadoNombre: t.empleados?.nombre || 'Sin asignar',
+          fechaLimite: t.fecha_limite || null,
+        })));
+      }
+
+      const { data, error } = await (supabase.from('reuniones') as any)
         .select(`
           id,
           titulo,
@@ -83,8 +102,10 @@ export default function RevisionesPage() {
           fecha_inicio,
           estado,
           link,
+          tarea_id,
           empleados!reuniones_empleado_id_fkey (nombre),
-          proyectos (nombre)
+          proyectos (nombre),
+          tareas (fecha_limite)
         `)
         .order('fecha_inicio', { ascending: false });
 
@@ -101,6 +122,8 @@ export default function RevisionesPage() {
           notas: item.descripcion || 'Sin notas registradas.',
           modalidad: item.link ? 'virtual' : 'presencial',
           link: item.link || '',
+          tareaId: item.tarea_id ?? null,
+          taskDueDate: item.tareas?.fecha_limite || null,
         }));
         setHistorial(mapped);
       }
@@ -117,8 +140,6 @@ export default function RevisionesPage() {
   }, []);
 
   // 📌 REDIRECCIÓN DESDE NOTIFICACIONES DEL DASHBOARD
-  // Lee los query params de inmediato, pero NO abre el modal todavía:
-  // solo lo marca como "pendiente" hasta que dbProjects/dbEmployees ya existan.
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -128,8 +149,9 @@ export default function RevisionesPage() {
         const rawTitulo = params.get('titulo') || '';
         const empleadoIdParam = params.get('empleadoId') || '';
         const proyectoIdParam = params.get('proyectoId') || '';
+        const taskIdParam = params.get('taskId') || '';
+        const taskDueDateParam = params.get('taskDueDate') || '';
 
-        // Limpiar textos tipo: "🚀 Juancarlos solicitó revisión: Desarrollo UI"
         let cleanTitle = rawTitulo;
         if (cleanTitle.includes(':')) {
           cleanTitle = cleanTitle.split(':').slice(1).join(':').replace(/[""]/g, '').trim();
@@ -141,19 +163,16 @@ export default function RevisionesPage() {
           proyectoId: proyectoIdParam || prev.proyectoId,
           targetType: empleadoIdParam ? 'seleccionados' : 'todos',
           selectedEmployeeIds: empleadoIdParam ? [empleadoIdParam] : [],
+          tareaId: taskIdParam || prev.tareaId,
+          tareaDueDate: taskDueDateParam || prev.tareaDueDate,
         }));
 
-        // Ya no abrimos el modal aquí — solo marcamos que hay una apertura pendiente
         setPendingAutoOpen(true);
-
-        // Limpiar los query params para evitar re-aperturas al recargar la página
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
   }, []);
 
-  // 🚦 Abre el modal SOLO cuando los datos (proyectos/empleados) ya están cargados
-  // Esto evita que el modal se abra con los dropdowns vacíos.
   useEffect(() => {
     if (dataLoaded && pendingAutoOpen) {
       setIsScheduleModalOpen(true);
@@ -167,11 +186,9 @@ export default function RevisionesPage() {
       setLoading(true);
 
       // 1. Actualización en la tabla 'reuniones'
-      const { data: reunUpdated, error: reunErr } = await supabase
-        .from('reuniones')
+      const { error: reunErr } = await (supabase.from('reuniones') as any)
         .update({ estado: nuevoEstado })
-        .eq('id', id)
-        .select();
+        .eq('id', id);
 
       if (reunErr) throw reunErr;
 
@@ -182,30 +199,31 @@ export default function RevisionesPage() {
         const cleanTitle = (targetRev?.title || '').replace(/^Revisión:\s*/i, '').trim();
 
         if (emp) {
-          // Actualizar 'tareas'
-          await supabase
-            .from('tareas')
-            .update({ estado: 'Completada', porcentaje_avance: 100 })
-            .eq('empleado_id', emp.id)
-            .ilike('titulo', `%${cleanTitle}%`);
+          if (targetRev?.tareaId) {
+            await (supabase.from('tareas') as any)
+              .update({ estado: 'Completada', porcentaje_avance: 100 })
+              .eq('id', targetRev.tareaId);
+          } else {
+            await (supabase.from('tareas') as any)
+              .update({ estado: 'Completada', porcentaje_avance: 100 })
+              .eq('empleado_id', emp.id)
+              .ilike('titulo', `%${cleanTitle}%`);
+          }
 
-          await supabase
-            .from('tareas')
+          await (supabase.from('tareas') as any)
             .update({ estado: 'Completada', porcentaje_avance: 100 })
             .eq('empleado_id', emp.id)
             .eq('estado', 'En Proceso');
 
           // Liberar disponibilidad
           try {
-            const { data: tareasPendientes } = await supabase
-              .from('tareas')
+            const { data: tareasPendientes } = await (supabase.from('tareas') as any)
               .select('id')
               .eq('empleado_id', emp.id)
               .eq('estado', 'En Proceso');
 
             if (!tareasPendientes || tareasPendientes.length === 0) {
-              await supabase
-                .from('empleados')
+              await (supabase.from('empleados') as any)
                 .update({ disponibilidad: true })
                 .eq('id', emp.id);
             }
@@ -215,11 +233,11 @@ export default function RevisionesPage() {
 
           // Notificación
           try {
-            await supabase.from('notificaciones').insert([{
+            await (supabase.from('notificaciones') as any).insert([{
               empleado_id: emp.id,
               titulo_tarea: `✅ Revisión Aprobada: ${cleanTitle}`,
               estado: 'Aprobado',
-            }] as any);
+            }]);
           } catch (e) {
             console.warn('Omitiendo notificación opcional:', e);
           }
@@ -244,7 +262,7 @@ export default function RevisionesPage() {
     }
 
     try {
-      const { error } = await supabase.from('reuniones').delete().eq('id', id);
+      const { error } = await (supabase.from('reuniones') as any).delete().eq('id', id);
       if (error) throw error;
 
       alert('🗑️ Sesión eliminada correctamente.');
@@ -322,6 +340,9 @@ export default function RevisionesPage() {
         ? `🏢 [Reunión Presencial en Oficina Ing. Luis] ${meetingFormData.descripcion.trim()}`
         : meetingFormData.descripcion.trim();
 
+      const parsedTareaId = meetingFormData.tareaId ? parseInt(meetingFormData.tareaId, 10) : NaN;
+      const targetTareaId = isNaN(parsedTareaId) ? null : parsedTareaId;
+
       let meetingsToInsert: any[] = [];
 
       if (meetingFormData.targetType === 'todos') {
@@ -336,6 +357,7 @@ export default function RevisionesPage() {
           estado: 'Programada',
           empleado_id: null,
           proyecto_id: targetProjectId,
+          tarea_id: targetTareaId,
         }];
       } else {
         meetingsToInsert = meetingFormData.selectedEmployeeIds.map(empId => ({
@@ -349,10 +371,11 @@ export default function RevisionesPage() {
           estado: 'Programada',
           empleado_id: empId || null,
           proyecto_id: targetProjectId,
+          tarea_id: targetTareaId,
         }));
       }
 
-      const { error: meetingErr } = await supabase.from('reuniones').insert(meetingsToInsert as any);
+      const { error: meetingErr } = await (supabase.from('reuniones') as any).insert(meetingsToInsert);
       if (meetingErr) throw meetingErr;
 
       alert(`✅ ${esPresencial ? 'Reunión Presencial' : 'Revisión Virtual'} agendada con éxito.`);
@@ -366,9 +389,11 @@ export default function RevisionesPage() {
         link: '',
         targetType: 'todos',
         selectedEmployeeIds: [],
+        tareaId: '',
+        tareaDueDate: '',
       });
       setIsScheduleModalOpen(false);
-      setCalendarRefreshTrigger(prev => prev + 1); // 🔄 Avisa al calendario embebido que debe recargar
+      setCalendarRefreshTrigger(prev => prev + 1);
 
       await fetchRevisiones();
 
@@ -406,7 +431,7 @@ export default function RevisionesPage() {
       colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
     } else if (estado === 'Ajuste por tiempo' || estado === 'Pendiente') {
       colorClass = 'bg-amber-50 text-amber-700 border-amber-200';
-    } else if (estado === 'Rechazado' || estado === 'Cancelada') {
+    } else if (estado === 'Rechazado' || estado === 'Cancelada' || estado === 'Fecha Límite') {
       colorClass = 'bg-red-50 text-red-700 border-red-200';
     }
 
@@ -421,7 +446,7 @@ export default function RevisionesPage() {
     <div className="h-screen w-screen bg-slate-50 flex font-sans overflow-hidden select-none">
       <Sidebar />
 
-      <main className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden h-full min-w-0">
+      <main className="flex-1 flex flex-col p-4 md:p-6 xl:pr-0 overflow-hidden h-full min-w-0">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 shrink-0">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Gestión de Revisiones y Reuniones</h1>
@@ -465,7 +490,7 @@ export default function RevisionesPage() {
         </header>
 
         {activeTab === 'calendario' && (
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden ">
             <CalendarioRevisiones refreshTrigger={calendarRefreshTrigger} />
           </div>
         )}
@@ -494,36 +519,54 @@ export default function RevisionesPage() {
               </select>
             </div>
 
-            <div className="flex-1 overflow-y-auto border border-slate-100 rounded-xl min-h-0">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-0.5">
               {loading ? (
                 <div className="flex items-center justify-center h-48 text-xs font-bold text-slate-500 gap-2">
                   <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                   Cargando historial de sesiones...
                 </div>
+              ) : filteredHistorial.length === 0 ? (
+                <div className="flex items-center justify-center h-48 text-xs font-semibold text-slate-400">
+                  No hay sesiones que coincidan con este filtro.
+                </div>
               ) : (
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold sticky top-0 uppercase text-[10px]">
-                    <tr>
-                      <th className="p-3">Sesión / Proyecto</th>
-                      <th className="p-3">Tipo / Modalidad</th>
-                      <th className="p-3">Convocados</th>
-                      <th className="p-3">Fecha y Hora</th>
-                      <th className="p-3">Estado</th>
-                      <th className="p-3">Notas</th>
-                      <th className="p-3 text-center">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                    {filteredHistorial.map((rev) => (
-                      <tr key={rev.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3">
-                          <div className="font-bold text-slate-900">{rev.title}</div>
-                          <div className="text-[10px] text-blue-600 font-semibold">{rev.project}</div>
-                        </td>
-                        <td className="p-3">
-                          {rev.modalidad === 'virtual' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
+                  {filteredHistorial.map((rev) => {
+                    const esFechaLimite = rev.estado === 'Fecha Límite';
+                    const vencida =
+                      rev.taskDueDate &&
+                      rev.taskDueDate < new Date().toISOString().split('T')[0] &&
+                      rev.estado !== 'Completada';
+
+                    return (
+                      <div
+                        key={rev.id}
+                        className="border border-slate-200 rounded-xl p-3 flex flex-col gap-2 hover:border-slate-300 hover:shadow-2xs transition-all min-w-0"
+                      >
+                        <div className="flex items-start justify-between gap-2 min-w-0">
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 text-xs break-words">{rev.title}</div>
+                            <div className="text-[10px] text-blue-600 font-semibold break-words">{rev.project}</div>
+                          </div>
+                          <div className="shrink-0">{renderBadge(rev.estado)}</div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-600">
+                          <span className="font-mono font-semibold text-slate-700">🗓️ {rev.fecha}</span>
+                          <span className="font-semibold text-slate-800 min-w-0 break-words">👤 {rev.empleado}</span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
+                          {esFechaLimite ? (
+                            <span className="text-red-600 font-semibold">⏳ Fecha Límite (automática)</span>
+                          ) : rev.modalidad === 'virtual' ? (
                             rev.link ? (
-                              <a href={rev.link} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline inline-flex items-center gap-1">
+                              <a
+                                href={rev.link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-600 font-bold hover:underline"
+                              >
                                 🎥 Entrar a Zoom
                               </a>
                             ) : (
@@ -532,13 +575,18 @@ export default function RevisionesPage() {
                           ) : (
                             <span className="text-slate-700 font-semibold">🏢 Reunión Presencial</span>
                           )}
-                        </td>
-                        <td className="p-3 font-semibold text-slate-800">👤 {rev.empleado}</td>
-                        <td className="p-3 font-mono text-[11px]">{rev.fecha}</td>
-                        <td className="p-3">{renderBadge(rev.estado)}</td>
-                        <td className="p-3 text-slate-500 max-w-xs truncate">{rev.notas}</td>
-                        <td className="p-3 text-center flex items-center justify-center gap-1.5">
-                          {rev.estado !== 'Completada' ? (
+
+                          {rev.taskDueDate && (
+                            <span className={`font-bold ${vencida ? 'text-red-600' : 'text-amber-600'}`}>
+                              ⏳ Límite: {formatFechaLimite(rev.taskDueDate)}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-[10px] text-slate-500 line-clamp-2 break-words">{rev.notas}</p>
+
+                        <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
+                          {esFechaLimite ? null : rev.estado !== 'Completada' ? (
                             <button
                               onClick={() => handleUpdateStatusInHistorial(rev.id, 'Completada')}
                               title="Marcar como Completada"
@@ -563,11 +611,11 @@ export default function RevisionesPage() {
                           >
                             🗑️
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
@@ -623,9 +671,16 @@ export default function RevisionesPage() {
                   placeholder={meetingFormData.modalidad === 'presencial' ? "Ej. Reunión de Alineación General" : "Ej. Revisión de Avances del Proyecto"}
                   value={meetingFormData.titulo} 
                   onChange={(e) => setMeetingFormData({ ...meetingFormData, titulo: e.target.value })} 
-                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
+
+              {meetingFormData.tareaDueDate && (
+                <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-2.5 text-[11px] text-amber-800 font-semibold flex items-center gap-2">
+                  <span>⏳</span>
+                  <span>Fecha límite de la tarea: <strong>{formatFechaLimite(meetingFormData.tareaDueDate)}</strong></span>
+                </div>
+              )}
 
               {meetingFormData.modalidad === 'presencial' ? (
                 <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[11px] text-slate-600 flex items-center gap-2">
@@ -647,7 +702,7 @@ export default function RevisionesPage() {
                   </div>
                   <input 
                     type="url" 
-                    required
+                    required 
                     placeholder="https://us05web.zoom.us/j/123456789..." 
                     value={meetingFormData.link} 
                     onChange={(e) => setMeetingFormData({ ...meetingFormData, link: e.target.value })} 
@@ -720,6 +775,27 @@ export default function RevisionesPage() {
               )}
 
               <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Vincular a Tarea (opcional)</label>
+                <select
+                  value={meetingFormData.tareaId}
+                  onChange={(e) => {
+                    const tarea = dbTasks.find((t) => t.id === e.target.value);
+                    setMeetingFormData({
+                      ...meetingFormData,
+                      tareaId: e.target.value,
+                      tareaDueDate: tarea?.fechaLimite || '',
+                    });
+                  }}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">— Sin tarea vinculada —</option>
+                  {dbTasks.map((t) => (
+                    <option key={t.id} value={t.id}>📌 {t.titulo} ({t.empleadoNombre})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Notas / Orden del Día</label>
                 <textarea 
                   rows={2} 
@@ -743,6 +819,10 @@ export default function RevisionesPage() {
           </div>
         </div>
       )}
+
+      <div className="hidden xl:block p-4 md:p-6 pl-0 h-full shrink-0">
+        <KpisPanel />
+      </div>
 
     </div>
   );

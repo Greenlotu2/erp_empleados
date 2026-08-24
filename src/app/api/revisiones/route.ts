@@ -57,10 +57,10 @@ export async function POST(request: NextRequest) {
     const targetEmpId = employeeId || user.id;
     const targetEmpName = employeeName || user.email;
 
-    // A) Obtener información de la tarea
+    // A) Obtener información de la tarea (incluye fecha límite para mostrarla en Revisiones)
     const { data: tarea } = await supabaseAdmin
       .from('tareas')
-      .select('proyecto_id')
+      .select('proyecto_id, fecha_limite')
       .eq('id', numericTaskId)
       .maybeSingle();
 
@@ -81,11 +81,14 @@ export async function POST(request: NextRequest) {
     if (revError) throw revError;
 
     // C) Crear la Notificación para activar la campanita 🔔 en AdminDashboard
+    // Se guarda tarea_id para poder vincular la reunión agendada con la tarea original
+    // (en vez de emparejarla por texto del título, que se rompe si se edita el nombre).
     await supabaseAdmin
       .from('notificaciones')
       .insert({
         empleado_id: targetEmpId,
         proyecto_id: tarea?.proyecto_id || null,
+        tarea_id: isNaN(numericTaskId) ? null : numericTaskId,
         titulo_tarea: `🚀 ${targetEmpName} solicitó revisión: "${taskTitle}"`,
         estado: 'Pendiente'
       });

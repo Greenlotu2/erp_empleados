@@ -46,7 +46,7 @@ export default function Sidebar() {
       {/* Navegación Principal */}
       <nav className="flex-1 p-3 space-y-1">
         <Link href="/admin/revisiones" className={getLinkClasses('/admin/revisiones')}>
-          ✅ Revisiones
+          ✅ Revisiones y Tareas
         </Link>
         <Link href="/" className={getLinkClasses('/')}>
           📊 Panel Principal

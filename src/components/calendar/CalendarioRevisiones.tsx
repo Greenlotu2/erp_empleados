@@ -5,15 +5,10 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { EventClickArg, EventChangeArg } from '@fullcalendar/core';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = 
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import esLocale from '@fullcalendar/core/locales/es';
+import { EventClickArg } from '@fullcalendar/core';
+import { formatFechaLimite } from '../../lib/dates';
+import { supabase } from '../../lib/supabaseClient';
 
 interface MeetingEvent {
   id: string;
@@ -28,6 +23,9 @@ interface MeetingEvent {
   end: string;
   backgroundColor: string;
   borderColor: string;
+  tareaDueDate?: string | null;
+  esGrupal?: boolean;
+  tareaId?: number | null;
 }
 
 interface ProyectoSelect {
@@ -40,21 +38,30 @@ interface EmpleadoSelect {
   nombre: string;
   color?: string;
   rol?: string;
+  nivel?: string;
+}
+
+interface TareaResumen {
+  id: number;
+  titulo: string;
+  fecha_limite: string | null;
+  estado: string | null;
+  empleado_id: string | null;
 }
 
 export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigger?: number }) {
   const calendarRef = useRef<FullCalendar | null>(null);
 
   const [eventsList, setEventsList] = useState<MeetingEvent[]>([]);
+  const [tareasList, setTareasList] = useState<TareaResumen[]>([]);
   const [proyectosList, setProyectosList] = useState<ProyectoSelect[]>([]);
   const [empleadosList, setEmpleadosList] = useState<EmpleadoSelect[]>([]);
-  
+
   const [selectedProjectFilter, setSelectedProjectFilter] = useState('all');
-  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('all'); 
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
 
-  // Estado del Popover flotante
   const [popoverState, setPopoverState] = useState<{
     visible: boolean;
     x: number;
@@ -64,12 +71,14 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
 
   const [selectedEventDetails, setSelectedEventDetails] = useState<MeetingEvent | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editFormData, setEditFormData] = useState({
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState({
     titulo: '',
     proyecto_id: '',
     empleado_id: '',
     fecha: '',
-    hora_inicio: '',
+    hora_inicio: '10:00',
     duracion_minutos: '30',
     descripcion: '',
   });
@@ -78,14 +87,17 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
     try {
       setFetchingData(true);
 
-      const { data: projData } = await supabase.from('proyectos').select('id, nombre');
+      const { data: projData } = await (supabase.from('proyectos') as any).select('id, nombre');
       if (projData) setProyectosList(projData);
 
-      const { data: empData } = await supabase.from('empleados').select('id, nombre, color, rol');
+      const { data: empData } = await (supabase.from('empleados') as any).select('id, nombre, color, rol, nivel');
       if (empData) setEmpleadosList(empData);
 
-      const { data: reunionesData, error: reunionesErr } = await supabase
-        .from('reuniones')
+      const { data: tareasData } = await (supabase.from('tareas') as any)
+        .select('id, titulo, fecha_limite, estado, empleado_id');
+      if (tareasData) setTareasList(tareasData);
+
+      const { data: reunionesData, error: reunionesErr } = await (supabase.from('reuniones') as any)
         .select(`
           id,
           titulo,
@@ -95,25 +107,33 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
           estado,
           empleado_id,
           proyecto_id,
+          tarea_id,
+          fecha,
+          hora,
           empleados!reuniones_empleado_id_fkey (nombre, color),
-          proyectos (nombre)
+          proyectos (nombre),
+          tareas (fecha_limite)
         `);
 
       if (reunionesErr) throw reunionesErr;
 
       if (reunionesData) {
         const mappedEvents: MeetingEvent[] = reunionesData.map((r: any) => {
-          const startDate = r.fecha_inicio || new Date().toISOString();
+          const startDate = r.fecha_inicio || (r.fecha && r.hora ? `${r.fecha}T${r.hora}:00` : new Date().toISOString());
           const endDate = r.fecha_fin || new Date(new Date(startDate).getTime() + 30 * 60000).toISOString();
 
           const esGrupal = r.descripcion?.includes('[Convocatoria Grupal') || r.empleado_id === null;
           const nombreIntegrante = esGrupal ? 'Todo el equipo' : (r.empleados?.nombre || 'Todo el equipo');
 
           const customColor = r.empleados?.color || '#0ea5e9';
-          const bgFinal = r.estado === 'Completada' ? '#059669' : customColor;
+          const bgFinal = r.estado === 'Fecha Límite'
+            ? '#dc2626'
+            : r.estado === 'Completada'
+              ? '#059669'
+              : customColor;
 
           return {
-            id: r.id,
+            id: String(r.id),
             title: r.titulo || 'Revisión sin título',
             proyecto_id: r.proyecto_id,
             proyecto_nombre: r.proyectos?.nombre || 'General',
@@ -125,6 +145,9 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
             end: endDate,
             backgroundColor: bgFinal,
             borderColor: bgFinal,
+            tareaDueDate: r.tareas?.fecha_limite || null,
+            esGrupal,
+            tareaId: r.tarea_id ? Number(r.tarea_id) : null,
           };
         });
 
@@ -141,12 +164,33 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
     fetchCalendarData();
   }, [refreshTrigger]);
 
-  const soloEmpleadosList = useMemo(() => {
-    return empleadosList.filter(emp => {
-      const rolLower = (emp as any).rol?.toLowerCase() || '';
-      return !rolLower.includes('admin');
-    });
-  }, [empleadosList]);
+  // Antes excluía a cualquier empleado con "admin" en el rol, pero en esta plataforma
+  // TODOS los usuarios que inician sesión tienen rol "Administrador" (es el rol que da
+  // acceso al panel, no implica que no sea parte del equipo). El campo correcto para
+  // decidir si alguien es Gerencia/Coordinador/Trabajador es `nivel`, no `rol`.
+  const soloEmpleadosList = empleadosList;
+
+  const getColorEmpleado = (empleadoId?: string) => {
+    if (!empleadoId) return undefined;
+    return empleadosList.find(e => e.id === empleadoId)?.color || '#0ea5e9';
+  };
+
+  const getNivelEmpleado = (emp: EmpleadoSelect): 'gerencia' | 'coordinador' | 'trabajador' => {
+    const nivel = emp.nivel?.toLowerCase().trim() || '';
+    if (nivel.includes('geren')) return 'gerencia';
+    if (nivel.includes('coordin')) return 'coordinador';
+    return 'trabajador';
+  };
+
+  const empleadosPorNivel = useMemo(() => {
+    const grupos = {
+      gerencia: [] as EmpleadoSelect[],
+      coordinador: [] as EmpleadoSelect[],
+      trabajador: [] as EmpleadoSelect[],
+    };
+    soloEmpleadosList.forEach(emp => grupos[getNivelEmpleado(emp)].push(emp));
+    return grupos;
+  }, [soloEmpleadosList]);
 
   const filteredEvents = useMemo(() => {
     return eventsList.filter(ev => {
@@ -156,12 +200,58 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
     });
   }, [eventsList, selectedProjectFilter, selectedEmployeeFilter]);
 
+  const isTareaCerrada = (estado: string | null) => {
+    const e = (estado || '').toLowerCase();
+    return e === 'completada' || e === 'completado' || e === 'cancelada' || e === 'rechazada';
+  };
+
+  const actividadesStats = useMemo(() => {
+    const hoyStr = new Date().toISOString().split('T')[0];
+    const ahora = new Date();
+
+    const tareasFiltradas = tareasList.filter(t =>
+      selectedEmployeeFilter === 'all' || t.empleado_id === selectedEmployeeFilter
+    );
+    const reunionesReales = eventsList.filter(ev =>
+      ev.estado !== 'Fecha Límite' &&
+      (selectedEmployeeFilter === 'all' || ev.empleado_id === selectedEmployeeFilter)
+    );
+
+    const tareasHoyItems = tareasFiltradas
+      .filter(t => t.fecha_limite === hoyStr && !isTareaCerrada(t.estado))
+      .map(t => ({ id: `tarea-${t.id}`, titulo: t.titulo, fecha: t.fecha_limite || '' }));
+    const reunionesHoyItems = reunionesReales
+      .filter(ev => ev.start.split('T')[0] === hoyStr)
+      .map(ev => ({ id: ev.id, titulo: ev.title, fecha: ev.start }));
+
+    const agendadasItems = reunionesReales
+      .filter(ev => new Date(ev.start) > ahora)
+      .map(ev => ({ id: ev.id, titulo: ev.title, fecha: ev.start }));
+
+    const pasadasItems = reunionesReales
+      .filter(ev => new Date(ev.end || ev.start) < ahora)
+      .map(ev => ({ id: ev.id, titulo: ev.title, fecha: ev.start }));
+
+    const vencidasItems = tareasFiltradas
+      .filter(t => t.fecha_limite && t.fecha_limite < hoyStr && !isTareaCerrada(t.estado))
+      .map(t => ({ id: `tarea-${t.id}`, titulo: t.titulo, fecha: t.fecha_limite || '' }));
+
+    return {
+      hoy: [...tareasHoyItems, ...reunionesHoyItems],
+      agendadas: agendadasItems,
+      pasadas: pasadasItems,
+      vencidas: vencidasItems,
+    };
+  }, [tareasList, eventsList, selectedEmployeeFilter]);
+
+  const [expandedCategoria, setExpandedCategoria] = useState<'hoy' | 'agendadas' | 'pasadas' | 'vencidas' | null>(null);
+
   const handleEventClick = (clickInfo: EventClickArg) => {
     clickInfo.jsEvent.preventDefault();
     clickInfo.jsEvent.stopPropagation();
 
     const rect = clickInfo.el.getBoundingClientRect();
-    const foundEvent = eventsList.find(e => e.id === clickInfo.event.id);
+    const foundEvent = eventsList.find(e => String(e.id) === String(clickInfo.event.id));
 
     if (foundEvent) {
       setPopoverState({
@@ -173,34 +263,60 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
     }
   };
 
-  const handleEventChange = async (changeInfo: EventChangeArg) => {
-    const fcEvent = changeInfo.event;
-    const newStart = fcEvent.start ? fcEvent.start.toISOString() : null;
-    const newEnd = fcEvent.end 
-      ? fcEvent.end.toISOString() 
-      : (fcEvent.start ? new Date(fcEvent.start.getTime() + 30 * 60000).toISOString() : null);
+  const handleOpenCreateModal = (fechaDefault?: string, horaDefault?: string) => {
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
 
-    if (!newStart || !newEnd) return;
+    setFormData({
+      titulo: '',
+      proyecto_id: proyectosList[0]?.id || '',
+      empleado_id: soloEmpleadosList[0]?.id || '',
+      fecha: fechaDefault || `${yyyy}-${mm}-${dd}`,
+      hora_inicio: horaDefault || '10:00',
+      duracion_minutos: '30',
+      descripcion: '',
+    });
+    setIsCreating(true);
+  };
+
+  const handleCreateMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.titulo.trim() || !formData.fecha || !formData.hora_inicio) {
+      return alert('Por favor llena los campos requeridos.');
+    }
 
     try {
-      const { error } = await supabase
-        .from('reuniones')
-        .update({
-          fecha_inicio: newStart,
-          fecha_fin: newEnd,
-          estado: 'Ajuste por tiempo'
-        })
-        .eq('id', fcEvent.id);
+      setLoading(true);
 
-      if (error) {
-        changeInfo.revert();
-        throw error;
-      }
+      const startDateTime = new Date(`${formData.fecha}T${formData.hora_inicio}:00`);
+      const endDateTime = new Date(startDateTime.getTime() + parseInt(formData.duracion_minutos) * 60000);
 
+      const payload: any = {
+        titulo: formData.titulo.trim(),
+        proyecto_id: formData.proyecto_id || null,
+        empleado_id: formData.empleado_id || null,
+        descripcion: formData.descripcion.trim() || null,
+        fecha: formData.fecha,
+        hora: formData.hora_inicio,
+        fecha_inicio: startDateTime.toISOString(),
+        fecha_fin: endDateTime.toISOString(),
+        estado: 'Programada',
+      };
+
+      const { error } = await (supabase.from('reuniones') as any).insert([payload]);
+
+      if (error) throw error;
+
+      setIsCreating(false);
+      alert('✅ Sesión agendada con éxito.');
       await fetchCalendarData();
     } catch (err: any) {
-      console.error('Error moviendo reunión:', err);
-      alert('No se pudo mover la reunión: ' + (err.message || 'Error'));
+      console.error('Error creando reunión:', err);
+      alert('No se pudo crear la reunión: ' + (err.message || 'Error'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -217,7 +333,7 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
     const hh = String(startDate.getHours()).padStart(2, '0');
     const min = String(startDate.getMinutes()).padStart(2, '0');
 
-    setEditFormData({
+    setFormData({
       titulo: selectedEventDetails.title,
       proyecto_id: selectedEventDetails.proyecto_id || (proyectosList[0]?.id || ''),
       empleado_id: selectedEventDetails.empleado_id || (soloEmpleadosList[0]?.id || ''),
@@ -230,29 +346,135 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
     setIsEditing(true);
   };
 
+  // 📅⏰ CAMBIO RÁPIDO DE DÍA/HORA (sin abrir el modal completo ni depender del
+  // arrastre nativo, que resultó no ser confiable en este entorno). `nuevaFechaStr`
+  // y `nuevaHoraStr` son ambos opcionales: cada input del popover (fecha, hora) manda
+  // solo el que cambió, y el otro se conserva del evento actual.
+  const handleQuickChangeFechaHora = async (
+    event: MeetingEvent,
+    nuevaFechaStr?: string,
+    nuevaHoraStr?: string
+  ) => {
+    const startOriginal = new Date(event.start);
+    const endOriginal = new Date(event.end);
+    const duracionMs = Math.max(15 * 60000, endOriginal.getTime() - startOriginal.getTime());
+
+    const fechaActual = `${startOriginal.getFullYear()}-${String(startOriginal.getMonth() + 1).padStart(2, '0')}-${String(startOriginal.getDate()).padStart(2, '0')}`;
+    const horaActual = `${String(startOriginal.getHours()).padStart(2, '0')}:${String(startOriginal.getMinutes()).padStart(2, '0')}`;
+
+    const fecha = nuevaFechaStr || fechaActual;
+    const hora = nuevaHoraStr || horaActual;
+    if (!fecha || !hora) return;
+
+    const esMarcadorFechaLimite = event.estado === 'Fecha Límite';
+    const nuevoInicio = new Date(`${fecha}T${hora}:00`);
+    const nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
+
+    const isoInicio = nuevoInicio.toISOString();
+    const isoFin = nuevoFin.toISOString();
+
+    try {
+      setLoading(true);
+
+      const payload: any = {
+        fecha_inicio: isoInicio,
+        fecha_fin: isoFin,
+        fecha,
+        hora,
+      };
+      if (!esMarcadorFechaLimite) {
+        payload.estado = 'Ajuste por tiempo';
+      }
+
+      const { error } = await (supabase.from('reuniones') as any)
+        .update(payload)
+        .eq('id', event.id);
+
+      if (error) throw error;
+
+      if (esMarcadorFechaLimite && event.tareaId) {
+        const { error: tareaErr } = await (supabase.from('tareas') as any)
+          .update({ fecha_limite: fecha })
+          .eq('id', event.tareaId);
+
+        if (tareaErr) {
+          alert('Se movió el marcador, pero no se pudo actualizar la fecha límite de la tarea: ' + tareaErr.message);
+        } else {
+          setTareasList(prev => prev.map(t =>
+            t.id === event.tareaId ? { ...t, fecha_limite: fecha } : t
+          ));
+        }
+      }
+
+      const eventoActualizado = {
+        ...event,
+        start: isoInicio,
+        end: isoFin,
+        estado: esMarcadorFechaLimite ? 'Fecha Límite' : 'Ajuste por tiempo',
+        tareaDueDate: esMarcadorFechaLimite ? fecha : event.tareaDueDate,
+      };
+
+      setEventsList(prev => prev.map(ev => (ev.id === event.id ? eventoActualizado : ev)));
+      setPopoverState(prev => (prev.event?.id === event.id ? { ...prev, event: eventoActualizado } : prev));
+    } catch (err: any) {
+      alert('No se pudo cambiar la fecha/hora: ' + (err.message || 'Error de conexión'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEventDetails) return;
 
+    // 📅 Sustituto del arrastre nativo (que no dispara `eventChange` de forma
+    // confiable en este entorno): este formulario SÍ funciona porque es un submit
+    // normal, no depende del drag-and-drop del navegador/FullCalendar.
+    const esMarcadorFechaLimite = selectedEventDetails.estado === 'Fecha Límite';
+
     try {
       setLoading(true);
-      const startDateTime = new Date(`${editFormData.fecha}T${editFormData.hora_inicio}:00`);
-      const endDateTime = new Date(startDateTime.getTime() + parseInt(editFormData.duracion_minutos) * 60000);
+      const startDateTime = new Date(`${formData.fecha}T${formData.hora_inicio}:00`);
+      const endDateTime = new Date(startDateTime.getTime() + parseInt(formData.duracion_minutos) * 60000);
 
-      const { error } = await supabase
-        .from('reuniones')
-        .update({
-          titulo: editFormData.titulo.trim(),
-          proyecto_id: editFormData.proyecto_id,
-          empleado_id: editFormData.empleado_id,
-          descripcion: editFormData.descripcion.trim() || null,
-          fecha_inicio: startDateTime.toISOString(),
-          fecha_fin: endDateTime.toISOString(),
-          estado: 'Ajuste por tiempo',
-        })
+      const payload: any = {
+        titulo: formData.titulo.trim(),
+        proyecto_id: formData.proyecto_id,
+        empleado_id: formData.empleado_id || null,
+        descripcion: formData.descripcion.trim() || null,
+        fecha_inicio: startDateTime.toISOString(),
+        fecha_fin: endDateTime.toISOString(),
+        fecha: formData.fecha,
+        hora: formData.hora_inicio,
+      };
+
+      // Un marcador de Fecha Límite debe seguir siendo 'Fecha Límite' (no
+      // 'Ajuste por tiempo', que es el estado de las reuniones reales).
+      if (!esMarcadorFechaLimite) {
+        payload.estado = 'Ajuste por tiempo';
+      }
+
+      const { error } = await (supabase.from('reuniones') as any)
+        .update(payload)
         .eq('id', selectedEventDetails.id);
 
       if (error) throw error;
+
+      // La fecha_limite real de la tarea vinculada es la fuente de verdad que usa
+      // el resto de la app (historial, widget de Actividades, notificaciones).
+      if (esMarcadorFechaLimite && selectedEventDetails.tareaId) {
+        const { error: tareaErr } = await (supabase.from('tareas') as any)
+          .update({ fecha_limite: formData.fecha })
+          .eq('id', selectedEventDetails.tareaId);
+
+        if (tareaErr) {
+          alert('Se movió el marcador, pero no se pudo actualizar la fecha límite de la tarea: ' + tareaErr.message);
+        } else {
+          setTareasList(prev => prev.map(t =>
+            t.id === selectedEventDetails.tareaId ? { ...t, fecha_limite: formData.fecha } : t
+          ));
+        }
+      }
 
       setSelectedEventDetails(null);
       setIsEditing(false);
@@ -268,7 +490,7 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
     if (!confirm('¿Estás seguro de que deseas eliminar esta reunión?')) return;
     try {
       setLoading(true);
-      const { error } = await supabase.from('reuniones').delete().eq('id', id);
+      const { error } = await (supabase.from('reuniones') as any).delete().eq('id', id);
       if (error) throw error;
       setPopoverState({ visible: false, x: 0, y: 0, event: null });
       setSelectedEventDetails(null);
@@ -285,7 +507,6 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
       onClick={() => setPopoverState(prev => ({ ...prev, visible: false }))}
       className="flex-1 flex flex-col p-3 overflow-hidden h-full w-full min-w-0 select-none bg-[#f8fafc] relative gap-2"
     >
-      {/* BARRA SUPERIOR DE ACCIONES Y FILTROS */}
       <header className="flex flex-wrap justify-between items-center gap-2 shrink-0 bg-white border border-slate-200 rounded-lg p-2 shadow-2xs">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-800 tracking-tight">
@@ -294,17 +515,6 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <select
-            value={selectedEmployeeFilter}
-            onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
-            className="bg-white border border-slate-200 text-slate-700 text-xs font-medium py-1 px-2.5 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-          >
-            <option value="all">👥 Todo el equipo ({soloEmpleadosList.length})</option>
-            {soloEmpleadosList.map(emp => (
-              <option key={emp.id} value={emp.id}>{emp.nombre}</option>
-            ))}
-          </select>
-
           <select
             value={selectedProjectFilter}
             onChange={(e) => setSelectedProjectFilter(e.target.value)}
@@ -318,118 +528,336 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
         </div>
       </header>
 
-      {/* CONTENEDOR DEL CALENDARIO */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden relative p-2.5
+      <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0 overflow-y-auto lg:overflow-y-hidden lg:overflow-x-auto">
+        {/* Barra Lateral Izquierda */}
+        <div className="w-full lg:w-56 xl:w-64 lg:shrink-0 flex flex-col gap-2.5 lg:min-h-0 lg:overflow-y-auto pr-0.5">
+          <div className="bg-white border border-slate-200 rounded-lg shadow-2xs p-3 shrink-0">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-2.5">
+              Equipo
+            </span>
+
+            <div className="space-y-3 max-h-56 overflow-y-auto pr-0.5">
+              {([
+                { key: 'gerencia', label: 'Gerencia', acento: 'border-violet-400', texto: 'text-violet-600' },
+                { key: 'coordinador', label: 'Coordinadores', acento: 'border-sky-400', texto: 'text-sky-600' },
+                { key: 'trabajador', label: 'Trabajadores', acento: 'border-emerald-400', texto: 'text-emerald-600' },
+              ] as const).map(grupo => {
+                const miembros = empleadosPorNivel[grupo.key];
+                return (
+                  <div key={grupo.key}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className={`text-[9px] font-bold uppercase tracking-wide ${grupo.texto}`}>
+                        {grupo.label}
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-400 bg-slate-100 rounded-full px-1.5 py-0.5 shrink-0">
+                        {miembros.length}
+                      </span>
+                    </div>
+
+                    <div className={`space-y-1.5 border-l-2 ${grupo.acento} pl-2`}>
+                      {miembros.length === 0 ? (
+                        <p className="text-[10px] text-slate-300 italic">Sin integrantes</p>
+                      ) : (
+                        miembros.map(emp => (
+                          <div key={emp.id} className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: emp.color || '#0ea5e9' }}
+                            />
+                            <span className="text-[11px] font-medium text-slate-700 truncate">{emp.nombre}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {soloEmpleadosList.length === 0 && (
+              <p className="text-[10px] text-slate-400 mt-2">Sin empleados registrados.</p>
+            )}
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg shadow-2xs p-2.5 flex items-center gap-2 shrink-0">
+            <select
+              value={selectedEmployeeFilter}
+              onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
+              className="flex-1 min-w-0 bg-white border border-slate-200 text-slate-700 text-xs font-medium py-1.5 px-2 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+            >
+              <option value="all">Usuarios</option>
+              {soloEmpleadosList.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.nombre}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (calendarRef.current) calendarRef.current.getApi().today();
+              }}
+              title="Ir a hoy"
+              className="shrink-0 w-8 h-8 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              📅
+            </button>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg shadow-2xs divide-y divide-slate-100 overflow-hidden shrink-0">
+            {([
+              { key: 'hoy', label: 'Actividades Hoy', color: 'bg-sky-500', items: actividadesStats.hoy },
+              { key: 'agendadas', label: 'Actividades Agendadas', color: 'bg-slate-900', items: actividadesStats.agendadas },
+              { key: 'pasadas', label: 'Reuniones Pasadas', color: 'bg-slate-400', items: actividadesStats.pasadas },
+              { key: 'vencidas', label: 'Actividades Vencidas', color: 'bg-red-500', items: actividadesStats.vencidas },
+            ] as const).map(cat => {
+              const isOpen = expandedCategoria === cat.key;
+              return (
+                <div key={cat.key}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCategoria(isOpen ? null : cat.key)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{cat.label}</span>
+                    <span className="flex items-center gap-1.5 shrink-0">
+                      <span className={`w-6 h-6 rounded-full ${cat.color} text-white text-[11px] font-bold flex items-center justify-center`}>
+                        {cat.items.length}
+                      </span>
+                      <span className={`text-slate-400 text-[9px] transition-transform ${isOpen ? 'rotate-180' : ''}`}>▼</span>
+                    </span>
+                  </button>
+
+                  {isOpen && (
+                    <div className="bg-slate-50 px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
+                      {cat.items.length === 0 ? (
+                        <p className="text-[10px] text-slate-400 text-center py-1">Sin elementos.</p>
+                      ) : (
+                        cat.items.map(item => (
+                          <div key={item.id} className="text-[10px] text-slate-700 bg-white border border-slate-100 rounded px-2 py-1.5">
+                            <div className="font-semibold truncate">{item.titulo}</div>
+                            <div className="text-slate-400 font-mono">
+                              {item.fecha
+                                ? (item.fecha.length === 10
+                                    ? item.fecha.split('-').reverse().join('/')
+                                    : new Date(item.fecha).toLocaleDateString('es-ES'))
+                                : 'Sin fecha'}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* CONTENEDOR DEL CALENDARIO */}
+        <div className="flex-1 min-w-0 min-h-[500px] h-full bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden relative p-2.5 flex flex-col
+        [&_.fc]:!h-full [&_.fc-view-harness]:!h-full
         [&_.fc-theme-standard_td]:!border-slate-100
         [&_.fc-theme-standard_th]:!border-slate-100
         [&_.fc-theme-standard_.fc-scrollgrid]:!border-slate-200
         [&_.fc-col-header-cell]:!bg-white [&_.fc-col-header-cell]:!py-1.5
         [&_.fc-col-header-cell-cushion]:!text-slate-700 [&_.fc-col-header-cell-cushion]:!text-[11px] [&_.fc-col-header-cell-cushion]:!font-semibold
         [&_.fc-timegrid-slot-label-cushion]:!text-slate-500 [&_.fc-timegrid-slot-label-cushion]:!text-[10px] [&_.fc-timegrid-slot-label-cushion]:!font-normal
-        [&_.fc-timegrid-slot]:!h-9 [&_.fc-timegrid-slot-minor]:!border-none
+        [&_.fc-timegrid-slot]:!h-10 [&_.fc-timegrid-slot-minor]:!border-none
         [&_.fc-toolbar-title]:!text-xs [&_.fc-toolbar-title]:!font-bold [&_.fc-toolbar-title]:!text-slate-800
         [&_.fc-button-primary]:!bg-white [&_.fc-button-primary]:!text-slate-700 [&_.fc-button-primary]:!border-slate-200 [&_.fc-button-primary]:!text-[10px] [&_.fc-button-primary]:!font-semibold [&_.fc-button-primary]:!py-1 [&_.fc-button-primary]:!px-2.5 [&_.fc-button-primary]:hover:!bg-slate-50
         [&_.fc-button-active]:!bg-slate-900 [&_.fc-button-active]:!text-white [&_.fc-button-active]:!border-slate-900
         [&_.fc-daygrid-dot-event_.fc-event-title]:!text-slate-800
         [&_.fc-daygrid-day-number]:!text-slate-700 [&_.fc-daygrid-day-number]:!text-[10px]
-        [&_.fc-timegrid-event-harness]:!inset-y-0
-        [&_.fc-event]:!bg-transparent [&_.fc-event]:!border-none [&_.fc-event]:!shadow-none [&_.fc-event]:!p-0"
-      >
-        <FullCalendar
-          ref={calendarRef}
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
-          headerToolbar={{
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-          }}
-          locale="es"
-          editable={true}
-          eventDurationEditable={false}
-          allDaySlot={false}
-          hiddenDays={[0]}
-          slotMinTime="09:00:00"
-          slotMaxTime="18:00:00"
-          slotDuration="01:00:00"
-          slotLabelInterval="01:00:00"
-          slotLabelFormat={{
-            hour: 'numeric',
-            minute: '2-digit',
-            omitZeroMinute: false,
-            meridiem: false,
-            hour12: false
-          }}
-          dayHeaderFormat={{
-            weekday: 'long',
-            day: 'numeric',
-            omitCommas: true
-          }}
-          events={filteredEvents}
-          eventClick={handleEventClick}
-          eventChange={handleEventChange}
-          eventContent={(eventInfo) => {
-            const isCompleted = eventInfo.event.extendedProps.estado === 'Completada';
-            const isMonthView = eventInfo.view.type === 'dayGridMonth';
-            const badgeColor = isCompleted ? '#059669' : '#0284c7';
+        [&_.fc-timegrid-event-harness]:!overflow-visible
+        [&_.fc-timegrid-col-events]:!overflow-visible
+        [&_.fc-event]:!bg-transparent [&_.fc-event]:!border-none [&_.fc-event]:!shadow-none [&_.fc-event]:!p-0 [&_.fc-event]:!overflow-visible"
+        >
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            initialView="timeGridWeek"
+            height="100%"
+            expandRows={true}
+            stickyHeaderDates={true}
+            headerToolbar={{
+              left: 'prev,next today',
+              center: 'title',
+              right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            }}
+            locales={[esLocale]}
+            locale="es"
+            // Arrastrar eventos quedó deshabilitado: en este entorno el drag-and-drop
+            // nativo no disparaba `eventChange`/`eventDrop` de forma confiable (el
+            // evento se veía mover pero nunca llegaba a guardarse). Cambiar día/hora
+            // ahora se hace con los selectores del popover (📅⏰) o el botón "Editar".
+            editable={false}
+            selectable={true}
+            selectMirror={true}
+            dateClick={(info) => {
+              const clickedDate = info.dateStr.split('T')[0];
+              const clickedTime = info.dateStr.includes('T') ? info.dateStr.split('T')[1].substring(0, 5) : '10:00';
+              handleOpenCreateModal(clickedDate, clickedTime);
+            }}
+            allDaySlot={false}
+            hiddenDays={[0]}
+            slotMinTime="09:00:00"
+            slotMaxTime="18:00:00"
+            slotDuration="01:00:00"
+            slotLabelInterval="01:00:00"
+            slotLabelFormat={{
+              hour: 'numeric',
+              minute: '2-digit',
+              omitZeroMinute: false,
+              meridiem: false,
+              hour12: false
+            }}
+            dayHeaderFormat={{
+              weekday: 'long',
+              day: 'numeric',
+              omitCommas: true
+            }}
+            events={filteredEvents}
+            eventClick={handleEventClick}
+            eventContent={(eventInfo) => {
+              const estadoEv = eventInfo.event.extendedProps.estado;
+              const empleadoIdEv = eventInfo.event.extendedProps.empleado_id;
+              const esGrupalEv = eventInfo.event.extendedProps.esGrupal;
+              const isCompleted = estadoEv === 'Completada';
+              const isDeadline = estadoEv === 'Fecha Límite';
+              const isMonthView = eventInfo.view.type === 'dayGridMonth';
 
-            if (isMonthView) {
+              const badgeColor = isDeadline
+                ? '#dc2626'
+                : isCompleted
+                  ? '#059669'
+                  : esGrupalEv
+                    ? '#64748b'
+                    : (getColorEmpleado(empleadoIdEv) || '#0284c7');
+              const badgeIcon = isDeadline ? '⏳' : esGrupalEv ? '👥' : '1';
+
+              if (isMonthView) {
+                return (
+                  <div
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-2xs truncate hover:opacity-90 transition-opacity cursor-pointer"
+                    style={{ backgroundColor: badgeColor }}
+                  >
+                    <span className="pointer-events-none">{isDeadline ? '⏳' : esGrupalEv ? '👥' : '●'}</span>
+                    <span className="truncate pointer-events-none">{eventInfo.event.title}</span>
+                  </div>
+                );
+              }
+
               return (
-                <div 
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-2xs truncate cursor-pointer hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: badgeColor }}
-                >
-                  <span>●</span>
-                  <span className="truncate">{eventInfo.event.title}</span>
+                <div className="flex items-center justify-center h-full w-full py-1">
+                  <div
+                    className="w-6 h-6 min-w-[24px] min-h-[24px] rounded-full flex items-center justify-center text-white text-[11px] font-bold shadow-md hover:scale-115 active:scale-95 transition-transform shrink-0 cursor-pointer select-none"
+                    style={{ backgroundColor: badgeColor }}
+                    title={`${eventInfo.event.title} (click para ver detalles)`}
+                  >
+                    <span className="pointer-events-none">{badgeIcon}</span>
+                  </div>
                 </div>
               );
-            }
-
-            return (
-              <div className="flex items-center justify-center h-full w-full">
-                <div 
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-xs hover:scale-115 transition-transform cursor-pointer"
-                  style={{ backgroundColor: badgeColor }}
-                  title={eventInfo.event.title}
-                >
-                  1
-                </div>
-              </div>
-            );
-          }}
-        />
+            }}
+          />
+        </div>
       </div>
 
       {/* POPOVER / TOOLTIP FLOTANTE */}
       {popoverState.visible && popoverState.event && (
         <div 
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-50 bg-white border border-slate-200/90 rounded-xl shadow-xl w-80 animate-in fade-in zoom-in-95 duration-100"
+          className="fixed z-50 bg-white border border-slate-200/90 rounded-xl shadow-xl w-[calc(100vw-2rem)] max-w-80 animate-in fade-in zoom-in-95 duration-100"
           style={{
-            top: `${Math.min(popoverState.y, window.innerHeight - 220)}px`,
-            left: `${Math.min(popoverState.x, window.innerWidth - 340)}px`
+            top: `${Math.max(8, Math.min(popoverState.y, window.innerHeight - 220))}px`,
+            left: `${Math.max(8, Math.min(popoverState.x, window.innerWidth - 340))}px`
           }}
         >
           <div className="absolute -left-2 top-4 w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-r-8 border-r-white drop-shadow-xs"></div>
 
           <div className="text-center py-2 px-3 border-b border-slate-100 bg-slate-50/50 rounded-t-xl">
-            <span className="text-xs font-bold text-sky-500">
-              Reunión / Llamada: 1
+            <span className={`text-xs font-bold ${popoverState.event.estado === 'Fecha Límite' ? 'text-red-500' : 'text-sky-500'}`}>
+              {popoverState.event.estado === 'Fecha Límite' ? '⏳ Fecha Límite de Tarea' : 'Reunión / Llamada: 1'}
             </span>
           </div>
 
           <div className="p-3 space-y-2">
             <div className="flex items-start gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-100">
-              <span className="bg-sky-400 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">
-                {new Date(popoverState.event.start).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+              <span className={`text-white text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${popoverState.event.estado === 'Fecha Límite' ? 'bg-red-500' : 'bg-sky-400'}`}>
+                {popoverState.event.estado === 'Fecha Límite'
+                  ? new Date(popoverState.event.start).toLocaleDateString('es-ES')
+                  : new Date(popoverState.event.start).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
               </span>
               <div className="min-w-0 flex-1">
                 <span className="text-xs font-bold text-slate-800 line-clamp-2">
                   {popoverState.event.title}
                 </span>
-                <span className="block text-[10px] text-slate-500 truncate mt-0.5">
-                  👤 {popoverState.event.empleado_nombre} • 📁 {popoverState.event.proyecto_nombre}
+                {popoverState.event.estado !== 'Fecha Límite' && (
+                  <span className="block text-[9px] text-slate-400 mt-1">
+                    🏢 Convoca: Administración
+                  </span>
+                )}
+                <span className="flex items-center gap-1 mt-1 flex-wrap">
+                  {popoverState.event.estado !== 'Fecha Límite' && (
+                    <span className="text-[9px] text-slate-400 shrink-0">Dirigida a:</span>
+                  )}
+                  {popoverState.event.esGrupal ? (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-dashed border-slate-400 text-slate-600 bg-slate-50">
+                      <span>👥</span>
+                      <span>General · Todo el equipo</span>
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-white max-w-full"
+                      style={{
+                        color: getColorEmpleado(popoverState.event.empleado_id),
+                        borderColor: getColorEmpleado(popoverState.event.empleado_id),
+                      }}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: getColorEmpleado(popoverState.event.empleado_id) }}
+                      />
+                      <span className="truncate">{popoverState.event.empleado_nombre}</span>
+                    </span>
+                  )}
+                  <span className="text-[9px] text-slate-500 truncate">📁 {popoverState.event.proyecto_nombre}</span>
                 </span>
+                {popoverState.event.tareaDueDate && popoverState.event.estado !== 'Fecha Límite' && (
+                  <span className="block text-[10px] text-amber-700 font-bold mt-0.5">
+                    ⏳ Límite: {formatFechaLimite(popoverState.event.tareaDueDate)}
+                  </span>
+                )}
+                {(() => {
+                  const s = new Date(popoverState.event.start);
+                  const valorFecha = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`;
+                  const valorHora = `${String(s.getHours()).padStart(2, '0')}:${String(s.getMinutes()).padStart(2, '0')}`;
+                  return (
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <label className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold">
+                        <span>📅</span>
+                        <input
+                          type="date"
+                          defaultValue={valorFecha}
+                          disabled={loading}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => handleQuickChangeFechaHora(popoverState.event!, e.target.value, undefined)}
+                          className="border border-slate-300 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-800 outline-none focus:ring-1 focus:ring-red-400 cursor-pointer disabled:opacity-50"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold">
+                        <span>⏰</span>
+                        <input
+                          type="time"
+                          defaultValue={valorHora}
+                          disabled={loading}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => handleQuickChangeFechaHora(popoverState.event!, undefined, e.target.value)}
+                          className="border border-slate-300 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-800 outline-none focus:ring-1 focus:ring-red-400 cursor-pointer disabled:opacity-50"
+                        />
+                      </label>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -461,7 +889,115 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
         </div>
       )}
 
-      {/* MODAL DETALLES / EDICIÓN COMPLETA */}
+      {/* MODAL CREAR NUEVA SESIÓN */}
+      {isCreating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <span className="text-xs font-bold text-slate-800">
+                ➕ Agendar Nueva Sesión / Revisión
+              </span>
+              <button onClick={() => setIsCreating(false)} className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateMeeting} className="p-4 space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Título de la Sesión</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Revisión Sprint 1"
+                  value={formData.titulo}
+                  onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Proyecto</label>
+                  <select
+                    value={formData.proyecto_id}
+                    onChange={(e) => setFormData({ ...formData, proyecto_id: e.target.value })}
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                  >
+                    {proyectosList.map(p => (
+                      <option key={p.id} value={p.id}>{p.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Empleado</label>
+                  <select
+                    value={formData.empleado_id}
+                    onChange={(e) => setFormData({ ...formData, empleado_id: e.target.value })}
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                  >
+                    <option value="">General · Todo el equipo</option>
+                    {soloEmpleadosList.map(e => (
+                      <option key={e.id} value={e.id}>{e.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Fecha</label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.fecha}
+                    onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora Inicio</label>
+                  <input
+                    type="time"
+                    required
+                    value={formData.hora_inicio}
+                    onChange={(e) => setFormData({ ...formData, hora_inicio: e.target.value })}
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Duración</label>
+                  <select
+                    value={formData.duracion_minutos}
+                    onChange={(e) => setFormData({ ...formData, duracion_minutos: e.target.value })}
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                  >
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">1 hora</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Descripción / Notas</label>
+                <textarea
+                  rows={2}
+                  placeholder="Temas a revisar..."
+                  value={formData.descripcion}
+                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setIsCreating(false)} className="px-3 py-1 border rounded text-xs cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={loading} className="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded text-xs cursor-pointer">Guardar Sesión</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLES / EDICIÓN EXISTENTE */}
       {selectedEventDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden">
@@ -479,8 +1015,8 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
                   <input
                     type="text"
                     required
-                    value={editFormData.titulo}
-                    onChange={(e) => setEditFormData({ ...editFormData, titulo: e.target.value })}
+                    value={formData.titulo}
+                    onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs font-bold"
                   />
                 </div>
@@ -488,9 +1024,9 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Proyecto</label>
                     <select
-                      value={editFormData.proyecto_id}
-                      onChange={(e) => setEditFormData({ ...editFormData, proyecto_id: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs"
+                      value={formData.proyecto_id}
+                      onChange={(e) => setFormData({ ...formData, proyecto_id: e.target.value })}
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                     >
                       {proyectosList.map(p => (
                         <option key={p.id} value={p.id}>{p.nombre}</option>
@@ -500,10 +1036,11 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Empleado</label>
                     <select
-                      value={editFormData.empleado_id}
-                      onChange={(e) => setEditFormData({ ...editFormData, empleado_id: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs"
+                      value={formData.empleado_id}
+                      onChange={(e) => setFormData({ ...formData, empleado_id: e.target.value })}
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                     >
+                      <option value="">General · Todo el equipo</option>
                       {soloEmpleadosList.map(e => (
                         <option key={e.id} value={e.id}>{e.nombre}</option>
                       ))}
@@ -516,8 +1053,8 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Fecha</label>
                     <input
                       type="date"
-                      value={editFormData.fecha}
-                      onChange={(e) => setEditFormData({ ...editFormData, fecha: e.target.value })}
+                      value={formData.fecha}
+                      onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
                       className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                     />
                   </div>
@@ -525,16 +1062,16 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora</label>
                     <input
                       type="time"
-                      value={editFormData.hora_inicio}
-                      onChange={(e) => setEditFormData({ ...editFormData, hora_inicio: e.target.value })}
+                      value={formData.hora_inicio}
+                      onChange={(e) => setFormData({ ...formData, hora_inicio: e.target.value })}
                       className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Duración</label>
                     <select
-                      value={editFormData.duracion_minutos}
-                      onChange={(e) => setEditFormData({ ...editFormData, duracion_minutos: e.target.value })}
+                      value={formData.duracion_minutos}
+                      onChange={(e) => setFormData({ ...formData, duracion_minutos: e.target.value })}
                       className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                     >
                       <option value="15">15 min</option>
@@ -559,9 +1096,39 @@ export default function CalendarioRevisiones({ refreshTrigger }: { refreshTrigge
                   </span>
                 </div>
 
-                <div className="bg-slate-50 p-2.5 rounded text-xs space-y-1">
+                <div className="bg-slate-50 p-2.5 rounded text-black space-y-1">
                   <p>📁 <strong>Proyecto:</strong> {selectedEventDetails.proyecto_nombre}</p>
-                  <p>👤 <strong>Integrante:</strong> {selectedEventDetails.empleado_nombre}</p>
+
+                  {selectedEventDetails.estado !== 'Fecha Límite' && (
+                    <p>🏢 <strong>Convoca:</strong> Administración</p>
+                  )}
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <strong>{selectedEventDetails.estado === 'Fecha Límite' ? 'Convocado:' : 'Dirigida a:'}</strong>
+                    {selectedEventDetails.esGrupal ? (
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border border-dashed border-slate-400 text-slate-600 bg-white">
+                        <span>👥</span>
+                        <span>General · Todo el equipo</span>
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border bg-white"
+                        style={{
+                          color: getColorEmpleado(selectedEventDetails.empleado_id),
+                          borderColor: getColorEmpleado(selectedEventDetails.empleado_id),
+                        }}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: getColorEmpleado(selectedEventDetails.empleado_id) }}
+                        />
+                        <span>{selectedEventDetails.empleado_nombre}</span>
+                      </span>
+                    )}
+                  </div>
+                  {selectedEventDetails.tareaDueDate && selectedEventDetails.estado !== 'Fecha Límite' && (
+                    <p className="text-amber-700 font-bold">⏳ <strong>Fecha límite de la tarea:</strong> {formatFechaLimite(selectedEventDetails.tareaDueDate)}</p>
+                  )}
                   {selectedEventDetails.descripcion && <p className="pt-1 text-slate-600">📝 {selectedEventDetails.descripcion}</p>}
                 </div>
 

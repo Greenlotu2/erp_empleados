@@ -3,15 +3,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
 import TaskCard from '../components/Taskcard';
-import { createClient } from '@supabase/supabase-js';
-
-// Cliente de Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = 
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { formatFechaLimite } from '../lib/dates';
+import { supabase } from '../lib/supabaseClient';
 
 // 🛠️ Funciones para dar formato a fecha y hora
 const formatDate = (dateString?: string | null) => {
@@ -96,6 +89,7 @@ interface Employee {
   name: string;
   email: string;
   role: string;
+  nivel?: string;
   especialidad?: string;
   currentTask: string;
   currentProject: string;
@@ -115,7 +109,9 @@ interface PluginNotification {
   id: string;
   employeeId?: string;
   employeeName: string;
+  taskId?: string;
   taskTitle: string;
+  taskDueDate?: string | null;
   projectId?: string;
   projectName: string;
   duration?: string;
@@ -192,6 +188,7 @@ export default function AdminDashboard() {
     password: string;
     rol: string;
     customRol: string;
+    nivel: string;
     especialidad: string;
     disponibilidad: string;
     horasTotalesObjetivo: string;
@@ -204,6 +201,7 @@ export default function AdminDashboard() {
     password: '',
     rol: 'Practicante',
     customRol: '',
+    nivel: 'Trabajador',
     especialidad: '',
     disponibilidad: 'Disponible',
     horasTotalesObjetivo: '480',
@@ -230,6 +228,7 @@ export default function AdminDashboard() {
     nombre: '',
     correo: '',
     rol: 'Practicante',
+    nivel: 'Trabajador',
     especialidad: '',
     disponibilidad: 'Disponible',
     horasTotalesObjetivo: '480',
@@ -341,6 +340,7 @@ export default function AdminDashboard() {
             name: emp.nombre || 'Integrante sin nombre',
             email: emp.username || 'correo@empresa.com',
             role: emp.rol || 'Practicante',
+            nivel: emp.nivel || 'Trabajador',
             especialidad: emp.especialidad || 'General',
             currentTask: activeTask ? activeTask.titulo : 'Sin tareas asignadas aún',
             currentProject: activeProj?.nombre || 'Sin Proyecto',
@@ -383,7 +383,7 @@ export default function AdminDashboard() {
         }
       }
 
-      // C) Consultar Notificaciones
+      // C) Consultar Notificaciones (incluye la fecha límite de la tarea vinculada)
       const { data: notifData, error: notifErr } = await supabase
         .from('notificaciones')
         .select(`
@@ -393,8 +393,10 @@ export default function AdminDashboard() {
           created_at,
           empleado_id,
           proyecto_id,
+          tarea_id,
           empleados (nombre),
-          proyectos (nombre)
+          proyectos (nombre),
+          tareas (fecha_limite)
         `)
         .eq('estado', 'Pendiente')
         .order('created_at', { ascending: false });
@@ -404,7 +406,9 @@ export default function AdminDashboard() {
           id: n.id,
           employeeId: n.empleado_id,
           employeeName: n.empleados?.nombre || 'Integrante',
+          taskId: n.tarea_id != null ? String(n.tarea_id) : undefined,
           taskTitle: n.titulo_tarea || 'Revisión de código',
+          taskDueDate: n.tareas?.fecha_limite || null,
           projectId: n.proyecto_id,
           projectName: n.proyectos?.nombre || 'Proyecto General',
           timestamp: formatDateTime(n.created_at),
@@ -438,6 +442,38 @@ export default function AdminDashboard() {
       await fetchDashboardData();
     } catch (err: any) {
       console.error('Error resolviendo notificación:', err);
+    }
+  };
+
+  // ⏱️ EXTENDER FECHA LÍMITE. Esta plataforma web es exclusiva para Administradores
+  // (ver login/page.tsx) — no hay un flujo de "empleado solicita, admin aprueba" aquí,
+  // el admin tiene autoridad directa sobre la tarea que está viendo, así que el botón
+  // actualiza la fecha límite de una vez en vez de generar una solicitud pendiente.
+  const handleExtendDeadline = async (taskId: string | number, taskTitle: string, currentDueDate?: string) => {
+    const nuevaFecha = window.prompt(
+      `Nueva fecha límite para "${taskTitle}"${currentDueDate ? ` (actual: ${currentDueDate})` : ''}.\nFormato: AAAA-MM-DD`,
+      ''
+    );
+    if (!nuevaFecha) return;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nuevaFecha) || isNaN(new Date(nuevaFecha).getTime())) {
+      alert('Fecha inválida. Usa el formato AAAA-MM-DD, por ejemplo 2026-09-15.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('tareas')
+        .update({ fecha_limite: nuevaFecha })
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      alert(`✅ Fecha límite actualizada al ${nuevaFecha}.`);
+      await fetchDashboardData();
+    } catch (err: any) {
+      console.error('Error extendiendo fecha límite:', err);
+      alert('No se pudo actualizar la fecha límite: ' + (err.message || 'Error de conexión'));
     }
   };
 
@@ -577,7 +613,11 @@ export default function AdminDashboard() {
         colaboradores_ids: selectedCollaboratorIds.length > 0 ? selectedCollaboratorIds : null,
       };
 
-      const { error } = await supabase.from('tareas').insert(taskPayload);
+      const { data: nuevaTarea, error } = await supabase
+        .from('tareas')
+        .insert(taskPayload)
+        .select('id')
+        .single();
 
       if (error) throw error;
 
@@ -585,6 +625,42 @@ export default function AdminDashboard() {
         .from('empleados')
         .update({ disponibilidad: false })
         .eq('id', selectedEmployee.id);
+
+      // 📅 Si la tarea tiene fecha límite, se manda automáticamente al calendario
+      // como un evento de "Fecha Límite" (distinto de una reunión agendada por revisión).
+      if (newTaskDueDate && nuevaTarea?.id) {
+        // Ojo: construir el Date así (sin offset) hace que JS lo interprete en hora LOCAL
+        // del navegador; luego toISOString() lo convierte a UTC correctamente antes de
+        // guardarlo. Mandar el string "YYYY-MM-DDT09:00:00" directo a Supabase lo guarda
+        // como si 09:00 fuera UTC, y en zonas horarias negativas el evento cae de madrugada,
+        // fuera del rango visible (09:00–18:00) del calendario.
+        // Duración de 1 hora completa (igual que una reunión normal) para que el
+        // ícono circular del evento no quede más alto que su propia casilla en el
+        // calendario y se recorte contra el borde de la cuadrícula.
+        const dtInicioLimite = new Date(`${newTaskDueDate}T09:00:00`);
+        const dtFinLimite = new Date(`${newTaskDueDate}T10:00:00`);
+
+        const { error: calErr } = await supabase.from('reuniones').insert({
+          // Título limpio (solo el nombre de la tarea): el ícono ⏳ y la etiqueta "Fecha
+          // Límite" ya se muestran aparte en la UI (badge, encabezado del popover, etc.)
+          // según `estado`, así que no hace falta — ni conviene — hornearlos en el texto.
+          titulo: newTaskTitle.trim(),
+          descripcion: `[Fecha Límite Automática] Vence la tarea "${newTaskTitle.trim()}"`,
+          fecha_inicio: dtInicioLimite.toISOString(),
+          fecha_fin: dtFinLimite.toISOString(),
+          fecha: newTaskDueDate,
+          hora: '09:00 AM',
+          estado: 'Fecha Límite',
+          empleado_id: selectedEmployee.id,
+          proyecto_id: targetProjectId,
+          tarea_id: nuevaTarea.id,
+        });
+
+        if (calErr) {
+          console.error('No se pudo crear el evento de fecha límite en el calendario:', calErr);
+          alert(`⚠️ La tarea se asignó, pero no se pudo agregar al calendario: ${calErr.message}`);
+        }
+      }
 
       setNewTaskTitle('');
       setNewTaskDescription('');
@@ -625,6 +701,7 @@ export default function AdminDashboard() {
           password: cleanPassword,
           nombre: newEmployeeData.nombre.trim(),
           rol: finalRol,
+          nivel: newEmployeeData.nivel,
           especialidad: newEmployeeData.especialidad.trim(),
           disponibilidad: newEmployeeData.disponibilidad,
           horasTotalesObjetivo: newEmployeeData.horasTotalesObjetivo,
@@ -693,6 +770,7 @@ export default function AdminDashboard() {
         password: '',
         rol: 'Practicante',
         customRol: '',
+        nivel: 'Trabajador',
         especialidad: '',
         disponibilidad: 'Disponible',
         horasTotalesObjetivo: '480',
@@ -778,6 +856,7 @@ export default function AdminDashboard() {
       nombre: selectedEmployee.name,
       correo: selectedEmployee.email,
       rol: selectedEmployee.role,
+      nivel: selectedEmployee.nivel || 'Trabajador',
       especialidad: selectedEmployee.especialidad || '',
       disponibilidad: selectedEmployee.status,
       horasTotalesObjetivo: String(selectedEmployee.horasTotalesObjetivo || 480),
@@ -801,6 +880,7 @@ export default function AdminDashboard() {
           nombre: editFormData.nombre,
           username: editFormData.correo,
           rol: editFormData.rol,
+          nivel: editFormData.nivel,
           especialidad: editFormData.especialidad,
           disponibilidad: editFormData.disponibilidad === 'Disponible',
           color: editFormData.color,
@@ -944,10 +1024,17 @@ export default function AdminDashboard() {
                           </p>
 
                           <div className="flex items-center justify-between pt-1 flex-wrap gap-1">
-                            <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                              📁 {notif.projectName}
-                            </span>
-                            
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                📁 {notif.projectName}
+                              </span>
+                              {notif.taskDueDate && (
+                                <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
+                                  ⏳ Límite: {formatFechaLimite(notif.taskDueDate)}
+                                </span>
+                              )}
+                            </div>
+
                             <div className="flex gap-1 w-full justify-end mt-1">
                               {/* 🎯 Redirección a /admin/revisiones y auto-aprobación de la notificación */}
                               <button
@@ -959,6 +1046,8 @@ export default function AdminDashboard() {
                                     titulo: notif.taskTitle || '',
                                     empleadoId: notif.employeeId || '',
                                     proyectoId: notif.projectId || '',
+                                    taskId: notif.taskId || '',
+                                    taskDueDate: notif.taskDueDate || '',
                                   });
                                   window.location.href = `/admin/revisiones?${queryParams.toString()}`;
                                 }}
@@ -1320,12 +1409,12 @@ export default function AdminDashboard() {
                                 titulo: task.title || '',
                                 empleadoId: selectedEmployee.id || '',
                                 proyectoId: task.projectId || '',
+                                taskId: task.id != null ? String(task.id) : '',
+                                taskDueDate: task.dueDate || '',
                               });
                               window.location.href = `/admin/revisiones?${queryParams.toString()}`;
                             }}
-                            onRequestExtension={() => {
-                              alert(`Se enviará una solicitud de prórroga para la tarea "${task.title}".`);
-                            }}
+                            onRequestExtension={() => handleExtendDeadline(task.id, task.title, task.dueDate)}
                           />
                         ))
                       )}
@@ -1469,6 +1558,20 @@ export default function AdminDashboard() {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Nivel Jerárquico
+                </label>
+                <select value={newEmployeeData.nivel} onChange={(e) => setNewEmployeeData({ ...newEmployeeData, nivel: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none">
+                  <option value="Gerencia">🧭 Gerencia</option>
+                  <option value="Coordinador">🧩 Coordinador</option>
+                  <option value="Trabajador">🛠️ Trabajador</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Agrupa al integrante en el panel "Equipo" del calendario de revisiones.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                   Color Identificador de Perfil
                 </label>
                 <div className="flex items-center gap-2.5 bg-slate-50 p-2.5 border border-slate-200 rounded-xl">
@@ -1595,6 +1698,15 @@ export default function AdminDashboard() {
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Especialidad</label>
                   <input type="text" value={editFormData.especialidad} onChange={(e) => setEditFormData({ ...editFormData, especialidad: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none" />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Nivel Jerárquico</label>
+                <select value={editFormData.nivel} onChange={(e) => setEditFormData({ ...editFormData, nivel: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none">
+                  <option value="Gerencia">🧭 Gerencia</option>
+                  <option value="Coordinador">🧩 Coordinador</option>
+                  <option value="Trabajador">🛠️ Trabajador</option>
+                </select>
               </div>
 
               <div>
