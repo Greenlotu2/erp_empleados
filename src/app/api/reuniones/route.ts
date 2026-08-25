@@ -39,6 +39,10 @@ export async function GET(req: NextRequest) {
         proyectos (nombre)
       `)
       .or(`empleado_id.eq.${employeeId},empleado_id.is.null`)
+      // Los marcadores automáticos de "Fecha Límite" (creados al asignar una tarea con
+      // fecha límite) no son reuniones reales a las que el empleado deba unirse — ya ve
+      // esa fecha en su pestaña de Tareas, así que se excluyen de este listado.
+      .neq('estado', 'Fecha Límite')
       .order('fecha_inicio', { ascending: true });
 
     if (error) {

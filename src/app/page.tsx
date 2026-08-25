@@ -5,6 +5,11 @@ import Sidebar from '../components/Sidebar';
 import TaskCard from '../components/Taskcard';
 import { formatFechaLimite } from '../lib/dates';
 import { supabase } from '../lib/supabaseClient';
+import { getCurrentAdminId } from '../lib/currentAdmin';
+
+// Áreas del organigrama (bajo cada Coordinador) — usadas para agrupar a los
+// Trabajadores en el panel "Equipo" del calendario de revisiones.
+const AREAS = ['Administrativo y RRHH', 'Proyectos y Obra', 'TICs', 'Financiero-Contable'];
 
 // 🛠️ Funciones para dar formato a fecha y hora
 const formatDate = (dateString?: string | null) => {
@@ -90,6 +95,7 @@ interface Employee {
   email: string;
   role: string;
   nivel?: string;
+  area?: string | null;
   especialidad?: string;
   currentTask: string;
   currentProject: string;
@@ -141,7 +147,8 @@ export default function AdminDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [teamFilter, setTeamFilter] = useState<'todos' | 'trabajadores' | 'estudiantes'>('todos');
-  const [activeTab, setActiveTab] = useState<'actividad' | 'documentos' | 'contrato'>('actividad');
+  const [teamProjectFilter, setTeamProjectFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'actividad' | 'documentos' | 'contrato' | 'recompensas'>('actividad');
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -157,30 +164,22 @@ export default function AdminDashboard() {
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'Baja' | 'Media' | 'Alta' | 'Urgente'>('Media');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
-  const [newTaskAssignedBy, setNewTaskAssignedBy] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [dependsOnTaskId, setDependsOnTaskId] = useState<string>('none');
-  
+
   // 🤝 SELECCIÓN MÚLTIPLE DE COLABORADORES
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<string[]>([]);
 
   const [nuevoDocNombre, setNuevoDocNombre] = useState('');
   const [nuevoDocObligatorio, setNuevoDocObligatorio] = useState(true);
 
-  // 🔑 LISTA DE ADMINISTRADORES REGISTRADOS
-  const adminList = useMemo(() => {
-    return employees.filter(emp => {
-      const r = emp.role.toLowerCase();
-      return r === 'administrador' || r === 'admin';
-    });
-  }, [employees]);
+  // 🔑 ID del administrador con sesión iniciada (quien asigna la tarea). Ya no se
+  // pregunta por selector: siempre es quien está usando el panel en ese momento.
+  const [currentAdminId, setCurrentAdminId] = useState<string>('');
 
-  // Asigna automáticamente el primer admin como emisor por defecto
   useEffect(() => {
-    if (adminList.length > 0 && !newTaskAssignedBy) {
-      setNewTaskAssignedBy(adminList[0].id);
-    }
-  }, [adminList, newTaskAssignedBy]);
+    getCurrentAdminId().then(id => { if (id) setCurrentAdminId(id); });
+  }, []);
 
   const [newEmployeeData, setNewEmployeeData] = useState<{
     nombre: string;
@@ -189,6 +188,7 @@ export default function AdminDashboard() {
     rol: string;
     customRol: string;
     nivel: string;
+    area: string;
     especialidad: string;
     disponibilidad: string;
     horasTotalesObjetivo: string;
@@ -202,6 +202,7 @@ export default function AdminDashboard() {
     rol: 'Practicante',
     customRol: '',
     nivel: 'Trabajador',
+    area: '',
     especialidad: '',
     disponibilidad: 'Disponible',
     horasTotalesObjetivo: '480',
@@ -229,6 +230,7 @@ export default function AdminDashboard() {
     correo: '',
     rol: 'Practicante',
     nivel: 'Trabajador',
+    area: '',
     especialidad: '',
     disponibilidad: 'Disponible',
     horasTotalesObjetivo: '480',
@@ -323,7 +325,7 @@ export default function AdminDashboard() {
               progressPercent: t.porcentaje_avance ?? (normalizedStatus === 'Completada' ? 100 : 0),
               date: formatDate(t.fecha_asignada),
               dueDate: formatDate(t.fecha_limite),
-              assignedByName: 'Administrador',
+              assignedByName: empleadosData.find((e: any) => e.id === t.asignada_por)?.nombre || 'Administrador',
               isCritical: Boolean(t.es_critica),
               slackDays: t.holgura_dias ?? 0,
               dependsOnTaskId: t.depende_de_tarea_id,
@@ -341,6 +343,7 @@ export default function AdminDashboard() {
             email: emp.username || 'correo@empresa.com',
             role: emp.rol || 'Practicante',
             nivel: emp.nivel || 'Trabajador',
+            area: emp.area || null,
             especialidad: emp.especialidad || 'General',
             currentTask: activeTask ? activeTask.titulo : 'Sin tareas asignadas aún',
             currentProject: activeProj?.nombre || 'Sin Proyecto',
@@ -478,13 +481,18 @@ export default function AdminDashboard() {
   };
 
   const filteredEmployees = useMemo(() => {
+    const proyectoNombre = teamProjectFilter === 'all'
+      ? null
+      : dbProjects.find(p => p.id === teamProjectFilter)?.nombre;
+
     return employees.filter(emp => {
       const esEstudiante = emp.role === 'Practicante' || emp.role === 'Servicio Social';
-      if (teamFilter === 'trabajadores') return !esEstudiante;
-      if (teamFilter === 'estudiantes') return esEstudiante;
+      if (teamFilter === 'trabajadores' && esEstudiante) return false;
+      if (teamFilter === 'estudiantes' && !esEstudiante) return false;
+      if (proyectoNombre && emp.currentProject !== proyectoNombre) return false;
       return true;
     });
-  }, [employees, teamFilter]);
+  }, [employees, teamFilter, teamProjectFilter, dbProjects]);
 
   const totalEmployees = employees.length;
   const activeNow = employees.filter(e => e.status === 'Ocupado').length;
@@ -597,7 +605,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      const assignedByAdminId = newTaskAssignedBy || (adminList[0]?.id ?? selectedEmployee.id);
+      const assignedByAdminId = currentAdminId || selectedEmployee.id;
 
       const taskPayload: any = {
         empleado_id: selectedEmployee.id,
@@ -640,25 +648,37 @@ export default function AdminDashboard() {
         const dtInicioLimite = new Date(`${newTaskDueDate}T09:00:00`);
         const dtFinLimite = new Date(`${newTaskDueDate}T10:00:00`);
 
-        const { error: calErr } = await supabase.from('reuniones').insert({
-          // Título limpio (solo el nombre de la tarea): el ícono ⏳ y la etiqueta "Fecha
-          // Límite" ya se muestran aparte en la UI (badge, encabezado del popover, etc.)
-          // según `estado`, así que no hace falta — ni conviene — hornearlos en el texto.
-          titulo: newTaskTitle.trim(),
-          descripcion: `[Fecha Límite Automática] Vence la tarea "${newTaskTitle.trim()}"`,
-          fecha_inicio: dtInicioLimite.toISOString(),
-          fecha_fin: dtFinLimite.toISOString(),
-          fecha: newTaskDueDate,
-          hora: '09:00 AM',
-          estado: 'Fecha Límite',
-          empleado_id: selectedEmployee.id,
-          proyecto_id: targetProjectId,
-          tarea_id: nuevaTarea.id,
-        });
+        const { data: nuevaReunion, error: calErr } = await supabase
+          .from('reuniones')
+          .insert({
+            // Título limpio (solo el nombre de la tarea): el ícono ⏳ y la etiqueta "Fecha
+            // Límite" ya se muestran aparte en la UI (badge, encabezado del popover, etc.)
+            // según `estado`, así que no hace falta — ni conviene — hornearlos en el texto.
+            titulo: newTaskTitle.trim(),
+            // Sin descripción: el título, el ícono ⏳ y la etiqueta "Fecha Límite" ya
+            // dejan claro de qué se trata — repetirlo en una descripción es redundante.
+            descripcion: null,
+            fecha_inicio: dtInicioLimite.toISOString(),
+            fecha_fin: dtFinLimite.toISOString(),
+            fecha: newTaskDueDate,
+            hora: '09:00 AM',
+            estado: 'Fecha Límite',
+            empleado_id: selectedEmployee.id,
+            proyecto_id: targetProjectId,
+            tarea_id: nuevaTarea.id,
+            creado_por: currentAdminId || null,
+          })
+          .select('id')
+          .single();
 
         if (calErr) {
           console.error('No se pudo crear el evento de fecha límite en el calendario:', calErr);
           alert(`⚠️ La tarea se asignó, pero no se pudo agregar al calendario: ${calErr.message}`);
+        } else if (nuevaReunion?.id) {
+          // 📅 Con fecha límite sí hay algo que mostrar en el calendario: mandamos ahí
+          // directo, con el evento recién creado ya seleccionado/marcado.
+          window.location.href = `/admin/revisiones?highlightEventId=${nuevaReunion.id}`;
+          return;
         }
       }
 
@@ -666,7 +686,6 @@ export default function AdminDashboard() {
       setNewTaskDescription('');
       setNewTaskPriority('Media');
       setNewTaskDueDate('');
-      setNewTaskAssignedBy(adminList[0]?.id || '');
       setDependsOnTaskId('none');
       setSelectedCollaboratorIds([]);
       setIsAssignModalOpen(false);
@@ -702,6 +721,7 @@ export default function AdminDashboard() {
           nombre: newEmployeeData.nombre.trim(),
           rol: finalRol,
           nivel: newEmployeeData.nivel,
+          area: newEmployeeData.area || null,
           especialidad: newEmployeeData.especialidad.trim(),
           disponibilidad: newEmployeeData.disponibilidad,
           horasTotalesObjetivo: newEmployeeData.horasTotalesObjetivo,
@@ -771,6 +791,7 @@ export default function AdminDashboard() {
         rol: 'Practicante',
         customRol: '',
         nivel: 'Trabajador',
+        area: '',
         especialidad: '',
         disponibilidad: 'Disponible',
         horasTotalesObjetivo: '480',
@@ -857,6 +878,7 @@ export default function AdminDashboard() {
       correo: selectedEmployee.email,
       rol: selectedEmployee.role,
       nivel: selectedEmployee.nivel || 'Trabajador',
+      area: selectedEmployee.area || '',
       especialidad: selectedEmployee.especialidad || '',
       disponibilidad: selectedEmployee.status,
       horasTotalesObjetivo: String(selectedEmployee.horasTotalesObjetivo || 480),
@@ -881,6 +903,7 @@ export default function AdminDashboard() {
           username: editFormData.correo,
           rol: editFormData.rol,
           nivel: editFormData.nivel,
+          area: editFormData.area || null,
           especialidad: editFormData.especialidad,
           disponibilidad: editFormData.disponibilidad === 'Disponible',
           color: editFormData.color,
@@ -1036,26 +1059,6 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="flex gap-1 w-full justify-end mt-1">
-                              {/* 🎯 Redirección a /admin/revisiones y auto-aprobación de la notificación */}
-                              <button
-                                onClick={async () => {
-                                  await handleResolveNotification(notif.id, 'Aprobado');
-
-                                  const queryParams = new URLSearchParams({
-                                    agendar: 'true',
-                                    titulo: notif.taskTitle || '',
-                                    empleadoId: notif.employeeId || '',
-                                    proyectoId: notif.projectId || '',
-                                    taskId: notif.taskId || '',
-                                    taskDueDate: notif.taskDueDate || '',
-                                  });
-                                  window.location.href = `/admin/revisiones?${queryParams.toString()}`;
-                                }}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1"
-                              >
-                                📅 Agendar Revisión
-                              </button>
-
                               <button
                                 onClick={() => handleResolveNotification(notif.id, 'Aprobado')}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer"
@@ -1171,9 +1174,20 @@ export default function AdminDashboard() {
                     teamFilter === 'estudiantes' ? 'bg-white text-slate-900 shadow-2xs' : 'hover:text-slate-900'
                   }`}
                 >
-                  🎓 SS / Prácticas
+                  🎓 Convenios
                 </button>
               </div>
+
+              <select
+                value={teamProjectFilter}
+                onChange={(e) => setTeamProjectFilter(e.target.value)}
+                className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-semibold py-1.5 px-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="all">📁 Todos los proyectos</option>
+                {dbProjects.map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
             </div>
 
             {/* TARJETAS DE INTEGRANTES */}
@@ -1356,6 +1370,16 @@ export default function AdminDashboard() {
                 >
                   📋 Detalle de Contrato
                 </button>
+
+                <button
+                  onClick={() => setActiveTab('recompensas')}
+                  className={`pb-2 px-4 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'recompensas' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent hover:text-slate-800'
+                  }`}
+                >
+                  🏆 Recompensas
+                  <span className="text-[8px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Mockup</span>
+                </button>
               </div>
 
               {/* CONTENIDO ACTIVIDAD */}
@@ -1396,6 +1420,7 @@ export default function AdminDashboard() {
                             projectName={task.project}
                             description={task.description}
                             assignedByName={task.assignedByName || 'Administrador'}
+                            assignedToName={selectedEmployee.name}
                             dueDate={task.dueDate}
                             priority={task.priority || 'Media'}
                             status={task.status}
@@ -1403,17 +1428,6 @@ export default function AdminDashboard() {
                             collaborators={task.collaborators || []}
                             isCritical={task.isCritical}
                             slackDays={task.slackDays}
-                            onRequestReview={() => {
-                              const queryParams = new URLSearchParams({
-                                agendar: 'true',
-                                titulo: task.title || '',
-                                empleadoId: selectedEmployee.id || '',
-                                proyectoId: task.projectId || '',
-                                taskId: task.id != null ? String(task.id) : '',
-                                taskDueDate: task.dueDate || '',
-                              });
-                              window.location.href = `/admin/revisiones?${queryParams.toString()}`;
-                            }}
                             onRequestExtension={() => handleExtendDeadline(task.id, task.title, task.dueDate)}
                           />
                         ))
@@ -1427,6 +1441,9 @@ export default function AdminDashboard() {
               {activeTab === 'documentos' && (
                 <div className="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-3">
                   <div className="space-y-2.5">
+                    {(!selectedEmployee.documents || selectedEmployee.documents.length === 0) && (
+                      <p className="text-xs text-slate-400 text-center py-8">Sin documentos requeridos registrados para este integrante.</p>
+                    )}
                     {selectedEmployee.documents?.map((doc) => (
                       <div key={doc.id} className="p-3.5 bg-white border border-slate-200/80 rounded-xl flex items-center justify-between text-xs">
                         <div className="flex items-center gap-3">
@@ -1504,6 +1521,69 @@ export default function AdminDashboard() {
                 </div>
               )}
 
+              {/* CONTENIDO RECOMPENSAS (MOCKUP — sin datos reales todavía) */}
+              {activeTab === 'recompensas' && (
+                <div className="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl px-3.5 py-2 text-[11px] text-amber-800 font-semibold flex items-center gap-2 shrink-0">
+                    <span>🚧</span>
+                    <span>Mockup de diseño — este módulo todavía no está conectado a datos reales.</span>
+                  </div>
+
+                  {/* Balance de puntos y nivel */}
+                  <div className="bg-gradient-to-br from-indigo-600 to-blue-600 text-white p-4 rounded-2xl shadow-sm space-y-3 shrink-0">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-semibold text-indigo-100 uppercase tracking-wide">Puntos de {selectedEmployee.name.split(' ')[0]}</p>
+                        <p className="text-2xl font-extrabold mt-0.5">⭐ 850 pts</p>
+                      </div>
+                      <span className="text-[10px] font-bold bg-white/15 border border-white/25 px-2.5 py-1 rounded-full">
+                        🥈 Nivel Plata
+                      </span>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-[10px] text-indigo-100 font-semibold mb-1">
+                        <span>Progreso a Nivel Oro</span>
+                        <span>850 / 1200 pts</span>
+                      </div>
+                      <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                        <div className="h-full bg-white rounded-full" style={{ width: '71%' }} />
+                      </div>
+                    </div>
+                  </div>
+
+
+                  {/* Catálogo de recompensas */}
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Catálogo de Recompensas</p>
+                    <div className="space-y-2">
+                      {[
+                        { icon: '🎟️', label: 'Día libre', cost: 300 },
+                        { icon: '🎧', label: 'Accesorio de oficina', cost: 500 },
+                        { icon: '📚', label: 'Curso o certificación', cost: 900 },
+                      ].map((item) => (
+                        <div key={item.label} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+                          <span className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <span>{item.icon}</span>
+                            <span>{item.label}</span>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-amber-600">⭐ {item.cost} pts</span>
+                            <button
+                              type="button"
+                              disabled
+                              title="Próximamente"
+                              className="text-[10px] font-bold bg-slate-200 text-slate-400 px-2.5 py-1 rounded-lg cursor-not-allowed"
+                            >
+                              Canjear
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 
@@ -1568,6 +1648,18 @@ export default function AdminDashboard() {
                 <p className="text-[10px] text-slate-400 mt-1">
                   Agrupa al integrante en el panel "Equipo" del calendario de revisiones.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Área (Coordinadores / Trabajadores)
+                </label>
+                <select value={newEmployeeData.area} onChange={(e) => setNewEmployeeData({ ...newEmployeeData, area: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none">
+                  <option value="">— Sin área (Dirección) —</option>
+                  {AREAS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -1710,6 +1802,16 @@ export default function AdminDashboard() {
               </div>
 
               <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Área (Coordinadores / Trabajadores)</label>
+                <select value={editFormData.area} onChange={(e) => setEditFormData({ ...editFormData, area: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none">
+                  <option value="">— Sin área (Dirección) —</option>
+                  {AREAS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                   Color Asignado
                 </label>
@@ -1809,7 +1911,9 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-6 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Transformar Modalidad Contractual</h3>
+              <h3 className="text-sm font-bold text-slate-900">
+                {isEstudianteSelected ? 'Transformar Modalidad Contractual' : 'Actualizar Contrato'}
+              </h3>
               <button onClick={() => setIsTransformModalOpen(false)} className="text-slate-400 font-bold cursor-pointer">✕</button>
             </div>
 
@@ -1829,7 +1933,9 @@ export default function AdminDashboard() {
 
               <div className="flex gap-2 pt-3 border-t border-slate-100">
                 <button type="button" onClick={() => setIsTransformModalOpen(false)} className="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-xl font-semibold">Cancelar</button>
-                <button type="submit" className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl font-bold">Confirmar Transición</button>
+                <button type="submit" className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl font-bold">
+                  {isEstudianteSelected ? 'Confirmar Transición' : 'Guardar Cambios'}
+                </button>
               </div>
             </form>
           </div>
@@ -1951,28 +2057,6 @@ export default function AdminDashboard() {
                     className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" 
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Asignada Por (Administrador)
-                </label>
-                <select 
-                  value={newTaskAssignedBy} 
-                  onChange={(e) => setNewTaskAssignedBy(e.target.value)} 
-                  required 
-                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                >
-                  {adminList.length === 0 ? (
-                    <option value="" disabled>No hay administradores registrados en Supabase</option>
-                  ) : (
-                    adminList.map((admin) => (
-                      <option key={admin.id} value={admin.id}>
-                        🔑 {admin.name} ({admin.email})
-                      </option>
-                    ))
-                  )}
-                </select>
               </div>
 
               <div className="flex gap-2 pt-3 border-t border-slate-100">

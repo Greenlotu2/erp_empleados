@@ -6,6 +6,7 @@ import CalendarioRevisiones from '../../../components/calendar/CalendarioRevisio
 import KpisPanel from '../../../components/kpis/KpisPanel';
 import { formatFechaLimite } from '../../../lib/dates';
 import { supabase } from '../../../lib/supabaseClient';
+import { getCurrentAdminId } from '../../../lib/currentAdmin';
 
 interface HistorialRevision {
   id: string;
@@ -26,13 +27,6 @@ interface OptionItem {
   nombre: string;
 }
 
-interface TareaOption {
-  id: string;
-  titulo: string;
-  empleadoNombre: string;
-  fechaLimite: string | null;
-}
-
 export default function RevisionesPage() {
   const [activeTab, setActiveTab] = useState<'calendario' | 'historial'>('calendario');
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,9 +39,26 @@ export default function RevisionesPage() {
   const [isSavingMeeting, setIsSavingMeeting] = useState(false);
   const [isGeneratingZoom, setIsGeneratingZoom] = useState(false);
 
+  // 🗂️ El modal tiene dos modos independientes: agendar una reunión/revisión, o
+  // asignar una tarea nueva (mismo flujo que "Asignar Tarea" del Panel Principal).
+  const [scheduleMode, setScheduleMode] = useState<'reunion' | 'tarea'>('reunion');
+  const [isSavingTask, setIsSavingTask] = useState(false);
+
   const [dbProjects, setDbProjects] = useState<OptionItem[]>([]);
   const [dbEmployees, setDbEmployees] = useState<OptionItem[]>([]);
-  const [dbTasks, setDbTasks] = useState<TareaOption[]>([]);
+
+  // 🔑 ID del administrador con sesión iniciada (quien asigna la tarea). Ya no se
+  // pregunta por selector: siempre es quien está usando el panel en ese momento.
+  const [currentAdminId, setCurrentAdminId] = useState<string>('');
+
+  const [newTaskFormData, setNewTaskFormData] = useState({
+    empleadoId: '',
+    proyectoId: '',
+    titulo: '',
+    descripcion: '',
+    prioridad: 'Media' as 'Baja' | 'Media' | 'Alta' | 'Urgente',
+    fechaLimite: '',
+  });
 
   // 🕒 Controla la apertura automática del modal SOLO cuando los datos ya cargaron
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -63,6 +74,7 @@ export default function RevisionesPage() {
     fechaInicio: '',
     descripcion: '',
     modalidad: 'presencial' as 'presencial' | 'virtual',
+    lugar: 'Oficina Ing. Luis' as 'Oficina Ing. Luis' | 'Comedor',
     link: '',
     targetType: 'todos',
     selectedEmployeeIds: [] as string[],
@@ -78,21 +90,9 @@ export default function RevisionesPage() {
       const { data: projData } = await (supabase.from('proyectos') as any).select('id, nombre');
       if (projData) setDbProjects(projData);
 
-      const { data: empData } = await (supabase.from('empleados') as any).select('id, nombre');
+      const { data: empData } = await (supabase.from('empleados') as any).select('id, nombre, rol');
       if (empData) setDbEmployees(empData);
 
-      const { data: tareasData } = await (supabase.from('tareas') as any)
-        .select('id, titulo, fecha_limite, empleados (nombre)')
-        .neq('estado', 'Completada')
-        .order('titulo', { ascending: true });
-      if (tareasData) {
-        setDbTasks(tareasData.map((t: any) => ({
-          id: String(t.id),
-          titulo: t.titulo || 'Sin título',
-          empleadoNombre: t.empleados?.nombre || 'Sin asignar',
-          fechaLimite: t.fecha_limite || null,
-        })));
-      }
 
       const { data, error } = await (supabase.from('reuniones') as any)
         .select(`
@@ -137,6 +137,10 @@ export default function RevisionesPage() {
 
   useEffect(() => {
     fetchRevisiones();
+  }, []);
+
+  useEffect(() => {
+    getCurrentAdminId().then(id => { if (id) setCurrentAdminId(id); });
   }, []);
 
   // 📌 REDIRECCIÓN DESDE NOTIFICACIONES DEL DASHBOARD
@@ -336,9 +340,10 @@ export default function RevisionesPage() {
       const horaTexto = dtInicio.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
 
       const esPresencial = meetingFormData.modalidad === 'presencial';
-      const notasFormateadas = esPresencial
-        ? `🏢 [Reunión Presencial en Oficina Ing. Luis] ${meetingFormData.descripcion.trim()}`
-        : meetingFormData.descripcion.trim();
+      // La modalidad (presencial/virtual) y a quién va dirigida ya se muestran como campos
+      // propios en el popover/modal (a partir de `link` y `empleado_id`) — la descripción
+      // solo lleva las notas reales que escribió el admin, sin horneados redundantes.
+      const notasFormateadas = meetingFormData.descripcion.trim();
 
       const parsedTareaId = meetingFormData.tareaId ? parseInt(meetingFormData.tareaId, 10) : NaN;
       const targetTareaId = isNaN(parsedTareaId) ? null : parsedTareaId;
@@ -348,16 +353,18 @@ export default function RevisionesPage() {
       if (meetingFormData.targetType === 'todos') {
         meetingsToInsert = [{
           titulo: meetingFormData.titulo.trim(),
-          descripcion: `👥 [Convocatoria Grupal - Todo el Equipo] ${notasFormateadas || (esPresencial ? 'Reunión presencial en oficina' : 'Revisión virtual de avances')}`,
+          descripcion: notasFormateadas || (esPresencial ? 'Reunión presencial en oficina' : 'Revisión virtual de avances'),
           fecha_inicio: fechaInicioISO,
           fecha_fin: fechaFinISO,
           fecha: fechaTexto,
           hora: horaTexto,
           link: esPresencial ? null : meetingFormData.link.trim(),
+          lugar: esPresencial ? meetingFormData.lugar : null,
           estado: 'Programada',
           empleado_id: null,
           proyecto_id: targetProjectId,
           tarea_id: targetTareaId,
+          creado_por: currentAdminId || null,
         }];
       } else {
         meetingsToInsert = meetingFormData.selectedEmployeeIds.map(empId => ({
@@ -368,10 +375,12 @@ export default function RevisionesPage() {
           fecha: fechaTexto,
           hora: horaTexto,
           link: esPresencial ? null : meetingFormData.link.trim(),
+          lugar: esPresencial ? meetingFormData.lugar : null,
           estado: 'Programada',
           empleado_id: empId || null,
           proyecto_id: targetProjectId,
           tarea_id: targetTareaId,
+          creado_por: currentAdminId || null,
         }));
       }
 
@@ -386,6 +395,7 @@ export default function RevisionesPage() {
         fechaInicio: '',
         descripcion: '',
         modalidad: 'presencial',
+        lugar: 'Oficina Ing. Luis',
         link: '',
         targetType: 'todos',
         selectedEmployeeIds: [],
@@ -402,6 +412,94 @@ export default function RevisionesPage() {
       alert(`Error al agendar: ${err.message || 'Error de conexión'}`);
     } finally {
       setIsSavingMeeting(false);
+    }
+  };
+
+  // 📋 ASIGNAR TAREA NUEVA (mismo flujo que "Asignar Tarea" del Panel Principal):
+  // crea la fila en 'tareas' y, si tiene fecha límite, el marcador automático
+  // en el calendario (evento estado 'Fecha Límite'), igual que en page.tsx.
+  const handleAssignTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskFormData.titulo.trim() || !newTaskFormData.empleadoId) {
+      alert('Selecciona un integrante y escribe el título de la tarea.');
+      return;
+    }
+    if (!newTaskFormData.proyectoId) {
+      alert('Selecciona el proyecto de la tarea.');
+      return;
+    }
+
+    try {
+      setIsSavingTask(true);
+
+      const taskPayload = {
+        empleado_id: newTaskFormData.empleadoId,
+        proyecto_id: newTaskFormData.proyectoId,
+        titulo: newTaskFormData.titulo.trim(),
+        descripcion: newTaskFormData.descripcion.trim() || null,
+        estado: 'En Proceso',
+        prioridad: newTaskFormData.prioridad,
+        asignada_por: currentAdminId || null,
+        fecha_asignada: new Date().toISOString().split('T')[0],
+        fecha_limite: newTaskFormData.fechaLimite || null,
+      };
+
+      const { data: nuevaTarea, error } = await (supabase.from('tareas') as any)
+        .insert(taskPayload)
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      await (supabase.from('empleados') as any)
+        .update({ disponibilidad: false })
+        .eq('id', newTaskFormData.empleadoId);
+
+      if (newTaskFormData.fechaLimite && nuevaTarea?.id) {
+        const dtInicioLimite = new Date(`${newTaskFormData.fechaLimite}T09:00:00`);
+        const dtFinLimite = new Date(`${newTaskFormData.fechaLimite}T10:00:00`);
+
+        const { error: calErr } = await (supabase.from('reuniones') as any).insert({
+          titulo: newTaskFormData.titulo.trim(),
+          // Sin descripción: el título, el ícono ⏳ y la etiqueta "Fecha Límite" ya
+          // dejan claro de qué se trata — repetirlo en una descripción es redundante.
+          descripcion: null,
+          fecha_inicio: dtInicioLimite.toISOString(),
+          fecha_fin: dtFinLimite.toISOString(),
+          fecha: newTaskFormData.fechaLimite,
+          hora: '09:00 AM',
+          estado: 'Fecha Límite',
+          empleado_id: newTaskFormData.empleadoId,
+          proyecto_id: newTaskFormData.proyectoId,
+          tarea_id: nuevaTarea.id,
+          creado_por: currentAdminId || null,
+        });
+
+        if (calErr) {
+          console.error('No se pudo crear el evento de fecha límite en el calendario:', calErr);
+        }
+      }
+
+      alert('✅ Tarea asignada con éxito.');
+
+      setNewTaskFormData({
+        empleadoId: '',
+        proyectoId: '',
+        titulo: '',
+        descripcion: '',
+        prioridad: 'Media',
+        fechaLimite: '',
+      });
+      setIsScheduleModalOpen(false);
+      setCalendarRefreshTrigger(prev => prev + 1);
+
+      await fetchRevisiones();
+
+    } catch (err: any) {
+      console.error('Error al asignar tarea:', err);
+      alert(`Error al asignar la tarea: ${err.message || 'Error de conexión'}`);
+    } finally {
+      setIsSavingTask(false);
     }
   };
 
@@ -449,9 +547,9 @@ export default function RevisionesPage() {
       <main className="flex-1 flex flex-col p-4 md:p-6 xl:pr-0 overflow-hidden h-full min-w-0">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 shrink-0">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Gestión de Revisiones y Reuniones</h1>
+            <h1 className="text-xl font-bold text-slate-900">Calendario de Tareas y Reuniones</h1>
             <p className="text-xs text-slate-500">
-              Coagenda reuniones presenciales en oficina o revisiones virtuales vía Zoom
+              Coagenda reuniones presenciales en oficina o Visualización de tareas
             </p>
           </div>
 
@@ -629,14 +727,40 @@ export default function RevisionesPage() {
             
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Agendar Sesión de Trabajo</h3>
-                <p className="text-[11px] text-slate-500">Selecciona si la sesión será presencial o una revisión online</p>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {scheduleMode === 'reunion' ? 'Agendar Sesión de Trabajo' : 'Asignar Tarea'}
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {scheduleMode === 'reunion' ? 'Selecciona si la sesión será presencial o una revisión online' : 'Asigna una nueva tarea a un integrante del equipo'}
+                </p>
               </div>
               <button onClick={() => setIsScheduleModalOpen(false)} className="text-slate-400 font-bold cursor-pointer hover:text-slate-600">✕</button>
             </div>
 
+            <div className="flex bg-slate-100 p-1 rounded-xl gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setScheduleMode('reunion')}
+                className={`flex-1 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+                  scheduleMode === 'reunion' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                }`}
+              >
+                🗓️ Agendar Reunión
+              </button>
+              <button
+                type="button"
+                onClick={() => setScheduleMode('tarea')}
+                className={`flex-1 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+                  scheduleMode === 'tarea' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
+                }`}
+              >
+                📋 Asignar Tarea
+              </button>
+            </div>
+
+            {scheduleMode === 'reunion' && (
             <form onSubmit={handleCreateMeeting} className="space-y-3.5 text-xs">
-              
+
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Tipo de Sesión</label>
                 <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
@@ -683,9 +807,28 @@ export default function RevisionesPage() {
               )}
 
               {meetingFormData.modalidad === 'presencial' ? (
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[11px] text-slate-600 flex items-center gap-2">
-                  <span>📍</span>
-                  <span>Lugar: <strong>Oficina Ing. Luis</strong></span>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">📍 Lugar</label>
+                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMeetingFormData({ ...meetingFormData, lugar: 'Oficina Ing. Luis' })}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                        meetingFormData.lugar === 'Oficina Ing. Luis' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                      }`}
+                    >
+                      🏢 Oficina Ing. Luis
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMeetingFormData({ ...meetingFormData, lugar: 'Comedor' })}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                        meetingFormData.lugar === 'Comedor' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                      }`}
+                    >
+                      🍽️ Comedor
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -774,26 +917,6 @@ export default function RevisionesPage() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Vincular a Tarea (opcional)</label>
-                <select
-                  value={meetingFormData.tareaId}
-                  onChange={(e) => {
-                    const tarea = dbTasks.find((t) => t.id === e.target.value);
-                    setMeetingFormData({
-                      ...meetingFormData,
-                      tareaId: e.target.value,
-                      tareaDueDate: tarea?.fechaLimite || '',
-                    });
-                  }}
-                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
-                >
-                  <option value="">— Sin tarea vinculada —</option>
-                  {dbTasks.map((t) => (
-                    <option key={t.id} value={t.id}>📌 {t.titulo} ({t.empleadoNombre})</option>
-                  ))}
-                </select>
-              </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Notas / Orden del Día</label>
@@ -816,6 +939,101 @@ export default function RevisionesPage() {
               </div>
 
             </form>
+            )}
+
+            {scheduleMode === 'tarea' && (
+            <form onSubmit={handleAssignTask} className="space-y-3.5 text-xs">
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Integrante</label>
+                <select
+                  required
+                  value={newTaskFormData.empleadoId}
+                  onChange={(e) => setNewTaskFormData({ ...newTaskFormData, empleadoId: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">— Selecciona un integrante —</option>
+                  {dbEmployees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>👤 {emp.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Título de la Tarea</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Integración de endpoint de autenticación"
+                  value={newTaskFormData.titulo}
+                  onChange={(e) => setNewTaskFormData({ ...newTaskFormData, titulo: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Proyecto</label>
+                <select
+                  required
+                  value={newTaskFormData.proyectoId}
+                  onChange={(e) => setNewTaskFormData({ ...newTaskFormData, proyectoId: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">— Selecciona un proyecto —</option>
+                  {dbProjects.map((p) => (
+                    <option key={p.id} value={p.id}>📁 {p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Prioridad</label>
+                  <select
+                    value={newTaskFormData.prioridad}
+                    onChange={(e) => setNewTaskFormData({ ...newTaskFormData, prioridad: e.target.value as any })}
+                    className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="Baja">🟢 Baja</option>
+                    <option value="Media">🟡 Media</option>
+                    <option value="Alta">🟠 Alta</option>
+                    <option value="Urgente">🔴 Urgente</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Fecha Límite</label>
+                  <input
+                    type="date"
+                    value={newTaskFormData.fechaLimite}
+                    onChange={(e) => setNewTaskFormData({ ...newTaskFormData, fechaLimite: e.target.value })}
+                    className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
+
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Descripción / Indicaciones</label>
+                <textarea
+                  rows={2}
+                  placeholder="Instrucciones específicas de la tarea..."
+                  value={newTaskFormData.descripcion}
+                  onChange={(e) => setNewTaskFormData({ ...newTaskFormData, descripcion: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold cursor-pointer">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isSavingTask} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold cursor-pointer transition-colors shadow-xs">
+                  {isSavingTask ? 'Guardando...' : 'Asignar Tarea'}
+                </button>
+              </div>
+
+            </form>
+            )}
           </div>
         </div>
       )}

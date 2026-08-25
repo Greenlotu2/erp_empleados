@@ -8,6 +8,7 @@ export interface TaskCardProps {
   projectName: string;
   description?: string;
   assignedByName?: string;
+  assignedToName?: string;
   dueDate?: string;
   priority: 'Baja' | 'Media' | 'Alta' | 'Urgente';
   status: 'Pendiente' | 'En Proceso' | 'Postergada' | 'Completada';
@@ -15,7 +16,6 @@ export interface TaskCardProps {
   collaborators?: { id: string; name: string; avatar?: string }[];
   isCritical?: boolean;
   slackDays?: number;
-  onRequestReview?: () => void;
   onRequestExtension?: () => void;
 }
 
@@ -25,6 +25,7 @@ export default function TaskCard({
   projectName,
   description,
   assignedByName = 'Administrador',
+  assignedToName,
   dueDate,
   priority,
   status,
@@ -32,7 +33,6 @@ export default function TaskCard({
   collaborators = [],
   isCritical,
   slackDays,
-  onRequestReview,
   onRequestExtension,
 }: TaskCardProps) {
 
@@ -97,19 +97,28 @@ export default function TaskCard({
         </div>
       </div>
 
-      {/* Meta Información (Prioridad, Asignada Por, Fecha Límite) */}
+      {/* Meta Información (Dirigida a, Asignada Por, Prioridad, Fecha Límite) */}
       <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] border-t border-slate-100/80">
-        <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase block">Prioridad</span>
-          <span className={`inline-block px-2 py-0.5 rounded-md border text-[10px] font-bold mt-0.5 ${priorityColors[priority]}`}>
-            {priority}
-          </span>
-        </div>
+        {assignedToName && (
+          <div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Dirigida A</span>
+            <span className="font-medium text-slate-800 truncate block mt-0.5">
+              👤 {assignedToName}
+            </span>
+          </div>
+        )}
 
         <div>
           <span className="text-[10px] font-bold text-slate-400 uppercase block">Asignada Por</span>
           <span className="font-medium text-slate-800 truncate block mt-0.5">
             🔑 {assignedByName}
+          </span>
+        </div>
+
+        <div>
+          <span className="text-[10px] font-bold text-slate-400 uppercase block">Prioridad</span>
+          <span className={`inline-block px-2 py-0.5 rounded-md border text-[10px] font-bold mt-0.5 ${priorityColors[priority]}`}>
+            {priority}
           </span>
         </div>
 
@@ -165,17 +174,6 @@ export default function TaskCard({
                 title="Extender la fecha límite de esta tarea"
               >
                 ⏱️ Tiempo Extra
-              </button>
-            )}
-
-            {onRequestReview && (
-              <button
-                type="button"
-                onClick={onRequestReview}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1 rounded-xl text-[10px] transition-all shadow-2xs cursor-pointer flex items-center gap-1"
-              >
-                <span>🚀</span>
-                <span>Entregar / Revisión</span>
               </button>
             )}
           </div>

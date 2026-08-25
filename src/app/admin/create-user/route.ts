@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { email, password, nombre, rol, especialidad, disponibilidad, horasTotalesObjetivo, avatarUrl, color, nivel } = body;
+    const { email, password, nombre, rol, especialidad, disponibilidad, horasTotalesObjetivo, avatarUrl, color, nivel, area } = body;
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Correo y contraseña son obligatorios' }, { status: 400 });
@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
         avatar_url: avatarUrl || null,
         color: color || '#2563eb',
         nivel: nivel || 'Trabajador',
+        area: area || null,
         horas_acumuladas: 0,
         horas_totales_objetivo: horasTotalesObjetivo ? parseInt(horasTotalesObjetivo) : null,
       })

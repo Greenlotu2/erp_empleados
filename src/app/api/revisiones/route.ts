@@ -64,7 +64,8 @@ export async function POST(request: NextRequest) {
       .eq('id', numericTaskId)
       .maybeSingle();
 
-    // B) Insertar en la tabla revisiones
+    // B) Insertar en la tabla revisiones (queda como bitácora de la entrega, ya no
+    // representa una reunión pendiente de agendar — ese paso se eliminó del flujo).
     const { data: revision, error: revError } = await supabaseAdmin
       .from('revisiones')
       .insert({
@@ -72,33 +73,43 @@ export async function POST(request: NextRequest) {
         empleado_id: targetEmpId,
         proyecto_id: tarea?.proyecto_id || null,
         titulo_tarea: taskTitle.trim(),
-        comentarios: comentarios?.trim() || 'Solicitud de revisión desde la extensión',
-        estado: 'Pendiente'
+        comentarios: comentarios?.trim() || 'Tarea completada desde la extensión',
+        estado: 'Completada'
       })
       .select()
       .single();
 
     if (revError) throw revError;
 
-    // C) Crear la Notificación para activar la campanita 🔔 en AdminDashboard
-    // Se guarda tarea_id para poder vincular la reunión agendada con la tarea original
-    // (en vez de emparejarla por texto del título, que se rompe si se edita el nombre).
+    // C) Crear la Notificación para activar la campanita 🔔 en AdminDashboard. El bell
+    // no filtra por destinatario (lo ve cualquier admin/coordinador que abra el panel),
+    // así que una sola fila es suficiente.
     await supabaseAdmin
       .from('notificaciones')
       .insert({
         empleado_id: targetEmpId,
         proyecto_id: tarea?.proyecto_id || null,
         tarea_id: isNaN(numericTaskId) ? null : numericTaskId,
-        titulo_tarea: `🚀 ${targetEmpName} solicitó revisión: "${taskTitle}"`,
+        titulo_tarea: `✅ ${targetEmpName} completó la tarea: "${taskTitle}"`,
         estado: 'Pendiente'
       });
 
-    // D) Actualizar el estado de la tarea
+    // D) Completar la tarea directamente — ya no pasa por 'En Revisión' a la espera de
+    // que un admin agende una reunión de revisión.
     if (!isNaN(numericTaskId)) {
       await supabaseAdmin
         .from('tareas')
-        .update({ estado: 'En Revisión' })
+        .update({ estado: 'Completada', porcentaje_avance: 100 })
         .eq('id', numericTaskId);
+
+      // E) Reflejar la finalización en el calendario: cualquier evento vinculado a esta
+      // tarea (el marcador automático de "Fecha Límite", o una revisión agendada
+      // manualmente) pasa de pendiente a Completada sin intervención del admin.
+      await supabaseAdmin
+        .from('reuniones')
+        .update({ estado: 'Completada' })
+        .eq('tarea_id', numericTaskId)
+        .neq('estado', 'Completada');
     }
 
     return NextResponse.json({ success: true, revision }, { status: 200, headers: corsHeaders });

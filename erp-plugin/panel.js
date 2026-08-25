@@ -394,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
               ${!isDone && !isReview ? `
                 <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
-                  🚀 Enviar a revisión
+                  ✅ Marcar Completada
                 </button>
               ` : ''}
             </div>
@@ -419,10 +419,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (resRev?.ok) {
-              alert('✅ Tarea enviada a revisión');
+              alert('✅ Tarea marcada como completada');
               loadData();
             } else {
-              alert('Error enviando la tarea a revisión');
+              alert('Error al marcar la tarea como completada');
             }
           };
         });
