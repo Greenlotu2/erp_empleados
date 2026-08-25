@@ -142,6 +142,9 @@ export default function AdminDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [notifications, setNotifications] = useState<PluginNotification[]>([]);
+  // Modal de "⏱️ Tiempo Extra" / nueva fecha límite (reemplaza el window.prompt nativo).
+  const [extendDeadlineTarget, setExtendDeadlineTarget] = useState<{ id: string | number; title: string; currentDueDate?: string } | null>(null);
+  const [extendDeadlineValue, setExtendDeadlineValue] = useState('');
   // IDs de notificaciones ya notificadas al navegador. `null` = todavía no cargamos
   // por primera vez — así no se dispara una ráfaga de notificaciones del navegador
   // por todo lo que ya estaba pendiente antes de abrir la pestaña.
@@ -551,6 +554,25 @@ export default function AdminDashboard() {
 
       setNotifications(prev => prev.filter(n => n.id !== notif.id));
       await fetchDashboardData();
+
+      // Al rechazar, se asume que la tarea necesita más tiempo — se abre el mismo
+      // modal de "⏱️ Tiempo Extra" en vez de dejarla con la fecha límite original,
+      // que probablemente ya se cumplió o está muy cerca si el empleado ya la había
+      // enviado a revisión. `notif.taskTitle` es el mensaje completo de la
+      // notificación, no el título real — se busca aparte.
+      if (nuevoEstado === 'Rechazado' && !isNaN(taskIdNum)) {
+        const { data: tareaRechazada } = await supabase
+          .from('tareas')
+          .select('titulo')
+          .eq('id', taskIdNum)
+          .maybeSingle();
+
+        handleExtendDeadline(
+          taskIdNum,
+          (tareaRechazada as any)?.titulo || notif.taskTitle,
+          notif.taskDueDate || undefined
+        );
+      }
     } catch (err: any) {
       console.error('Error resolviendo notificación:', err);
     }
@@ -560,27 +582,25 @@ export default function AdminDashboard() {
   // (ver login/page.tsx) — no hay un flujo de "empleado solicita, admin aprueba" aquí,
   // el admin tiene autoridad directa sobre la tarea que está viendo, así que el botón
   // actualiza la fecha límite de una vez en vez de generar una solicitud pendiente.
-  const handleExtendDeadline = async (taskId: string | number, taskTitle: string, currentDueDate?: string) => {
-    const nuevaFecha = window.prompt(
-      `Nueva fecha límite para "${taskTitle}"${currentDueDate ? ` (actual: ${currentDueDate})` : ''}.\nFormato: AAAA-MM-DD`,
-      ''
-    );
-    if (!nuevaFecha) return;
+  // Solo abre el modal — la actualización real la hace handleConfirmExtendDeadline.
+  const handleExtendDeadline = (taskId: string | number, taskTitle: string, currentDueDate?: string) => {
+    setExtendDeadlineValue('');
+    setExtendDeadlineTarget({ id: taskId, title: taskTitle, currentDueDate });
+  };
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(nuevaFecha) || isNaN(new Date(nuevaFecha).getTime())) {
-      alert('Fecha inválida. Usa el formato AAAA-MM-DD, por ejemplo 2026-09-15.');
-      return;
-    }
+  const handleConfirmExtendDeadline = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extendDeadlineTarget || !extendDeadlineValue) return;
 
     try {
       const { error } = await supabase
         .from('tareas')
-        .update({ fecha_limite: nuevaFecha })
-        .eq('id', taskId);
+        .update({ fecha_limite: extendDeadlineValue })
+        .eq('id', extendDeadlineTarget.id);
 
       if (error) throw error;
 
-      alert(`✅ Fecha límite actualizada al ${nuevaFecha}.`);
+      setExtendDeadlineTarget(null);
       await fetchDashboardData();
     } catch (err: any) {
       console.error('Error extendiendo fecha límite:', err);
@@ -2010,6 +2030,43 @@ export default function AdminDashboard() {
                 {isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⏱️ MODAL DE TIEMPO EXTRA / NUEVA FECHA LÍMITE */}
+      {extendDeadlineTarget && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900">⏱️ Tiempo Extra</h3>
+              <button onClick={() => setExtendDeadlineTarget(null)} className="text-slate-400 font-bold cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleConfirmExtendDeadline} className="space-y-3.5 text-xs">
+              <p className="text-slate-600">
+                Nueva fecha límite para <strong className="text-slate-900">"{extendDeadlineTarget.title}"</strong>
+                {extendDeadlineTarget.currentDueDate && (
+                  <> (actual: {formatFechaLimite(extendDeadlineTarget.currentDueDate)})</>
+                )}
+              </p>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Fecha Límite</label>
+                <input
+                  type="date"
+                  required
+                  value={extendDeadlineValue}
+                  onChange={(e) => setExtendDeadlineValue(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium bg-white outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setExtendDeadlineTarget(null)} className="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-xl font-semibold">Cancelar</button>
+                <button type="submit" className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-xl font-bold">Guardar</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
