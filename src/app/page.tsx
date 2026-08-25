@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import TaskCard from '../components/Taskcard';
 import { formatFechaLimite } from '../lib/dates';
@@ -142,6 +142,10 @@ export default function AdminDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [notifications, setNotifications] = useState<PluginNotification[]>([]);
+  // IDs de notificaciones ya notificadas al navegador. `null` = todavía no cargamos
+  // por primera vez — así no se dispara una ráfaga de notificaciones del navegador
+  // por todo lo que ya estaba pendiente antes de abrir la pestaña.
+  const notifiedIdsRef = useRef<Set<string> | null>(null);
   const [dbProjects, setDbProjects] = useState<DbProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -323,8 +327,10 @@ export default function AdminDashboard() {
               priority: (t.prioridad as any) || 'Media',
               status: normalizedStatus,
               progressPercent: t.porcentaje_avance ?? (normalizedStatus === 'Completada' ? 100 : 0),
-              date: formatDate(t.fecha_asignada),
-              dueDate: formatDate(t.fecha_limite),
+              date: (normalizedStatus === 'Completada' && t.fecha_completado)
+                ? formatDate(t.fecha_completado)
+                : formatDate(t.fecha_asignada),
+              dueDate: formatFechaLimite(t.fecha_limite),
               assignedByName: empleadosData.find((e: any) => e.id === t.asignada_por)?.nombre || 'Administrador',
               isCritical: Boolean(t.es_critica),
               slackDays: t.holgura_dias ?? 0,
@@ -417,7 +423,7 @@ export default function AdminDashboard() {
           timestamp: formatDateTime(n.created_at),
           estado: n.estado
         }));
-        setNotifications(mappedNotifs);
+        syncNotifications(mappedNotifs);
       }
 
     } catch (error: any) {
@@ -428,20 +434,122 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🔔 Compara contra lo ya visto y dispara una notificación nativa del navegador por
+  // cada solicitud nueva (Web Notifications API — solo funciona con la pestaña
+  // abierta/en background, no reemplaza push real). Pendiente para más adelante: llevar
+  // esto mismo a móvil requiere un canal aparte (service worker + push subscription,
+  // ej. FCM/APNs) porque esta API no llega a dispositivos sin la pestaña activa.
+  const syncNotifications = (mappedNotifs: PluginNotification[]) => {
+    const currentIds = new Set(mappedNotifs.map(n => n.id));
+
+    if (notifiedIdsRef.current === null) {
+      notifiedIdsRef.current = currentIds;
+    } else {
+      const nuevas = mappedNotifs.filter(n => !notifiedIdsRef.current!.has(n.id));
+      if (nuevas.length > 0 && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        nuevas.forEach(n => {
+          const notif = new Notification('🚀 Nueva solicitud de revisión', {
+            body: n.taskTitle,
+            icon: '/icono_rocal.png',
+            tag: n.id,
+          });
+          notif.onclick = () => {
+            window.focus();
+            notif.close();
+          };
+        });
+      }
+      notifiedIdsRef.current = currentIds;
+    }
+
+    setNotifications(mappedNotifs);
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
-  const handleResolveNotification = async (notifId: string, nuevoEstado: 'Aprobado' | 'Rechazado') => {
+  // Poll ligero (cada 30s) solo de la tabla 'notificaciones' — el resto del dashboard
+  // (empleados, proyectos) no cambia con esa frecuencia y no vale la pena refrescarlo
+  // completo solo para detectar solicitudes nuevas.
+  useEffect(() => {
+    const pollNotifications = async () => {
+      const { data: notifData, error } = await supabase
+        .from('notificaciones')
+        .select(`
+          id,
+          titulo_tarea,
+          estado,
+          created_at,
+          empleado_id,
+          proyecto_id,
+          tarea_id,
+          empleados (nombre),
+          proyectos (nombre),
+          tareas (fecha_limite)
+        `)
+        .eq('estado', 'Pendiente')
+        .order('created_at', { ascending: false });
+
+      if (!error && notifData) {
+        const mappedNotifs: PluginNotification[] = notifData.map((n: any) => ({
+          id: n.id,
+          employeeId: n.empleado_id,
+          employeeName: n.empleados?.nombre || 'Integrante',
+          taskId: n.tarea_id != null ? String(n.tarea_id) : undefined,
+          taskTitle: n.titulo_tarea || 'Revisión de código',
+          taskDueDate: n.tareas?.fecha_limite || null,
+          projectId: n.proyecto_id,
+          projectName: n.proyectos?.nombre || 'Proyecto General',
+          timestamp: formatDateTime(n.created_at),
+          estado: n.estado
+        }));
+        syncNotifications(mappedNotifs);
+      }
+    };
+
+    const intervalId = setInterval(pollNotifications, 30000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Aprobar/Rechazar una tarea que el empleado envió a revisión ('En Revisión').
+  // Aprobar la completa de verdad (tarea + calendario); Rechazar la regresa al
+  // empleado para que la retome. Sin esto, los botones solo marcaban la
+  // notificación como leída sin tocar el estado real de la tarea.
+  const handleResolveNotification = async (notif: PluginNotification, nuevoEstado: 'Aprobado' | 'Rechazado') => {
     try {
       const { error } = await supabase
         .from('notificaciones')
         .update({ estado: nuevoEstado })
-        .eq('id', notifId);
+        .eq('id', notif.id);
 
       if (error) throw error;
 
-      setNotifications(prev => prev.filter(n => n.id !== notifId));
+      const taskIdNum = notif.taskId ? parseInt(notif.taskId, 10) : NaN;
+      if (!isNaN(taskIdNum)) {
+        if (nuevoEstado === 'Aprobado') {
+          await (supabase.from('tareas') as any)
+            .update({ estado: 'Completada', porcentaje_avance: 100, fecha_completado: new Date().toISOString() })
+            .eq('id', taskIdNum);
+
+          await (supabase.from('reuniones') as any)
+            .update({ estado: 'Completada' })
+            .eq('tarea_id', taskIdNum)
+            .neq('estado', 'Completada');
+        } else {
+          await (supabase.from('tareas') as any)
+            .update({ estado: 'En Proceso' })
+            .eq('id', taskIdNum);
+        }
+      }
+
+      setNotifications(prev => prev.filter(n => n.id !== notif.id));
       await fetchDashboardData();
     } catch (err: any) {
       console.error('Error resolviendo notificación:', err);
@@ -1060,14 +1168,14 @@ export default function AdminDashboard() {
 
                             <div className="flex gap-1 w-full justify-end mt-1">
                               <button
-                                onClick={() => handleResolveNotification(notif.id, 'Aprobado')}
+                                onClick={() => handleResolveNotification(notif, 'Aprobado')}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer"
                               >
                                 Aprobar
                               </button>
 
                               <button
-                                onClick={() => handleResolveNotification(notif.id, 'Rechazado')}
+                                onClick={() => handleResolveNotification(notif, 'Rechazado')}
                                 className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold px-2 py-1 rounded-md transition-colors cursor-pointer"
                               >
                                 Rechazar

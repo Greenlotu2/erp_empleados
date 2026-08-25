@@ -205,17 +205,17 @@ export default function RevisionesPage() {
         if (emp) {
           if (targetRev?.tareaId) {
             await (supabase.from('tareas') as any)
-              .update({ estado: 'Completada', porcentaje_avance: 100 })
+              .update({ estado: 'Completada', porcentaje_avance: 100, fecha_completado: new Date().toISOString() })
               .eq('id', targetRev.tareaId);
           } else {
             await (supabase.from('tareas') as any)
-              .update({ estado: 'Completada', porcentaje_avance: 100 })
+              .update({ estado: 'Completada', porcentaje_avance: 100, fecha_completado: new Date().toISOString() })
               .eq('empleado_id', emp.id)
               .ilike('titulo', `%${cleanTitle}%`);
           }
 
           await (supabase.from('tareas') as any)
-            .update({ estado: 'Completada', porcentaje_avance: 100 })
+            .update({ estado: 'Completada', porcentaje_avance: 100, fecha_completado: new Date().toISOString() })
             .eq('empleado_id', emp.id)
             .eq('estado', 'En Proceso');
 

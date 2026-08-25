@@ -337,10 +337,27 @@ document.addEventListener('DOMContentLoaded', () => {
         ? (res.data.tareas || res.data)
         : [];
 
+      const hoyFiltro = new Date().toISOString().split('T')[0];
+
       const filtered = tareas.filter(t => {
         const st = (t.estado || '').toLowerCase();
-        if (activeSubFilter === 'por_hacer') return st === 'por hacer' || st === 'todo' || st === 'nueva' || st === 'por_hacer';
-        if (activeSubFilter === 'pendientes') return st === 'en proceso' || st === 'pendiente' || st === 'en revisión' || st === 'en_revision';
+        const avance = t.porcentaje_avance ?? 0;
+        const isDoneFiltro = st.includes('completa');
+        const isOverdueFiltro = t.fecha_limite && t.fecha_limite < hoyFiltro && !isDoneFiltro;
+
+        // Las tareas nuevas siempre se crean como 'En Proceso' (ningún flujo del CRM
+        // usa 'Por Hacer' como estado real) — se usa el avance para distinguir "sin
+        // empezar" (Por Hacer) de "con avance" (Pendientes) dentro de ese mismo estado.
+        // Las vencidas necesitan atención inmediata, así que también caen en "Por Hacer"
+        // sin importar su avance.
+        if (activeSubFilter === 'por_hacer') {
+          return st === 'por hacer' || st === 'todo' || st === 'nueva' || st === 'por_hacer' ||
+            (st === 'en proceso' && (avance === 0 || isOverdueFiltro));
+        }
+        if (activeSubFilter === 'pendientes') {
+          return st === 'pendiente' || st === 'en revisión' || st === 'en_revision' ||
+            (st === 'en proceso' && avance > 0 && !isOverdueFiltro);
+        }
         if (activeSubFilter === 'completadas') return st === 'completada' || st === 'finalizada';
         return true;
       });
@@ -394,7 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
               ${!isDone && !isReview ? `
                 <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
-                  ✅ Marcar Completada
+                  🚀 Enviar a Revisión
                 </button>
               ` : ''}
             </div>
@@ -419,10 +436,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (resRev?.ok) {
-              alert('✅ Tarea marcada como completada');
+              alert('🚀 Tarea enviada a revisión');
               loadData();
             } else {
-              alert('Error al marcar la tarea como completada');
+              alert('Error al enviar la tarea a revisión');
             }
           };
         });
