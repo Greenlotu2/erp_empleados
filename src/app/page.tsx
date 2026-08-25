@@ -143,7 +143,7 @@ export default function AdminDashboard() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [notifications, setNotifications] = useState<PluginNotification[]>([]);
   // Modal de "⏱️ Tiempo Extra" / nueva fecha límite (reemplaza el window.prompt nativo).
-  const [extendDeadlineTarget, setExtendDeadlineTarget] = useState<{ id: string | number; title: string; currentDueDate?: string } | null>(null);
+  const [extendDeadlineTarget, setExtendDeadlineTarget] = useState<{ id: string | number; title: string; currentDueDate?: string; rejectNotif?: PluginNotification } | null>(null);
   const [extendDeadlineValue, setExtendDeadlineValue] = useState('');
   // IDs de notificaciones ya notificadas al navegador. `null` = todavía no cargamos
   // por primera vez — así no se dispara una ráfaga de notificaciones del navegador
@@ -522,10 +522,29 @@ export default function AdminDashboard() {
   }, []);
 
   // Aprobar/Rechazar una tarea que el empleado envió a revisión ('En Revisión').
-  // Aprobar la completa de verdad (tarea + calendario); Rechazar la regresa al
-  // empleado para que la retome. Sin esto, los botones solo marcaban la
-  // notificación como leída sin tocar el estado real de la tarea.
+  // Aprobar la completa de verdad (tarea + calendario) de inmediato. Rechazar NO toca
+  // la base de datos todavía — abre el modal de nueva fecha límite y la notificación
+  // se resuelve solo hasta que se confirme ahí (handleConfirmExtendDeadline). Si el
+  // admin cierra/cancela el modal, la notificación sigue pendiente para reintentar.
   const handleResolveNotification = async (notif: PluginNotification, nuevoEstado: 'Aprobado' | 'Rechazado') => {
+    const taskIdNum = notif.taskId ? parseInt(notif.taskId, 10) : NaN;
+
+    if (nuevoEstado === 'Rechazado') {
+      const { data: tareaRechazada } = await supabase
+        .from('tareas')
+        .select('titulo, fecha_limite')
+        .eq('id', taskIdNum)
+        .maybeSingle();
+
+      handleExtendDeadline(
+        taskIdNum,
+        (tareaRechazada as any)?.titulo || notif.taskTitle,
+        (tareaRechazada as any)?.fecha_limite || notif.taskDueDate || undefined,
+        notif
+      );
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('notificaciones')
@@ -534,45 +553,19 @@ export default function AdminDashboard() {
 
       if (error) throw error;
 
-      const taskIdNum = notif.taskId ? parseInt(notif.taskId, 10) : NaN;
       if (!isNaN(taskIdNum)) {
-        if (nuevoEstado === 'Aprobado') {
-          await (supabase.from('tareas') as any)
-            .update({ estado: 'Completada', porcentaje_avance: 100, fecha_completado: new Date().toISOString() })
-            .eq('id', taskIdNum);
+        await (supabase.from('tareas') as any)
+          .update({ estado: 'Completada', porcentaje_avance: 100, fecha_completado: new Date().toISOString() })
+          .eq('id', taskIdNum);
 
-          await (supabase.from('reuniones') as any)
-            .update({ estado: 'Completada' })
-            .eq('tarea_id', taskIdNum)
-            .neq('estado', 'Completada');
-        } else {
-          await (supabase.from('tareas') as any)
-            .update({ estado: 'En Proceso' })
-            .eq('id', taskIdNum);
-        }
+        await (supabase.from('reuniones') as any)
+          .update({ estado: 'Completada' })
+          .eq('tarea_id', taskIdNum)
+          .neq('estado', 'Completada');
       }
 
       setNotifications(prev => prev.filter(n => n.id !== notif.id));
       await fetchDashboardData();
-
-      // Al rechazar, se asume que la tarea necesita más tiempo — se abre el mismo
-      // modal de "⏱️ Tiempo Extra" en vez de dejarla con la fecha límite original,
-      // que probablemente ya se cumplió o está muy cerca si el empleado ya la había
-      // enviado a revisión. `notif.taskTitle` es el mensaje completo de la
-      // notificación, no el título real — se busca aparte.
-      if (nuevoEstado === 'Rechazado' && !isNaN(taskIdNum)) {
-        const { data: tareaRechazada } = await supabase
-          .from('tareas')
-          .select('titulo')
-          .eq('id', taskIdNum)
-          .maybeSingle();
-
-        handleExtendDeadline(
-          taskIdNum,
-          (tareaRechazada as any)?.titulo || notif.taskTitle,
-          notif.taskDueDate || undefined
-        );
-      }
     } catch (err: any) {
       console.error('Error resolviendo notificación:', err);
     }
@@ -583,9 +576,16 @@ export default function AdminDashboard() {
   // el admin tiene autoridad directa sobre la tarea que está viendo, así que el botón
   // actualiza la fecha límite de una vez en vez de generar una solicitud pendiente.
   // Solo abre el modal — la actualización real la hace handleConfirmExtendDeadline.
-  const handleExtendDeadline = (taskId: string | number, taskTitle: string, currentDueDate?: string) => {
+  // `rejectNotif` solo se pasa cuando se abre desde "Rechazar": marca que al confirmar
+  // también hay que resolver esa notificación y regresar la tarea a 'En Proceso'.
+  const handleExtendDeadline = (
+    taskId: string | number,
+    taskTitle: string,
+    currentDueDate?: string,
+    rejectNotif?: PluginNotification
+  ) => {
     setExtendDeadlineValue('');
-    setExtendDeadlineTarget({ id: taskId, title: taskTitle, currentDueDate });
+    setExtendDeadlineTarget({ id: taskId, title: taskTitle, currentDueDate, rejectNotif });
   };
 
   const handleConfirmExtendDeadline = async (e: React.FormEvent) => {
@@ -593,12 +593,27 @@ export default function AdminDashboard() {
     if (!extendDeadlineTarget || !extendDeadlineValue) return;
 
     try {
+      const updatePayload: any = { fecha_limite: extendDeadlineValue };
+      if (extendDeadlineTarget.rejectNotif) {
+        updatePayload.estado = 'En Proceso';
+      }
+
       const { error } = await supabase
         .from('tareas')
-        .update({ fecha_limite: extendDeadlineValue })
+        .update(updatePayload)
         .eq('id', extendDeadlineTarget.id);
 
       if (error) throw error;
+
+      if (extendDeadlineTarget.rejectNotif) {
+        const notif = extendDeadlineTarget.rejectNotif;
+        await supabase
+          .from('notificaciones')
+          .update({ estado: 'Rechazado' })
+          .eq('id', notif.id);
+
+        setNotifications(prev => prev.filter(n => n.id !== notif.id));
+      }
 
       setExtendDeadlineTarget(null);
       await fetchDashboardData();
@@ -2039,11 +2054,18 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-6 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">⏱️ Tiempo Extra</h3>
+              <h3 className="text-sm font-bold text-slate-900">
+                {extendDeadlineTarget.rejectNotif ? '❌ Rechazar y dar más tiempo' : '⏱️ Tiempo Extra'}
+              </h3>
               <button onClick={() => setExtendDeadlineTarget(null)} className="text-slate-400 font-bold cursor-pointer">✕</button>
             </div>
 
             <form onSubmit={handleConfirmExtendDeadline} className="space-y-3.5 text-xs">
+              {extendDeadlineTarget.rejectNotif && (
+                <p className="text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
+                  La tarea regresará a "En Proceso" con esta nueva fecha límite. Si cierras sin guardar, se cancela el rechazo y la notificación sigue pendiente.
+                </p>
+              )}
               <p className="text-slate-600">
                 Nueva fecha límite para <strong className="text-slate-900">"{extendDeadlineTarget.title}"</strong>
                 {extendDeadlineTarget.currentDueDate && (
@@ -2064,7 +2086,9 @@ export default function AdminDashboard() {
 
               <div className="flex gap-2 pt-3 border-t border-slate-100">
                 <button type="button" onClick={() => setExtendDeadlineTarget(null)} className="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-xl font-semibold">Cancelar</button>
-                <button type="submit" className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-xl font-bold">Guardar</button>
+                <button type="submit" className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-xl font-bold">
+                  {extendDeadlineTarget.rejectNotif ? 'Rechazar tarea' : 'Guardar'}
+                </button>
               </div>
             </form>
           </div>
