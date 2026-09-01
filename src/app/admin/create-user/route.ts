@@ -1,12 +1,12 @@
-import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
-import { NextResponse, type NextRequest } from 'next/server';
-import bcrypt from 'bcryptjs';
-import { verifyAuthToken } from '../../../lib/auth';
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import { NextResponse, type NextRequest } from "next/server";
+import bcrypt from "bcryptjs";
+import { verifyAuthToken } from "../../../lib/auth";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 export async function POST(request: NextRequest) {
@@ -15,7 +15,11 @@ export async function POST(request: NextRequest) {
 
     // 1. Intento A: Verificar Token JWT en el encabezado Authorization (Bearer)
     const jwtCaller = verifyAuthToken(request);
-    if (jwtCaller && (jwtCaller.rol.toLowerCase() === 'administrador' || jwtCaller.rol.toLowerCase() === 'admin')) {
+    if (
+      jwtCaller &&
+      (jwtCaller.rol.toLowerCase() === "administrador" ||
+        jwtCaller.rol.toLowerCase() === "admin")
+    ) {
       isAuthorized = true;
     }
 
@@ -31,21 +35,23 @@ export async function POST(request: NextRequest) {
             },
             setAll() {},
           },
-        }
+        },
       );
 
-      const { data: { user } } = await supabaseSsr.auth.getUser();
+      const {
+        data: { user },
+      } = await supabaseSsr.auth.getUser();
 
       if (user) {
         // Consultar rol en la tabla empleados
         const { data: emp } = await supabaseAdmin
-          .from('empleados')
-          .select('rol')
+          .from("empleados")
+          .select("rol")
           .or(`user_id.eq.${user.id},username.ilike.${user.email}`)
           .maybeSingle();
 
         const role = emp?.rol?.toLowerCase();
-        if (role === 'admin' || role === 'administrador') {
+        if (role === "admin" || role === "administrador") {
           isAuthorized = true;
         }
       }
@@ -54,29 +60,48 @@ export async function POST(request: NextRequest) {
     // Si ninguno de los dos métodos valida al Administrador, bloquear acceso
     if (!isAuthorized) {
       return NextResponse.json(
-        { error: 'Acceso denegado: Se requieren permisos de Administrador' },
-        { status: 403 }
+        { error: "Acceso denegado: Se requieren permisos de Administrador" },
+        { status: 403 },
       );
     }
 
     const body = await request.json();
-    const { email, password, nombre, rol, especialidad, disponibilidad, horasTotalesObjetivo, avatarUrl, color, nivel, area } = body;
+    const {
+      email,
+      password,
+      nombre,
+      rol,
+      especialidad,
+      disponibilidad,
+      horasTotalesObjetivo,
+      avatarUrl,
+      color,
+      nivel,
+      area,
+    } = body;
 
     if (!email || !password) {
-      return NextResponse.json({ error: 'Correo y contraseña son obligatorios' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Correo y contraseña son obligatorios" },
+        { status: 400 },
+      );
     }
 
     const cleanEmail = email.trim().toLowerCase();
 
     // Crear usuario en Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: cleanEmail,
-      password,
-      email_confirm: true,
-    });
+    const { data: authData, error: authError } =
+      await supabaseAdmin.auth.admin.createUser({
+        email: cleanEmail,
+        password,
+        email_confirm: true,
+      });
 
     if (authError) {
-      return NextResponse.json({ error: `Error en Auth: ${authError.message}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Error en Auth: ${authError.message}` },
+        { status: 400 },
+      );
     }
 
     const userId = authData.user.id;
@@ -84,23 +109,24 @@ export async function POST(request: NextRequest) {
     // Generar hash de la contraseña con bcrypt
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Insertar en la tabla empleados
+    // Insertar en la tabla empleados (SIN credenciales: viven en empleados_auth)
     const { data: empData, error: empError } = await supabaseAdmin
-      .from('empleados')
+      .from("empleados")
       .insert({
         user_id: userId,
         username: cleanEmail,
         nombre: nombre.trim(),
-        rol: rol || 'Practicante',
-        password_hash: passwordHash,
-        especialidad: especialidad || 'General',
-        disponibilidad: disponibilidad === 'Disponible',
+        rol: rol || "Practicante",
+        especialidad: especialidad || "General",
+        disponibilidad: disponibilidad === "Disponible",
         avatar_url: avatarUrl || null,
-        color: color || '#2563eb',
-        nivel: nivel || 'Trabajador',
+        color: color || "#2563eb",
+        nivel: nivel || "Trabajador",
         area: area || null,
         horas_acumuladas: 0,
-        horas_totales_objetivo: horasTotalesObjetivo ? parseInt(horasTotalesObjetivo) : null,
+        horas_totales_objetivo: horasTotalesObjetivo
+          ? parseInt(horasTotalesObjetivo)
+          : null,
       })
       .select()
       .single();
@@ -108,12 +134,32 @@ export async function POST(request: NextRequest) {
     if (empError) {
       // Rollback: Borrar usuario de Auth si falla la tabla empleados
       await supabaseAdmin.auth.admin.deleteUser(userId);
-      return NextResponse.json({ error: `Error en Empleados: ${empError.message}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Error en Empleados: ${empError.message}` },
+        { status: 400 },
+      );
+    }
+
+    // Guardar el hash de contraseña en la tabla aislada de credenciales.
+    const { error: authRowError } = await supabaseAdmin
+      .from("empleados_auth")
+      .insert({ empleado_id: empData.id, password_hash: passwordHash });
+
+    if (authRowError) {
+      // Rollback completo si no se pudo guardar la credencial.
+      await supabaseAdmin.from("empleados").delete().eq("id", empData.id);
+      await supabaseAdmin.auth.admin.deleteUser(userId);
+      return NextResponse.json(
+        { error: `Error guardando credencial: ${authRowError.message}` },
+        { status: 400 },
+      );
     }
 
     return NextResponse.json({ success: true, employee: empData });
-
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Error interno del servidor' }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Error interno del servidor" },
+      { status: 500 },
+    );
   }
 }

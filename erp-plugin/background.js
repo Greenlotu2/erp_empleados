@@ -140,39 +140,46 @@ if (chrome.alarms) {
 }
 
 // ==========================================
-// 6. FUNCIÓN AUXILIAR PARA SUMAR HORAS EN SUPABASE
+// 6. FUNCIÓN AUXILIAR PARA SUMAR HORAS (vía API del ERP, NO Supabase directo)
 // ==========================================
+// Antes esto pegaba a `/rest/v1/empleados` con la publishable key horneada en el
+// código. Ahora pasa por la API autenticada del ERP (`/api/empleados/horas`), que
+// verifica el JWT del empleado y valida que solo actualice su propio perfil.
+function getConfigExtension() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['custom_api_url', 'jwt_token'], (res) => {
+      const base = (res?.custom_api_url || 'http://localhost:3000/api').replace(/\/+$/, '');
+      resolve({ apiBase: base, token: res?.jwt_token || null });
+    });
+  });
+}
+
 async function acumularHorasEnSupabase(empleadoId, horasIncremento) {
   if (!horasIncremento || horasIncremento <= 0) return;
 
   try {
-    const SUPABASE_URL = "https://twrvbdxudbmzdimxgjnz.supabase.co";
-    const SUPABASE_KEY = "sb_publishable_vNP-W2Qk4VMjw4Cx4GNdXw_g9jGPy_w";
+    const { apiBase, token } = await getConfigExtension();
+    if (!token) {
+      console.warn('Sin JWT en storage: se omite la sincronización de horas.');
+      return;
+    }
+    const authHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
 
-    // 1. Obtener horas actuales
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/empleados?id=eq.${empleadoId}&select=horas_acumuladas`, {
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`
-      }
-    });
-    const data = await res.json();
-    const horasActuales = data[0]?.horas_acumuladas || 0;
-    const nuevasHoras = Number((horasActuales + horasIncremento).toFixed(4));
-
-    // 2. Actualizar en Supabase
-    await fetch(`${SUPABASE_URL}/rest/v1/empleados?id=eq.${empleadoId}`, {
+    // Incremento ATÓMICO en el servidor — sin leer-modificar-escribir, así no hay
+    // carrera con el panel cuando ambos sincronizan casi al mismo tiempo.
+    await fetch(`${apiBase}/empleados/horas`, {
       method: 'PATCH',
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal"
-      },
-      body: JSON.stringify({ horas_acumuladas: nuevasHoras })
+      headers: authHeaders,
+      body: JSON.stringify({
+        employeeId: empleadoId,
+        deltaHoras: Number(horasIncremento.toFixed(6)),
+      }),
     });
   } catch (error) {
-    console.error("Error sincronizando horas en Supabase:", error);
+    console.error('Error sincronizando horas vía API:', error);
   }
 }
 

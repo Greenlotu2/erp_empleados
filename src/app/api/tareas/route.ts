@@ -36,7 +36,21 @@ export async function GET(req: NextRequest) {
     const { data: tareas, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ success: true, tareas: tareas || [] }, { status: 200, headers: corsHeaders });
+    // Puntos de recompensa actuales — se otorgan por trigger en Supabase al
+    // completar tareas, así que se refrescan aquí en cada carga (la extensión ya
+    // llama a este endpoint al cambiar de pestaña, no hace falta un endpoint aparte).
+    const puntosEmpId = !isAdmin ? user.id : (requestedEmpId || user.id);
+    const { data: empPuntos } = await supabaseAdmin
+      .from('empleados')
+      .select('puntos_recompensa')
+      .eq('id', puntosEmpId)
+      .maybeSingle();
+
+    return NextResponse.json({
+      success: true,
+      tareas: tareas || [],
+      puntosRecompensa: (empPuntos as any)?.puntos_recompensa || 0,
+    }, { status: 200, headers: corsHeaders });
 
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Error al consultar tareas' }, { status: 500, headers: corsHeaders });

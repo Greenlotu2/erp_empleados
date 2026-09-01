@@ -1,4 +1,6 @@
+import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuthToken } from '../../../../lib/auth';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +36,40 @@ async function getZoomAccessToken() {
 }
 
 export async function POST(req: NextRequest) {
+  // 🔒 Antes este endpoint no verificaba nada — cualquiera que encontrara la ruta
+  // podía crear reuniones de Zoom reales con las credenciales de la cuenta de la
+  // empresa sin haber iniciado sesión. Mismo patrón dual que ruta-critica/analizar
+  // (JWT de la extensión o cookie de sesión del panel web).
+  let isAuthorized = false;
+
+  const jwtCaller = verifyAuthToken(req);
+  if (jwtCaller) isAuthorized = true;
+
+  if (!isAuthorized) {
+    const supabaseSsr = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return req.cookies.getAll();
+          },
+          setAll() {},
+        },
+      }
+    );
+
+    const { data: { user } } = await supabaseSsr.auth.getUser();
+    if (user) isAuthorized = true;
+  }
+
+  if (!isAuthorized) {
+    return NextResponse.json(
+      { error: 'No autorizado: debes iniciar sesión para crear una reunión de Zoom' },
+      { status: 401, headers: corsHeaders }
+    );
+  }
+
   try {
     const { titulo, descripcion, fechaInicio } = await req.json();
 

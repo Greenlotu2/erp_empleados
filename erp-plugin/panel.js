@@ -5,6 +5,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeSubFilter = 'por_hacer';
 
   // ⏱️ Variables para el Timer Automático
+  // 🏆 Evidencia pendiente de adjuntar por tarea (id -> {base64, nombre, tipo}) —
+  // se llena al elegir un archivo y se envía junto con "Enviar a Revisión".
+  const evidenciasPendientes = new Map();
+  const MAX_EVIDENCIA_BYTES = 5 * 1024 * 1024; // 5MB
+
   let timerInterval = null;
   let todaySeconds = 0;
   let lastSyncTimestamp = Date.now();
@@ -24,11 +29,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const screenContainer = document.getElementById('screen-container');
   const logoutBtn = document.getElementById('btn-logout');
   const popoutBtn = document.getElementById('btn-popout');
+  const refreshBtn = document.getElementById('btn-refresh');
 
   // Abrir extensión en ventana flotante
   if (popoutBtn) {
     popoutBtn.onclick = () => {
       chrome.runtime.sendMessage({ type: 'OPEN_POPUP_WINDOW' });
+    };
+  }
+
+  // 🔄 Actualizar manualmente (tareas/reuniones/puntos de la pestaña activa)
+  if (refreshBtn) {
+    refreshBtn.onclick = async () => {
+      if (!usuarioAutenticado || refreshBtn.disabled) return;
+      refreshBtn.disabled = true;
+      refreshBtn.classList.add('spinning');
+      await loadData();
+      setTimeout(() => {
+        refreshBtn.classList.remove('spinning');
+        refreshBtn.disabled = false;
+      }, 400);
     };
   }
 
@@ -58,8 +78,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     screenContainer.innerHTML = `
       <div class="login-container">
-        <div style="text-align: center; margin-bottom: 20px;">
-          <h3 style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Acceso de Empleados</h3>
+        <div style="text-align: center; margin-bottom: 10px;">
+          <h3 style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 2px;">Acceso de Empleados</h3>
           <p style="font-size: 11px; color: #94a3b8;">Sincroniza tus tareas y jornada de trabajo</p>
         </div>
 
@@ -134,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="user-role">${usuarioAutenticado.rol || usuarioAutenticado.role || 'Personal'}</span>
           </div>
         </div>
+        <span id="rewards-badge" class="rewards-badge" title="Puntos de recompensa">🏆 ${usuarioAutenticado.puntos_recompensa || 0} pts</span>
       </div>
 
       <!-- Widget de Timer Automático -->
@@ -159,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="tabs-container">
         <button id="tab-tareas" class="tab-btn">📋 Tareas</button>
         <button id="tab-reuniones" class="tab-btn">📅 Reuniones</button>
+        <button id="tab-recompensas" class="tab-btn">🏆 Puntos</button>
       </div>
 
       <!-- Sub-filtros de Tareas -->
@@ -188,8 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function setupEvents() {
     const btnT = document.getElementById('tab-tareas');
     const btnR = document.getElementById('tab-reuniones');
+    const btnP = document.getElementById('tab-recompensas');
     if (btnT) btnT.onclick = () => { activeMainTab = 'tareas'; updateStyles(); loadData(); };
     if (btnR) btnR.onclick = () => { activeMainTab = 'reuniones'; updateStyles(); loadData(); };
+    if (btnP) btnP.onclick = () => { activeMainTab = 'recompensas'; updateStyles(); loadData(); };
 
     ['por_hacer', 'pendientes', 'completadas'].forEach(filter => {
       const btn = document.getElementById(`sub-${filter}`);
@@ -200,16 +224,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateStyles() {
     const btnT = document.getElementById('tab-tareas');
     const btnR = document.getElementById('tab-reuniones');
+    const btnP = document.getElementById('tab-recompensas');
     const subContainer = document.getElementById('subfilters-container');
 
-    if (btnT && btnR) {
+    if (btnT && btnR && btnP) {
+      [btnT, btnR, btnP].forEach(b => b.classList.remove('active'));
       if (activeMainTab === 'tareas') {
         btnT.classList.add('active');
-        btnR.classList.remove('active');
         if (subContainer) subContainer.style.display = 'grid';
       } else {
-        btnR.classList.add('active');
-        btnT.classList.remove('active');
+        (activeMainTab === 'reuniones' ? btnR : btnP).classList.add('active');
         if (subContainer) subContainer.style.display = 'none';
       }
     }
@@ -295,14 +319,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     syncInProgress = true;
     const incrementHours = secondsToSync / 3600;
-    const newTotalHours = (usuarioAutenticado.horas_acumuladas || 0) + incrementHours;
 
     try {
+      // Incremento ATÓMICO en el servidor — se manda solo el delta, no el total.
+      // Así el panel y el background pueden sincronizar sin pisarse.
       const res = await apiRequest(`${API_BASE_URL}/empleados/horas`, {
         method: 'PATCH',
         body: JSON.stringify({
           employeeId: usuarioAutenticado.id,
-          horasAcumuladas: parseFloat(newTotalHours.toFixed(4)),
+          deltaHoras: parseFloat(incrementHours.toFixed(6)),
           targetHours
         })
       });
@@ -311,7 +336,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!usuarioAutenticado) return;
 
       if (res?.ok) {
-        usuarioAutenticado.horas_acumuladas = newTotalHours;
+        // El servidor devuelve el nuevo total ya sumado atómicamente.
+        const total = res?.data?.horas_acumuladas;
+        usuarioAutenticado.horas_acumuladas =
+          typeof total === 'number'
+            ? total
+            : (usuarioAutenticado.horas_acumuladas || 0) + incrementHours;
         lastSyncedSeconds = currentTodaySeconds; // ✅ Fix #5: Solo avanza si el servidor confirmó éxito
         chrome.storage.local.set({ session_user: usuarioAutenticado });
       } else {
@@ -324,6 +354,145 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // 🏆 Actualiza el badge de puntos (y lo persiste) cada vez que llega un valor
+  // fresco del servidor — los puntos se otorgan por trigger al completar tareas,
+  // así que se refrescan solos en cada carga sin necesitar un endpoint aparte.
+  function actualizarPuntosUI(puntos) {
+    if (typeof puntos !== 'number' || !usuarioAutenticado) return;
+    usuarioAutenticado.puntos_recompensa = puntos;
+    const el = document.getElementById('rewards-badge');
+    if (el) el.textContent = `🏆 ${puntos} pts`;
+    chrome.storage.local.set({ session_user: usuarioAutenticado });
+  }
+
+  // 🏆 Mismos umbrales de nivel que Panel Principal (src/app/page.tsx,
+  // NIVELES_RECOMPENSA) — que coincidan es lo que hace que un empleado vea el mismo
+  // nivel en la extensión y en el CRM web.
+  const NIVELES_RECOMPENSA = [
+    { min: 0, label: 'Bronce', icon: '🥉' },
+    { min: 300, label: 'Plata', icon: '🥈' },
+    { min: 800, label: 'Oro', icon: '🥇' },
+    { min: 1500, label: 'Diamante', icon: '💎' },
+  ];
+
+  function getNivelRecompensa(puntos) {
+    let actual = NIVELES_RECOMPENSA[0];
+    let siguiente = null;
+    for (let i = 0; i < NIVELES_RECOMPENSA.length; i++) {
+      if (puntos >= NIVELES_RECOMPENSA[i].min) {
+        actual = NIVELES_RECOMPENSA[i];
+        siguiente = NIVELES_RECOMPENSA[i + 1] || null;
+      }
+    }
+    const progresoPct = siguiente
+      ? Math.min(100, Math.round(((puntos - actual.min) / (siguiente.min - actual.min)) * 100))
+      : 100;
+    return { actual, siguiente, progresoPct };
+  }
+
+  // Mismo catálogo (visual, sin canje real todavía) que Panel Principal.
+  const CATALOGO_RECOMPENSAS = [
+    { icon: '🛒', label: 'Vale de Despensa', desc: 'Apoyo para compras de despensa en supermercados.', cost: 400 },
+    { icon: '⛽', label: 'Tarjeta / Vale de Gasolina', desc: 'Apoyo para transporte y movilidad diaria.', cost: 400 },
+    { icon: '📚', label: 'Curso o Certificación Profesional', desc: 'Pago de capacitación técnica o profesional.', cost: 900 },
+    { icon: '🎟️', label: 'Día Libre', desc: 'Un día de descanso adicional pagado.', cost: 2500 },
+    { icon: '🏆', label: 'Bono Colectivo de Equipo', desc: 'Premio acumulativo por cumplimiento de hitos del área o proyecto.', cost: null },
+  ];
+
+  function formatFechaCorta(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  async function renderRecompensas(list) {
+    const res = await apiRequest(`${API_BASE_URL}/recompensas?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
+
+    if (!res?.ok) {
+      list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top: 12px;">No se pudo cargar tus recompensas.</p>`;
+      return;
+    }
+
+    const puntos = res.data?.puntosRecompensa || 0;
+    const historial = res.data?.historial || [];
+    actualizarPuntosUI(puntos);
+
+    const { actual, siguiente, progresoPct } = getNivelRecompensa(puntos);
+
+    const historialHtml = historial.length === 0
+      ? `<p style="font-size:10px; color:#64748b; padding: 2px 2px;">Todavía no has ganado puntos — se otorgan al completar tareas.</p>`
+      : historial.map(h => `
+          <div style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding: 4px 6px; gap: 4px;">
+            <span style="font-size:10px; color:#e2e8f0; flex:1; min-width:0;">${h.motivo}</span>
+            <div style="display:flex; align-items:center; gap: 3px; flex-shrink:0;">
+              <span style="font-size:10px; font-weight:700; color:#6ee7b7;">+${h.puntos} pts</span>
+              <span style="font-size:9px; color:#64748b; font-family:monospace;">${formatFechaCorta(h.created_at)}</span>
+            </div>
+          </div>
+        `).join('');
+
+    const catalogoHtml = CATALOGO_RECOMPENSAS.map(item => `
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding: 4px 6px; gap: 4px;">
+        <div style="display:flex; align-items:flex-start; gap: 4px; min-width:0;">
+          <span>${item.icon}</span>
+          <span style="min-width:0;">
+            <span style="display:block; font-size:11px; font-weight:700; color:#f8fafc;">${item.label}</span>
+            <span style="display:block; font-size:9px; color:#94a3b8; margin-top: 2px; line-height:1.3;">${item.desc}</span>
+          </span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap: 2px; flex-shrink:0;">
+          <span style="font-size:9px; font-weight:700; color:#fcd34d; white-space:nowrap;">${item.cost !== null ? `⭐ ${item.cost} pts` : 'Según equipo'}</span>
+          <button disabled title="Próximamente" style="font-size:9px; font-weight:700; background:#1e293b; color:#64748b; padding: 2px 4px; border:none; border-radius:6px; cursor:not-allowed;">Canjear</button>
+        </div>
+      </div>
+    `).join('');
+
+    list.innerHTML = `
+      <div style="background:linear-gradient(135deg, #4338ca, #2563eb); border-radius:12px; padding: 8px; display:flex; flex-direction:column; gap: 6px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <p style="font-size:9px; font-weight:700; color:#c7d2fe; text-transform:uppercase; letter-spacing:0.5px;">Tus puntos</p>
+            <p style="font-size:20px; font-weight:800; color:#fff; margin-top: 2px;">⭐ ${puntos} pts</p>
+          </div>
+          <span style="font-size:10px; font-weight:700; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.25); color:#fff; padding: 2px 6px; border-radius:999px; white-space:nowrap;">
+            ${actual.icon} Nivel ${actual.label}
+          </span>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; font-size:9px; font-weight:600; color:#c7d2fe; margin-bottom: 2px;">
+            <span>${siguiente ? `Progreso a Nivel ${siguiente.label}` : 'Nivel máximo alcanzado'}</span>
+            <span>${siguiente ? `${puntos} / ${siguiente.min} pts` : `${puntos} pts`}</span>
+          </div>
+          <div style="width:100%; height:6px; background:rgba(255,255,255,0.2); border-radius:999px; overflow:hidden;">
+            <div style="height:100%; width:${progresoPct}%; background:#fff; border-radius:999px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin: 6px 0 3px;">Historial de puntos</p>
+      <div style="display:flex; flex-direction:column; gap: 3px;">${historialHtml}</div>
+
+      <p style="font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin: 8px 0 3px; display:flex; align-items:center; gap: 3px;">
+        Catálogo de Recompensas
+        <span style="font-size:8px; font-weight:700; background:rgba(245,158,11,0.15); color:#fcd34d; border:1px solid rgba(245,158,11,0.3); padding: 2px 3px; border-radius:999px; text-transform:none;">Pendiente</span>
+      </p>
+      <div style="display:flex; flex-direction:column; gap: 3px;">${catalogoHtml}</div>
+    `;
+  }
+
+  // Convierte un File a base64 (sin el prefijo "data:...;base64,") para mandarlo
+  // dentro del JSON de apiRequest — chrome.runtime.sendMessage no transporta bien
+  // FormData/Blob entre el panel y el service worker.
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   // ==========================================
   // 5. CARGA Y DIBUJO DE TAREAS Y REUNIONES
   // ==========================================
@@ -331,11 +500,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const list = document.getElementById('c-contentList');
     if (!list) return;
 
+    if (activeMainTab === 'recompensas') {
+      await renderRecompensas(list);
+      return;
+    }
+
     if (activeMainTab === 'tareas') {
       const res = await apiRequest(`${API_BASE_URL}/tareas?employeeId=${usuarioAutenticado.id}`, { method: 'GET' });
       const tareas = (res?.ok && (Array.isArray(res.data) || Array.isArray(res.data?.tareas)))
         ? (res.data.tareas || res.data)
         : [];
+
+      if (res?.ok && typeof res.data?.puntosRecompensa === 'number') {
+        actualizarPuntosUI(res.data.puntosRecompensa);
+      }
 
       const hoyFiltro = new Date().toISOString().split('T')[0];
 
@@ -363,7 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (filtered.length === 0) {
-        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin tareas en esta categoría.</p>`;
+        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top: 12px;">Sin tareas en esta categoría.</p>`;
       } else {
         list.innerHTML = '';
         filtered.forEach(t => {
@@ -410,9 +588,16 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
 
               ${!isDone && !isReview ? `
-                <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
-                  🚀 Enviar a Revisión
-                </button>
+                <div class="card-actions">
+                  <label class="btn-attach${evidenciasPendientes.has(String(t.id)) ? ' has-file' : ''}" title="Adjuntar evidencia (opcional, máx. 5MB)">
+                    📎
+                    <input type="file" class="file-evidencia" data-id="${t.id}" style="display:none">
+                  </label>
+                  <span class="evidence-name" data-id="${t.id}">${evidenciasPendientes.get(String(t.id))?.nombre || ''}</span>
+                  <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
+                    🚀 Enviar a Revisión
+                  </button>
+                </div>
               ` : ''}
             </div>
           `;
@@ -420,10 +605,43 @@ document.addEventListener('DOMContentLoaded', () => {
           list.appendChild(item);
         });
 
+        document.querySelectorAll('.file-evidencia').forEach(input => {
+          input.onchange = async (e) => {
+            const id = e.target.dataset.id;
+            const file = e.target.files?.[0];
+            if (!file) return;
+
+            if (file.size > MAX_EVIDENCIA_BYTES) {
+              alert('El archivo supera los 5MB permitidos como evidencia.');
+              e.target.value = '';
+              return;
+            }
+
+            const base64 = await fileToBase64(file);
+            evidenciasPendientes.set(id, { base64, nombre: file.name, tipo: file.type });
+
+            const nameEl = document.querySelector(`.evidence-name[data-id="${id}"]`);
+            if (nameEl) nameEl.textContent = file.name;
+            e.target.closest('.btn-attach')?.classList.add('has-file');
+          };
+        });
+
         document.querySelectorAll('.btn-review').forEach(btn => {
           btn.onclick = async (e) => {
-            const taskId = e.currentTarget.dataset.id;
-            const taskTitle = e.currentTarget.dataset.title;
+            const target = e.currentTarget;
+            // 🛡️ Evita doble envío: un doble clic rápido antes de que loadData()
+            // vuelva a pintar la lista disparaba dos POST a /api/revisiones (bug real
+            // detectado: dos filas duplicadas en `revisiones`/`notificaciones`).
+            if (target.disabled) return;
+            target.disabled = true;
+            target.style.opacity = '0.6';
+            target.style.cursor = 'not-allowed';
+            const textoOriginal = target.textContent;
+            target.textContent = 'Enviando...';
+
+            const taskId = target.dataset.id;
+            const taskTitle = target.dataset.title;
+            const evidencia = evidenciasPendientes.get(taskId);
 
             const resRev = await apiRequest(`${API_BASE_URL}/revisiones`, {
               method: 'POST',
@@ -431,15 +649,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 taskId,
                 taskTitle,
                 employeeId: usuarioAutenticado.id,
-                employeeName: usuarioAutenticado.nombre || usuarioAutenticado.name
+                employeeName: usuarioAutenticado.nombre || usuarioAutenticado.name,
+                ...(evidencia ? {
+                  evidenciaBase64: evidencia.base64,
+                  evidenciaNombre: evidencia.nombre,
+                  evidenciaTipo: evidencia.tipo,
+                } : {})
               })
             });
 
             if (resRev?.ok) {
-              alert('🚀 Tarea enviada a revisión');
+              evidenciasPendientes.delete(taskId);
+              alert('🚀 Tarea enviada a revisión' + (evidencia ? ' con evidencia adjunta' : ''));
               loadData();
             } else {
-              alert('Error al enviar la tarea a revisión');
+              alert('Error al enviar la tarea a revisión' + (resRev?.data?.error ? `: ${resRev.data.error}` : ''));
+              target.disabled = false;
+              target.style.opacity = '';
+              target.style.cursor = '';
+              target.textContent = textoOriginal;
             }
           };
         });
@@ -452,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
         : [];
 
       if (reuniones.length === 0) {
-        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top:24px;">Sin reuniones programadas.</p>`;
+        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top: 12px;">Sin reuniones programadas.</p>`;
       } else {
         list.innerHTML = '';
         reuniones.forEach(m => {

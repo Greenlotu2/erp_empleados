@@ -1,12 +1,16 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 
-import { supabase } from '../../lib/supabase';
+import { supabase } from "../../lib/supabase";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
 
@@ -14,39 +18,41 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const checkAdminAccess = async () => {
       try {
         // 1. Obtener la sesión activa
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
         if (!session || !session.user) {
-          router.push('/login');
+          router.push("/login");
           return;
         }
 
-        const userEmail = session.user.email?.trim().toLowerCase() || '';
+        const userEmail = session.user.email?.trim().toLowerCase() || "";
 
         // 2. Consultar el rol en 'empleados' filtrando 'username' (que guarda el email) o 'id'
         const { data: empleado, error } = await supabase
-          .from('empleados')
-          .select('rol')
+          .from("empleados")
+          .select("rol")
           .or(`username.ilike.${userEmail},id.eq.${session.user.id}`)
           .maybeSingle();
 
         if (error) {
-          console.error('Error al consultar rol en la tabla empleados:', error);
+          console.error("Error al consultar rol en la tabla empleados:", error);
         }
 
         const userRole = empleado?.rol?.toLowerCase().trim();
 
         // 3. Validar si es Administrador
-        if (userRole === 'admin' || userRole === 'administrador') {
+        if (userRole === "admin" || userRole === "administrador") {
           setIsAuthorized(true);
         } else {
-          console.warn('Acceso denegado: Rol no administrador ->', userRole);
+          console.warn("Acceso denegado: Rol no administrador ->", userRole);
           // Redirigir sin hacer signOut para no romper el estado del cliente
-          router.push('/login');
+          router.push("/login");
         }
       } catch (err) {
-        console.error('Error durante la verificación de permisos:', err);
-        router.push('/login');
+        console.error("Error durante la verificación de permisos:", err);
+        router.push("/login");
       }
     };
 
@@ -56,9 +62,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!isAuthorized) {
     return (
       <div className="h-screen w-screen bg-slate-50 flex items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-1.5">
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs font-bold text-slate-600">Verificando permisos de Administrador...</p>
+          <p className="text-xs font-bold text-slate-600">
+            Verificando permisos de Administrador...
+          </p>
         </div>
       </div>
     );

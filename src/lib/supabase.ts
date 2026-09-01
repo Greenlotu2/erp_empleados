@@ -1,11 +1,4 @@
-// src/lib/supabase.ts
-import { createBrowserClient } from '@supabase/ssr';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Faltan las variables de entorno de Supabase.');
-}
-
-export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+// Antes creaba su propio `createBrowserClient(...)` por separado — mismo problema
+// de "Multiple GoTrueClient instances" documentado en `supabaseClient.ts`. Ahora
+// solo reexporta el cliente único compartido por toda la app.
+export { supabase } from './supabaseClient';

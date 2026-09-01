@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 @theme inline {
@@ -33,5 +35,99 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Modales centrados (no anclados a un trigger): entran desde un scale visible,
+   nunca desde 0 — nada en el mundo real aparece de la nada. */
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Filas de lista que entran con stagger (Trabajador, Sugeridos, Archivo). */
+@keyframes list-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Entrada de las 4 columnas al cargar la página (Líneas de Negocio, Área,
+   Trabajador, Archivo) — con stagger, para que se note que la página cambió. */
+@keyframes column-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Cuando un panel bloqueado (ej. Trabajador antes de elegir Área) se
+   desbloquea y muestra su contenido real. */
+@keyframes panel-unlock {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Chip que se selecciona (Área) — un "pop" breve para confirmar la elección. */
+@keyframes chip-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Fila que acaba de agregarse (archivo recién subido) — destello breve. */
+@keyframes row-highlight {
+  from {
+    background-color: rgba(37, 99, 235, 0.12);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

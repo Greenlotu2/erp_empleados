@@ -1,10 +1,11 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import React, { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
+import { Icon, IconName } from "../icons";
 
 interface KpiDelta {
-  direccion: 'up' | 'down';
+  direccion: "up" | "down";
   porcentaje: number;
 }
 
@@ -33,7 +34,7 @@ interface KpiExtraStat {
 interface KpiArea {
   id: string;
   nombre: string;
-  icono: string;
+  icono: IconName;
   kpis: KpiItem[];
   // Líneas de estadística adicionales del mockup (sin tarjeta propia). Estáticas por
   // ahora — igual que el resto de los KPIs no conectados, no hay tabla en el CRM
@@ -47,105 +48,124 @@ interface KpiArea {
 // este array se puede reemplazar por un fetch real.
 const KPI_AREAS: KpiArea[] = [
   {
-    id: 'consultoria',
-    nombre: 'Área de Consultoría y Proyectos',
-    icono: '📁',
+    id: "consultoria",
+    nombre: "Área de Consultoría y Proyectos",
+    icono: "folder",
     kpis: [
       {
-        id: 'otd',
-        nombre: 'Cumplimiento de Entregables (OTD - On-Time Delivery)',
-        actual: '95%',
-        status: 'ÓPTIMO',
-        meta: '≥ 90%',
-        formula: 'OTD (%) = (Entregables Finalizados a Tiempo / Total de Entregables Programados) * 100',
-        descripcion: 'Mide el porcentaje de entregables de proyectos finalizados dentro de la fecha límite establecida.',
+        id: "otd",
+        nombre: "Cumplimiento de Entregables (OTD - On-Time Delivery)",
+        actual: "95%",
+        status: "ÓPTIMO",
+        meta: "≥ 90%",
+        formula:
+          "OTD (%) = (Entregables Finalizados a Tiempo / Total de Entregables Programados) * 100",
+        descripcion:
+          "Mide el porcentaje de entregables de proyectos finalizados dentro de la fecha límite establecida.",
       },
       {
-        id: 'spi',
-        nombre: 'Eficiencia en Tiempos de Ejecución (SPI - Schedule Performance Index)',
-        actual: '1.05',
-        meta: '≥ 1.00',
-        formula: 'SPI = EV (Valor Ganado / Avance Real Completo) / PV (Valor Planificado / Avance Programado)',
-        descripcion: 'Mide el avance real del proyecto en comparación con la planificación de tiempo.',
+        id: "spi",
+        nombre:
+          "Eficiencia en Tiempos de Ejecución (SPI - Schedule Performance Index)",
+        actual: "1.05",
+        meta: "≥ 1.00",
+        formula:
+          "SPI = EV (Valor Ganado / Avance Real Completo) / PV (Valor Planificado / Avance Programado)",
+        descripcion:
+          "Mide el avance real del proyecto en comparación con la planificación de tiempo.",
       },
     ],
     extraStats: [
-      { label: 'Puntualidad en Hitos Estratégicos', value: '94%' },
-      { label: 'Cumplimiento de Capacitaciones Internas', value: '90%' },
+      { label: "Puntualidad en Hitos Estratégicos", value: "94%" },
+      { label: "Cumplimiento de Capacitaciones Internas", value: "90%" },
     ],
   },
   {
-    id: 'comercial',
-    nombre: 'Área Comercial y Ventas',
-    icono: '📈',
+    id: "comercial",
+    nombre: "Área Comercial y Ventas",
+    icono: "bar-chart",
     kpis: [
       {
-        id: 'conversion',
-        nombre: 'Tasa de Conversión (Propuestas vs. Cierres)',
-        actual: '65%',
-        meta: '≥ 60%',
-        staticDelta: { direccion: 'up', porcentaje: 4 },
-        formula: 'Tasa de Conversión (%) = (Número de Propuestas Ganadas / Número Total de Propuestas Enviadas) * 100',
-        descripcion: 'Mide la efectividad del equipo comercial para cerrar contratos a partir de propuestas enviadas.',
+        id: "conversion",
+        nombre: "Tasa de Conversión (Propuestas vs. Cierres)",
+        actual: "65%",
+        meta: "≥ 60%",
+        staticDelta: { direccion: "up", porcentaje: 4 },
+        formula:
+          "Tasa de Conversión (%) = (Número de Propuestas Ganadas / Número Total de Propuestas Enviadas) * 100",
+        descripcion:
+          "Mide la efectividad del equipo comercial para cerrar contratos a partir de propuestas enviadas.",
       },
       {
-        id: 'margen',
-        nombre: 'Margen de Utilidad Proyectado',
-        actual: '28%',
-        meta: '≥ 25%',
-        formula: 'Margen Proyectado (%) = [(Precio Total Vendido - Costo Directo Estimado) / Precio Total Vendido] * 100',
-        descripcion: 'Mide el porcentaje estimado de ganancia bruta/neta contemplado en las cotizaciones cerradas.',
+        id: "margen",
+        nombre: "Margen de Utilidad Proyectado",
+        actual: "28%",
+        meta: "≥ 25%",
+        formula:
+          "Margen Proyectado (%) = [(Precio Total Vendido - Costo Directo Estimado) / Precio Total Vendido] * 100",
+        descripcion:
+          "Mide el porcentaje estimado de ganancia bruta/neta contemplado en las cotizaciones cerradas.",
       },
     ],
     extraStats: [
-      { label: 'Oportunidades Activas en Pipeline', value: '18 Cuentas' },
-      { label: 'Valor Total Promedio Cotizado', value: '$1,250,000 MXN' },
+      { label: "Oportunidades Activas en Pipeline", value: "18 Cuentas" },
+      { label: "Valor Total Promedio Cotizado", value: "$1,250,000 MXN" },
     ],
   },
   {
-    id: 'administrativa',
-    nombre: 'Área Administrativa, Financiera y Contable',
-    icono: '💰',
+    id: "administrativa",
+    nombre: "Área Administrativa, Financiera y Contable",
+    icono: "banknote",
     kpis: [
       {
-        id: 'cumplimientoAdmin',
-        nombre: 'Índice de Cumplimiento de Tareas Asignadas',
-        actual: '82%',
-        meta: '≥ 95% de Cumplimiento',
-        formula: 'Cumplimiento de Tareas (%) = [(Tareas Contables-Financieras Completadas en Fecha Límite) / Total de Tareas Asignadas en el Periodo] * 100',
-        descripcion: 'Mide la efectividad del equipo para finalizar en tiempo y forma las tareas, entregables y asignaciones operativas programadas para el área.',
+        id: "cumplimientoAdmin",
+        nombre: "Índice de Cumplimiento de Tareas Asignadas",
+        actual: "82%",
+        meta: "≥ 95% de Cumplimiento",
+        formula:
+          "Cumplimiento de Tareas (%) = [(Tareas Contables-Financieras Completadas en Fecha Límite) / Total de Tareas Asignadas en el Periodo] * 100",
+        descripcion:
+          "Mide la efectividad del equipo para finalizar en tiempo y forma las tareas, entregables y asignaciones operativas programadas para el área.",
       },
     ],
     extraStats: [
-      { id: 'tiempoEntregaAdmin', label: 'Tiempo Promedio de Entrega (Asignación → Fecha Límite)', value: 'Calculando...' },
+      {
+        id: "tiempoEntregaAdmin",
+        label: "Tiempo Promedio de Entrega (Asignación → Fecha Límite)",
+        value: "Calculando...",
+      },
     ],
   },
   {
-    id: 'marketing',
-    nombre: 'Área de Marketing y Posicionamiento',
-    icono: '📢',
+    id: "marketing",
+    nombre: "Área de Marketing y Posicionamiento",
+    icono: "megaphone",
     kpis: [
       {
-        id: 'leads',
-        nombre: 'Volumen de Prospectos Calificados (Leads MQL/SQL)',
-        actual: '142 Leads',
-        meta: 'Crecimiento sostenido mes a mes',
-        staticDelta: { direccion: 'up', porcentaje: 12 },
-        formula: 'Total MQL/SQL = Suma(Leads Registrados Calificados que Cumplen Criterios de Ventas)',
-        descripcion: 'Mide la cantidad de contactos generados por campañas que cumplen con el perfil objetivo.',
+        id: "leads",
+        nombre: "Volumen de Prospectos Calificados (Leads MQL/SQL)",
+        actual: "142 Leads",
+        meta: "Crecimiento sostenido mes a mes",
+        staticDelta: { direccion: "up", porcentaje: 12 },
+        formula:
+          "Total MQL/SQL = Suma(Leads Registrados Calificados que Cumplen Criterios de Ventas)",
+        descripcion:
+          "Mide la cantidad de contactos generados por campañas que cumplen con el perfil objetivo.",
       },
       {
-        id: 'cpl',
-        nombre: 'Costo por Lead Adquirido (CPL)',
-        actual: '$185 MXN',
-        meta: '≤ $200 MXN',
-        formula: 'CPL = Inversión Total en Publicidad y Campañas / Número Total de Leads Generados',
-        descripcion: 'Mide la eficiencia del gasto en marketing para obtener un prospecto individual.',
+        id: "cpl",
+        nombre: "Costo por Lead Adquirido (CPL)",
+        actual: "$185 MXN",
+        meta: "≤ $200 MXN",
+        formula:
+          "CPL = Inversión Total en Publicidad y Campañas / Número Total de Leads Generados",
+        descripcion:
+          "Mide la eficiencia del gasto en marketing para obtener un prospecto individual.",
       },
     ],
     extraStats: [
-      { label: 'Alcance Orgánico en Redes Sociales', value: '+25%' },
-      { label: 'Tasa de Interacción (Engagement Rate)', value: '4.8%' },
+      { label: "Alcance Orgánico en Redes Sociales", value: "+25%" },
+      { label: "Tasa de Interacción (Engagement Rate)", value: "4.8%" },
     ],
   },
 ];
@@ -172,7 +192,7 @@ function getMonthRange(offsetMonths: number) {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() + offsetMonths, 1);
   const end = new Date(now.getFullYear(), now.getMonth() + offsetMonths + 1, 0);
-  const toStr = (d: Date) => d.toISOString().split('T')[0];
+  const toStr = (d: Date) => d.toISOString().split("T")[0];
   return { start: toStr(start), end: toStr(end) };
 }
 
@@ -186,16 +206,28 @@ function getWeekRange(offsetWeeks: number) {
   lunes.setDate(now.getDate() + diffALunes + offsetWeeks * 7);
   const domingo = new Date(lunes);
   domingo.setDate(lunes.getDate() + 6);
-  const toStr = (d: Date) => d.toISOString().split('T')[0];
+  const toStr = (d: Date) => d.toISOString().split("T")[0];
   return { start: toStr(lunes), end: toStr(domingo) };
 }
 
 // OTD (%) para las tareas cuya fecha_limite cae dentro del rango dado, usando `hoyStr`
 // como corte para decidir qué tareas ya "cerraron" (completadas o vencidas sin completar).
-function calcularOTDEnRango(tareas: TareaKpi[], hoyStr: string, rangeStart: string, rangeEnd: string): number | null {
-  const enRango = tareas.filter(t => t.fecha_limite && t.fecha_limite >= rangeStart && t.fecha_limite <= rangeEnd);
-  const completadas = enRango.filter(t => t.estado === 'Completada');
-  const vencidas = enRango.filter(t => t.estado !== 'Completada' && t.fecha_limite! < hoyStr);
+function calcularOTDEnRango(
+  tareas: TareaKpi[],
+  hoyStr: string,
+  rangeStart: string,
+  rangeEnd: string,
+): number | null {
+  const enRango = tareas.filter(
+    (t) =>
+      t.fecha_limite &&
+      t.fecha_limite >= rangeStart &&
+      t.fecha_limite <= rangeEnd,
+  );
+  const completadas = enRango.filter((t) => t.estado === "Completada");
+  const vencidas = enRango.filter(
+    (t) => t.estado !== "Completada" && t.fecha_limite! < hoyStr,
+  );
   const denom = completadas.length + vencidas.length;
   return denom > 0 ? (completadas.length / denom) * 100 : null;
 }
@@ -203,11 +235,16 @@ function calcularOTDEnRango(tareas: TareaKpi[], hoyStr: string, rangeStart: stri
 // SPI para las tareas cuya fecha_limite cae dentro del rango dado. Limitación real: solo
 // tenemos el `porcentaje_avance` ACTUAL de cada tarea, no una foto histórica de cómo iba
 // a fin del mes anterior — así que la comparación con meses pasados es aproximada.
-function calcularSPIEnRango(tareas: TareaKpi[], hoyMs: number, rangeStart: string, rangeEnd: string): number | null {
+function calcularSPIEnRango(
+  tareas: TareaKpi[],
+  hoyMs: number,
+  rangeStart: string,
+  rangeEnd: string,
+): number | null {
   let sumaReal = 0;
   let sumaPlaneado = 0;
 
-  tareas.forEach(t => {
+  tareas.forEach((t) => {
     if (!t.fecha_asignada || !t.fecha_limite) return;
     if (t.fecha_limite < rangeStart || t.fecha_limite > rangeEnd) return;
 
@@ -218,7 +255,8 @@ function calcularSPIEnRango(tareas: TareaKpi[], hoyMs: number, rangeStart: strin
 
     const transcurridoMs = Math.min(Math.max(hoyMs - inicioMs, 0), duracionMs);
     const avancePlaneado = (transcurridoMs / duracionMs) * 100;
-    const avanceReal = t.estado === 'Completada' ? 100 : (t.porcentaje_avance ?? 0);
+    const avanceReal =
+      t.estado === "Completada" ? 100 : (t.porcentaje_avance ?? 0);
 
     sumaReal += avanceReal;
     sumaPlaneado += avancePlaneado;
@@ -227,22 +265,32 @@ function calcularSPIEnRango(tareas: TareaKpi[], hoyMs: number, rangeStart: strin
   return sumaPlaneado > 0 ? sumaReal / sumaPlaneado : null;
 }
 
-function calcularDelta(actual: number | null, anterior: number | null): LiveKpiValue['delta'] {
+function calcularDelta(
+  actual: number | null,
+  anterior: number | null,
+): LiveKpiValue["delta"] {
   if (actual === null || anterior === null || anterior === 0) return null;
   const cambio = ((actual - anterior) / Math.abs(anterior)) * 100;
   if (Math.abs(cambio) < 0.5) return null;
-  return { direccion: cambio >= 0 ? 'up' : 'down', porcentaje: Math.abs(Math.round(cambio)) };
+  return {
+    direccion: cambio >= 0 ? "up" : "down",
+    porcentaje: Math.abs(Math.round(cambio)),
+  };
 }
 
 export default function KpisPanel() {
-  const [collapsedAreas, setCollapsedAreas] = useState<Record<string, boolean>>({});
+  const [collapsedAreas, setCollapsedAreas] = useState<Record<string, boolean>>(
+    {},
+  );
   const [loadingLive, setLoadingLive] = useState(true);
-  const [liveValues, setLiveValues] = useState<Record<string, LiveKpiValue>>({});
+  const [liveValues, setLiveValues] = useState<Record<string, LiveKpiValue>>(
+    {},
+  );
   // Los KPIs en vivo (OTD/SPI) pueden compararse contra la semana o el mes anterior.
-  const [comparePeriod, setComparePeriod] = useState<'semana' | 'mes'>('mes');
+  const [comparePeriod, setComparePeriod] = useState<"semana" | "mes">("mes");
 
   const toggleArea = (areaId: string) => {
-    setCollapsedAreas(prev => ({ ...prev, [areaId]: !prev[areaId] }));
+    setCollapsedAreas((prev) => ({ ...prev, [areaId]: !prev[areaId] }));
   };
 
   // 📡 OTD y SPI SÍ se pueden calcular con datos reales de `tareas` — el resto de los
@@ -252,47 +300,73 @@ export default function KpisPanel() {
     const calcularKpisEnVivo = async () => {
       try {
         setLoadingLive(true);
-        const [{ data, error }, { data: empData, error: empError }] = await Promise.all([
-          supabase.from('tareas').select('id, fecha_asignada, fecha_limite, estado, porcentaje_avance, empleado_id'),
-          supabase.from('empleados').select('id, area'),
-        ]);
+        const [{ data, error }, { data: empData, error: empError }] =
+          await Promise.all([
+            supabase
+              .from("tareas")
+              .select(
+                "id, fecha_asignada, fecha_limite, estado, porcentaje_avance, empleado_id",
+              ),
+            supabase.from("empleados").select("id, area"),
+          ]);
 
         if (error) throw error;
         if (empError) throw empError;
 
         const tareas: TareaKpi[] = data || [];
         const areaPorEmpleado: Record<string, string | null> = {};
-        (empData || []).forEach((e: any) => { areaPorEmpleado[e.id] = e.area || null; });
-        const hoyStr = new Date().toISOString().split('T')[0];
+        (empData || []).forEach((e: any) => {
+          areaPorEmpleado[e.id] = e.area || null;
+        });
+        const hoyStr = new Date().toISOString().split("T")[0];
         const hoyMs = new Date(hoyStr).getTime();
 
-        const rangoActual = comparePeriod === 'semana' ? getWeekRange(0) : getMonthRange(0);
-        const rangoAnterior = comparePeriod === 'semana' ? getWeekRange(-1) : getMonthRange(-1);
+        const rangoActual =
+          comparePeriod === "semana" ? getWeekRange(0) : getMonthRange(0);
+        const rangoAnterior =
+          comparePeriod === "semana" ? getWeekRange(-1) : getMonthRange(-1);
 
         // --- OTD: de las tareas que ya "cerraron" (completadas o vencidas sin completar),
         // qué porcentaje se entregó a tiempo. Las que aún están dentro de plazo se excluyen
         // porque todavía no sabemos si terminarán a tiempo o no.
-        const completadas = tareas.filter(t => t.estado === 'Completada');
-        const vencidasSinCompletar = tareas.filter(t =>
-          t.estado !== 'Completada' && !!t.fecha_limite && t.fecha_limite < hoyStr
+        const completadas = tareas.filter((t) => t.estado === "Completada");
+        const vencidasSinCompletar = tareas.filter(
+          (t) =>
+            t.estado !== "Completada" &&
+            !!t.fecha_limite &&
+            t.fecha_limite < hoyStr,
         );
         const otdDenominador = completadas.length + vencidasSinCompletar.length;
-        const otdActualNum = otdDenominador > 0 ? (completadas.length / otdDenominador) * 100 : null;
+        const otdActualNum =
+          otdDenominador > 0
+            ? (completadas.length / otdDenominador) * 100
+            : null;
 
-        const otdActualRango = calcularOTDEnRango(tareas, hoyStr, rangoActual.start, rangoActual.end);
-        const otdAnteriorRango = calcularOTDEnRango(tareas, hoyStr, rangoAnterior.start, rangoAnterior.end);
+        const otdActualRango = calcularOTDEnRango(
+          tareas,
+          hoyStr,
+          rangoActual.start,
+          rangoActual.end,
+        );
+        const otdAnteriorRango = calcularOTDEnRango(
+          tareas,
+          hoyStr,
+          rangoAnterior.start,
+          rangoAnterior.end,
+        );
 
-        const otdValue: LiveKpiValue = otdActualNum !== null
-          ? {
-              actual: `${Math.round(otdActualNum)}%`,
-              status: otdActualNum >= 90 ? 'ÓPTIMO' : undefined,
-              nota: `Calculado sobre ${otdDenominador} tarea(s) con resultado definido (completadas o vencidas).`,
-              delta: calcularDelta(otdActualRango, otdAnteriorRango),
-            }
-          : {
-              actual: 'Sin datos',
-              nota: 'Aún no hay tareas completadas o vencidas para calcular este indicador.',
-            };
+        const otdValue: LiveKpiValue =
+          otdActualNum !== null
+            ? {
+                actual: `${Math.round(otdActualNum)}%`,
+                status: otdActualNum >= 90 ? "ÓPTIMO" : undefined,
+                nota: `Calculado sobre ${otdDenominador} tarea(s) con resultado definido (completadas o vencidas).`,
+                delta: calcularDelta(otdActualRango, otdAnteriorRango),
+              }
+            : {
+                actual: "Sin datos",
+                nota: "Aún no hay tareas completadas o vencidas para calcular este indicador.",
+              };
 
         // --- SPI (aproximado): compara el avance real (porcentaje_avance) contra el avance
         // que "debería" llevar cada tarea según cuánto tiempo transcurrió entre su fecha de
@@ -301,71 +375,134 @@ export default function KpisPanel() {
         // que este CRM no registra todavía. El comparativo vs. mes anterior también es
         // aproximado: solo tenemos el avance ACTUAL de cada tarea, no una foto histórica de
         // cómo iba a fin del mes pasado.
-        const spiActualNum = calcularSPIEnRango(tareas, hoyMs, '0000-01-01', '9999-12-31');
-        const tareasSpiTotal = tareas.filter(t => t.fecha_asignada && t.fecha_limite && new Date(t.fecha_limite).getTime() > new Date(t.fecha_asignada).getTime()).length;
+        const spiActualNum = calcularSPIEnRango(
+          tareas,
+          hoyMs,
+          "0000-01-01",
+          "9999-12-31",
+        );
+        const tareasSpiTotal = tareas.filter(
+          (t) =>
+            t.fecha_asignada &&
+            t.fecha_limite &&
+            new Date(t.fecha_limite).getTime() >
+              new Date(t.fecha_asignada).getTime(),
+        ).length;
 
-        const spiActualRango = calcularSPIEnRango(tareas, hoyMs, rangoActual.start, rangoActual.end);
-        const spiAnteriorRango = calcularSPIEnRango(tareas, hoyMs, rangoAnterior.start, rangoAnterior.end);
+        const spiActualRango = calcularSPIEnRango(
+          tareas,
+          hoyMs,
+          rangoActual.start,
+          rangoActual.end,
+        );
+        const spiAnteriorRango = calcularSPIEnRango(
+          tareas,
+          hoyMs,
+          rangoAnterior.start,
+          rangoAnterior.end,
+        );
 
-        const spiValue: LiveKpiValue = spiActualNum !== null
-          ? {
-              actual: spiActualNum.toFixed(2),
-              nota: `Aproximado (peso igual por tarea) sobre ${tareasSpiTotal} tarea(s) con fecha de asignación y límite.`,
-              delta: calcularDelta(spiActualRango, spiAnteriorRango),
-            }
-          : {
-              actual: 'Sin datos',
-              nota: 'Aún no hay tareas con fecha de asignación y fecha límite para calcular este indicador.',
-            };
+        const spiValue: LiveKpiValue =
+          spiActualNum !== null
+            ? {
+                actual: spiActualNum.toFixed(2),
+                nota: `Aproximado (peso igual por tarea) sobre ${tareasSpiTotal} tarea(s) con fecha de asignación y límite.`,
+                delta: calcularDelta(spiActualRango, spiAnteriorRango),
+              }
+            : {
+                actual: "Sin datos",
+                nota: "Aún no hay tareas con fecha de asignación y fecha límite para calcular este indicador.",
+              };
 
         // --- Índice de Cumplimiento de Tareas Asignadas (Área Administrativa/Financiera):
         // mismo cálculo que OTD, pero limitado a las tareas de empleados con
         // `area = 'Financiero-Contable'`.
-        const tareasFinanciero = tareas.filter(t => t.empleado_id && areaPorEmpleado[t.empleado_id] === 'Financiero-Contable');
-        const completadasFin = tareasFinanciero.filter(t => t.estado === 'Completada');
-        const vencidasFin = tareasFinanciero.filter(t => t.estado !== 'Completada' && !!t.fecha_limite && t.fecha_limite < hoyStr);
-        const cumplimientoDenominador = completadasFin.length + vencidasFin.length;
-        const cumplimientoActualNum = cumplimientoDenominador > 0 ? (completadasFin.length / cumplimientoDenominador) * 100 : null;
+        const tareasFinanciero = tareas.filter(
+          (t) =>
+            t.empleado_id &&
+            areaPorEmpleado[t.empleado_id] === "Financiero-Contable",
+        );
+        const completadasFin = tareasFinanciero.filter(
+          (t) => t.estado === "Completada",
+        );
+        const vencidasFin = tareasFinanciero.filter(
+          (t) =>
+            t.estado !== "Completada" &&
+            !!t.fecha_limite &&
+            t.fecha_limite < hoyStr,
+        );
+        const cumplimientoDenominador =
+          completadasFin.length + vencidasFin.length;
+        const cumplimientoActualNum =
+          cumplimientoDenominador > 0
+            ? (completadasFin.length / cumplimientoDenominador) * 100
+            : null;
 
-        const cumplimientoActualRango = calcularOTDEnRango(tareasFinanciero, hoyStr, rangoActual.start, rangoActual.end);
-        const cumplimientoAnteriorRango = calcularOTDEnRango(tareasFinanciero, hoyStr, rangoAnterior.start, rangoAnterior.end);
+        const cumplimientoActualRango = calcularOTDEnRango(
+          tareasFinanciero,
+          hoyStr,
+          rangoActual.start,
+          rangoActual.end,
+        );
+        const cumplimientoAnteriorRango = calcularOTDEnRango(
+          tareasFinanciero,
+          hoyStr,
+          rangoAnterior.start,
+          rangoAnterior.end,
+        );
 
-        const cumplimientoAdminValue: LiveKpiValue = cumplimientoActualNum !== null
-          ? {
-              actual: `${Math.round(cumplimientoActualNum)}%`,
-              status: cumplimientoActualNum >= 95 ? 'ÓPTIMO' : undefined,
-              nota: `Calculado sobre ${cumplimientoDenominador} tarea(s) del área Financiero-Contable con resultado definido.`,
-              delta: calcularDelta(cumplimientoActualRango, cumplimientoAnteriorRango),
-            }
-          : {
-              actual: 'Sin datos',
-              nota: 'Aún no hay tareas completadas o vencidas asignadas a empleados del área Financiero-Contable.',
-            };
+        const cumplimientoAdminValue: LiveKpiValue =
+          cumplimientoActualNum !== null
+            ? {
+                actual: `${Math.round(cumplimientoActualNum)}%`,
+                status: cumplimientoActualNum >= 95 ? "ÓPTIMO" : undefined,
+                nota: `Calculado sobre ${cumplimientoDenominador} tarea(s) del área Financiero-Contable con resultado definido.`,
+                delta: calcularDelta(
+                  cumplimientoActualRango,
+                  cumplimientoAnteriorRango,
+                ),
+              }
+            : {
+                actual: "Sin datos",
+                nota: "Aún no hay tareas completadas o vencidas asignadas a empleados del área Financiero-Contable.",
+              };
 
         // --- Tiempo Promedio de Entrega (Área Administrativa/Financiera): días entre
         // la asignación y la fecha límite de sus tareas. Nota real: el CRM no guarda
         // una fecha/hora de cuándo se completó cada tarea, así que esto mide la
         // VENTANA PLANEADA de entrega, no el tiempo real que tardó en completarse.
-        const tareasConVentana = tareasFinanciero.filter(t => t.fecha_asignada && t.fecha_limite);
-        const tiempoEntregaValue: LiveKpiValue = tareasConVentana.length > 0
-          ? (() => {
-              const promedioDias = tareasConVentana.reduce((suma, t) => {
-                const dias = (new Date(t.fecha_limite!).getTime() - new Date(t.fecha_asignada!).getTime()) / (1000 * 60 * 60 * 24);
-                return suma + Math.max(dias, 0);
-              }, 0) / tareasConVentana.length;
-              return {
-                actual: `${promedioDias.toFixed(1)} días`,
-                nota: `Ventana planeada (asignación → fecha límite), promedio sobre ${tareasConVentana.length} tarea(s). No es el tiempo real de entrega: el CRM aún no registra cuándo se completó cada tarea.`,
+        const tareasConVentana = tareasFinanciero.filter(
+          (t) => t.fecha_asignada && t.fecha_limite,
+        );
+        const tiempoEntregaValue: LiveKpiValue =
+          tareasConVentana.length > 0
+            ? (() => {
+                const promedioDias =
+                  tareasConVentana.reduce((suma, t) => {
+                    const dias =
+                      (new Date(t.fecha_limite!).getTime() -
+                        new Date(t.fecha_asignada!).getTime()) /
+                      (1000 * 60 * 60 * 24);
+                    return suma + Math.max(dias, 0);
+                  }, 0) / tareasConVentana.length;
+                return {
+                  actual: `${promedioDias.toFixed(1)} días`,
+                  nota: `Ventana planeada (asignación → fecha límite), promedio sobre ${tareasConVentana.length} tarea(s). No es el tiempo real de entrega: el CRM aún no registra cuándo se completó cada tarea.`,
+                };
+              })()
+            : {
+                actual: "Sin datos",
+                nota: "Aún no hay tareas con fecha de asignación y fecha límite en el área Financiero-Contable.",
               };
-            })()
-          : {
-              actual: 'Sin datos',
-              nota: 'Aún no hay tareas con fecha de asignación y fecha límite en el área Financiero-Contable.',
-            };
 
-        setLiveValues({ otd: otdValue, spi: spiValue, cumplimientoAdmin: cumplimientoAdminValue, tiempoEntregaAdmin: tiempoEntregaValue });
+        setLiveValues({
+          otd: otdValue,
+          spi: spiValue,
+          cumplimientoAdmin: cumplimientoAdminValue,
+          tiempoEntregaAdmin: tiempoEntregaValue,
+        });
       } catch (err) {
-        console.error('Error calculando KPIs en vivo:', err);
+        console.error("Error calculando KPIs en vivo:", err);
       } finally {
         setLoadingLive(false);
       }
@@ -375,39 +512,43 @@ export default function KpisPanel() {
   }, [comparePeriod]);
 
   return (
-    <aside className="h-full w-full xl:w-[300px] 2xl:w-[380px] shrink-0 bg-slate-900 text-slate-100 flex flex-col overflow-hidden border border-slate-800 rounded-lg shadow-lg">
-      <div className="px-4 py-3.5 border-b border-slate-800 shrink-0">
+    <aside className="h-full w-full xl:w-[248px] 2xl:w-[300px] shrink-0 bg-sky-500 text-white flex flex-col overflow-hidden border border-sky-600 rounded-lg shadow-lg">
+      <div className="px-2 py-2 border-b border-white/25 shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-[13px] font-semibold text-white leading-tight">
               Estrategia de KPIs
             </h2>
-            <p className="text-[10.5px] text-slate-400 leading-tight mt-0.5">
+            <p className="text-[10.5px] text-sky-50 leading-tight mt-0.5">
               8 indicadores principales por área
             </p>
           </div>
-          <span className="text-[9px] font-medium text-slate-500 border border-slate-700 rounded px-1.5 py-0.5">
+          <span className="text-[9px] font-medium text-white border border-white/40 rounded px-1 py-0.5">
             v2
           </span>
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <span className="text-[10px] text-slate-400">Comparar contra</span>
-          <div className="flex bg-slate-800 p-0.5 rounded-md gap-0.5 text-[10px]">
+        <div className="mt-1.5 flex items-center justify-between">
+          <span className="text-[10px] text-sky-50">Comparar contra</span>
+          <div className="flex bg-white/20 p-0.5 rounded-md gap-0.5 text-[10px]">
             <button
               type="button"
-              onClick={() => setComparePeriod('semana')}
-              className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
-                comparePeriod === 'semana' ? 'bg-slate-700 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setComparePeriod("semana")}
+              className={`px-1 py-1 rounded font-medium transition-colors cursor-pointer ${
+                comparePeriod === "semana"
+                  ? "bg-white text-sky-700 shadow-xs"
+                  : "text-sky-50 hover:text-white"
               }`}
             >
               Semana pasada
             </button>
             <button
               type="button"
-              onClick={() => setComparePeriod('mes')}
-              className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
-                comparePeriod === 'mes' ? 'bg-slate-700 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setComparePeriod("mes")}
+              className={`px-1 py-1 rounded font-medium transition-colors cursor-pointer ${
+                comparePeriod === "mes"
+                  ? "bg-white text-sky-700 shadow-xs"
+                  : "text-sky-50 hover:text-white"
               }`}
             >
               Mes pasado
@@ -416,35 +557,52 @@ export default function KpisPanel() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
-        {KPI_AREAS.map(area => {
+      <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
+        {KPI_AREAS.map((area) => {
           const isCollapsed = collapsedAreas[area.id];
           return (
-            <div key={area.id} className="border border-slate-800 rounded-lg overflow-hidden bg-slate-800/40">
+            <div
+              key={area.id}
+              className="border border-white/25 rounded-lg overflow-hidden bg-white/15"
+            >
               <button
                 type="button"
                 onClick={() => toggleArea(area.id)}
-                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-slate-800 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between px-1.5 py-1.5 bg-sky-700 hover:bg-sky-800 transition-colors cursor-pointer"
               >
-                <span className="text-[11px] font-semibold text-slate-200 flex items-center gap-2">
-                  <span className="text-sm leading-none">{area.icono}</span>
+                <span className="text-[11px] font-semibold text-white flex items-center gap-1">
+                  <Icon name={area.icono} size={14} className="shrink-0" />
                   <span>{area.nombre}</span>
                 </span>
-                <span className={`text-slate-500 text-[10px] transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}>▾</span>
+                <Icon
+                  name="chevron-down"
+                  size={13}
+                  className={`text-sky-100 transition-transform duration-200 ${isCollapsed ? "" : "rotate-180"}`}
+                />
               </button>
 
               <div
                 className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-                style={{ gridTemplateRows: isCollapsed ? '0fr' : '1fr' }}
+                style={{ gridTemplateRows: isCollapsed ? "0fr" : "1fr" }}
               >
                 <div className="overflow-hidden">
-                  <div className="px-2.5 pb-2.5 pt-1 space-y-2.5 border-t border-slate-800">
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="px-1.5 pb-1.5 pt-1 space-y-1.5 border-t border-white/20">
+                    <div
+                      className={
+                        area.kpis.length === 1
+                          ? "flex justify-center gap-0.5"
+                          : "grid grid-cols-2 gap-1  px-2"
+                      }
+                    >
                       {area.kpis.map((kpi, idx) => {
                         const live = liveValues[kpi.id];
                         const esVivo = !!live;
-                        const actualMostrado = esVivo ? live!.actual : kpi.actual;
-                        const statusMostrado = esVivo ? live!.status : kpi.status;
+                        const actualMostrado = esVivo
+                          ? live!.actual
+                          : kpi.actual;
+                        const statusMostrado = esVivo
+                          ? live!.status
+                          : kpi.status;
                         // Los KPIs en vivo usan su delta calculado de verdad; los estáticos usan
                         // `staticDelta` (el mismo valor que traía el mockup, ej. "↑ 4%").
                         const delta = esVivo ? live!.delta : kpi.staticDelta;
@@ -452,53 +610,80 @@ export default function KpisPanel() {
                         return (
                           <div
                             key={kpi.id}
-                            style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'backwards' }}
-                            className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden ${!isCollapsed ? 'animate-[fade-slide-in_0.3s_ease-out]' : ''}`}
+                            style={{
+                              animationDelay: `${idx * 40}ms`,
+                              animationFillMode: "backwards",
+                            }}
+                            className={`bg-white border border-white/50 rounded-lg overflow-hidden flex flex-col shadow-xs ${!isCollapsed ? "animate-[fade-slide-in_0.3s_ease-out]" : ""}`}
                           >
-                            <div className="px-2.5 py-2.5 text-center">
-                              <p className="text-[10px] font-medium text-slate-400 leading-snug min-h-[2.4em] flex items-center justify-center">
+                            <div className="px-1.5 py-1 text-center flex-1">
+                              <p className="text-[10px] font-medium text-slate-500 leading-snug min-h-[2em] flex items-center justify-center">
                                 {kpi.nombre}
                               </p>
 
-                              <p className="text-lg font-semibold text-white leading-tight break-words mt-1">
-                                {esVivo && loadingLive ? '···' : actualMostrado}
+                              <p className="text-base font-bold text-slate-800 leading-tight break-words mt-0.5">
+                                {esVivo && loadingLive ? "···" : actualMostrado}
                               </p>
-                              <p className="text-[9.5px] text-slate-500 mt-0.5">
+                              <p className="text-[9.5px] text-slate-400">
                                 Meta: {kpi.meta}
                               </p>
 
-                              <div className="flex items-center justify-center gap-1 flex-wrap mt-1.5 min-h-[16px]">
-                                {esVivo && (
-                                  <span
-                                    title="Calculado en tiempo real desde la tabla de tareas"
-                                    className="inline-flex items-center gap-1 text-[8.5px] font-medium text-slate-400"
-                                  >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    En vivo
-                                  </span>
-                                )}
-                                {statusMostrado && (
-                                  <span className="text-[8px] font-semibold text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                                    {statusMostrado}
-                                  </span>
-                                )}
-                              </div>
+                              {(esVivo || statusMostrado) && (
+                                <div className="flex items-center justify-center gap-1 flex-wrap mt-0.5">
+                                  {esVivo && (
+                                    <span
+                                      title="Calculado en tiempo real desde la tabla de tareas"
+                                      className="inline-flex items-center gap-1 text-[8.5px] font-medium text-slate-500"
+                                    >
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                      En vivo
+                                    </span>
+                                  )}
+                                  {statusMostrado && (
+                                    <span className="text-[8px] font-semibold text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded">
+                                      {statusMostrado}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
 
                               {delta && (
                                 <p
-                                  title={esVivo ? `Comparado contra el mismo cálculo de la ${comparePeriod === 'semana' ? 'semana' : 'mes'} anterior` : 'Comparado contra el mes anterior'}
-                                  className={`text-[10.5px] font-medium mt-1 ${
-                                    delta.direccion === 'up' ? 'text-sky-400' : 'text-red-400'
+                                  title={
+                                    esVivo
+                                      ? `Comparado contra el mismo cálculo de la ${comparePeriod === "semana" ? "semana" : "mes"} anterior`
+                                      : "Comparado contra el mes anterior"
+                                  }
+                                  className={`text-[10.5px] font-semibold mt-0.5 ${
+                                    delta.direccion === "up"
+                                      ? "text-sky-600"
+                                      : "text-red-500"
                                   }`}
                                 >
-                                  {delta.direccion === 'up' ? '↑' : '↓'} {delta.porcentaje}% vs. {esVivo ? (comparePeriod === 'semana' ? 'semana anterior' : 'mes anterior') : 'mes anterior'}
+                                  <Icon
+                                    name={
+                                      delta.direccion === "up"
+                                        ? "arrow-up"
+                                        : "arrow-down"
+                                    }
+                                    size={11}
+                                    className="inline -mt-0.5"
+                                  />{" "}
+                                  {delta.porcentaje}% vs.{" "}
+                                  {esVivo
+                                    ? comparePeriod === "semana"
+                                      ? "semana anterior"
+                                      : "mes anterior"
+                                    : "mes anterior"}
                                 </p>
                               )}
                             </div>
 
                             {esVivo && !loadingLive && (
-                              <div className="px-2 py-1.5 bg-slate-900/60 border-t border-slate-700">
-                                <p className="text-[8.5px] text-slate-500 leading-snug">{live!.nota}</p>
+                              <div className="px-1 py-1 bg-slate-50 border-t border-slate-200">
+                                <p className="text-[8.5px] text-slate-500 leading-snug">
+                                  {live!.nota}
+                                </p>
                               </div>
                             )}
                           </div>
@@ -507,17 +692,34 @@ export default function KpisPanel() {
                     </div>
 
                     {area.extraStats.length > 0 && (
-                      <div className="bg-slate-900/60 border border-slate-700 rounded-lg divide-y divide-slate-700 overflow-hidden">
-                        {area.extraStats.map(stat => {
-                          const liveStat = stat.id ? liveValues[stat.id] : undefined;
-                          const valorMostrado = liveStat ? (loadingLive ? '···' : liveStat.actual) : stat.value;
+                      <div className="bg-white/15 border border-white/25 rounded-lg divide-y divide-white/20 overflow-hidden">
+                        {area.extraStats.map((stat) => {
+                          const liveStat = stat.id
+                            ? liveValues[stat.id]
+                            : undefined;
+                          const valorMostrado = liveStat
+                            ? loadingLive
+                              ? "···"
+                              : liveStat.actual
+                            : stat.value;
                           return (
-                            <div key={stat.label} className="flex items-center justify-between gap-2 px-2.5 py-1.5" title={liveStat?.nota}>
-                              <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                            <div
+                              key={stat.label}
+                              className="flex items-center justify-between gap-1 px-1.5 py-1"
+                              title={liveStat?.nota}
+                            >
+                              <span className="text-[10px] text-sky-50 flex items-center gap-1">
                                 {stat.label}
-                                {liveStat && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Calculado en tiempo real" />}
+                                {liveStat && (
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full bg-emerald-300 shrink-0"
+                                    title="Calculado en tiempo real"
+                                  />
+                                )}
                               </span>
-                              <span className="text-[10px] font-semibold text-slate-100 shrink-0">{valorMostrado}</span>
+                              <span className="text-[10px] font-semibold text-white shrink-0">
+                                {valorMostrado}
+                              </span>
                             </div>
                           );
                         })}
@@ -530,8 +732,10 @@ export default function KpisPanel() {
           );
         })}
 
-        <p className="text-[9px] text-slate-500 text-center pt-1 pb-2 leading-snug">
-          El punto verde indica un valor calculado en tiempo real. El resto son valores de referencia de la propuesta original, pendientes de una fuente de datos.
+        <p className="text-[9px] text-sky-50 text-center pt-1 pb-1 leading-snug">
+          El punto verde indica un valor calculado en tiempo real. El resto son
+          valores de referencia de la propuesta original, pendientes de una
+          fuente de datos.
         </p>
       </div>
     </aside>

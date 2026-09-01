@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { Icon } from './icons';
 
 export interface TaskCardProps {
   id: string | number;
@@ -20,7 +21,6 @@ export interface TaskCardProps {
 }
 
 export default function TaskCard({
-  id,
   title,
   projectName,
   description,
@@ -35,13 +35,11 @@ export default function TaskCard({
   slackDays,
   onRequestExtension,
 }: TaskCardProps) {
-
-  // Colors & badges
   const priorityColors = {
     Baja: 'bg-slate-100 text-slate-700 border-slate-200',
     Media: 'bg-blue-50 text-blue-700 border-blue-200',
     Alta: 'bg-amber-50 text-amber-800 border-amber-200',
-    Urgente: 'bg-red-50 text-red-700 border-red-200 animate-pulse',
+    Urgente: 'bg-red-50 text-red-700 border-red-200',
   };
 
   const statusColors = {
@@ -51,135 +49,140 @@ export default function TaskCard({
     Completada: 'bg-emerald-600 text-white',
   };
 
+  const label = 'text-[10px] font-medium text-slate-400 uppercase tracking-wide block';
+
   return (
-    <div className={`p-4 rounded-2xl border transition-all bg-white shadow-2xs hover:shadow-md space-y-3 relative overflow-hidden ${
-      isCritical ? 'border-rose-300 ring-1 ring-rose-500/20' : 'border-slate-200/80'
-    }`}>
-      
+    <div
+      className={`p-2.5 rounded-xl border bg-white transition-colors hover:border-slate-300 space-y-1.5 relative overflow-hidden ${
+        isCritical ? 'border-rose-300 ring-1 ring-rose-500/20' : 'border-slate-200'
+      }`}
+    >
       {/* Listón superior si es Ruta Crítica */}
       {isCritical && (
-        <div className="absolute top-0 right-0 bg-rose-600 text-white text-[9px] font-bold px-3 py-0.5 rounded-bl-xl uppercase tracking-wider flex items-center gap-1 shadow-xs">
-          ⚡ Ruta Crítica
+        <div className="absolute top-0 right-0 bg-rose-600 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-bl-lg uppercase tracking-wide inline-flex items-center gap-1">
+          <Icon name="zap" size={10} /> Ruta crítica
         </div>
       )}
 
-      {/* Encabezado de la Tarjeta */}
-      <div className="flex items-start justify-between gap-2 pr-16">
-        <div>
-          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
-            📁 {projectName}
+      {/* Encabezado */}
+      <div className="flex items-start justify-between gap-1 pr-8">
+        <div className="min-w-0">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-md uppercase tracking-wide">
+            <Icon name="folder" size={10} /> {projectName}
           </span>
-          <h4 className="font-bold text-slate-900 text-sm mt-1.5 leading-snug">{title}</h4>
+          <h4 className="font-semibold text-slate-900 text-[13px] mt-1 leading-snug">{title}</h4>
         </div>
       </div>
 
-      {/* Descripción / Indicaciones */}
+      {/* Descripción */}
       {description && (
-        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-1.5 rounded-lg border border-slate-100">
           {description}
         </p>
       )}
 
-      {/* Barra de Progreso */}
+      {/* Barra de progreso */}
       <div className="space-y-1">
-        <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
-          <span>Avance de Actividad</span>
-          <span className="font-mono text-slate-800">{progressPercent}%</span>
+        <div className="flex justify-between items-center text-[10px] font-medium text-slate-500">
+          <span>Avance de actividad</span>
+          <span className="font-mono text-slate-800 tabular-nums">{progressPercent}%</span>
         </div>
-        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60">
-          <div 
-            className={`h-full transition-all duration-300 ${
-              status === 'Completada' ? 'bg-emerald-500' :
-              status === 'Postergada' ? 'bg-amber-500' : 'bg-blue-600'
+        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all duration-300 rounded-full ${
+              status === 'Completada'
+                ? 'bg-emerald-500'
+                : status === 'Postergada'
+                  ? 'bg-amber-500'
+                  : 'bg-blue-600'
             }`}
             style={{ width: `${progressPercent}%` }}
           />
         </div>
       </div>
 
-      {/* Meta Información (Dirigida a, Asignada Por, Prioridad, Fecha Límite) */}
-      <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] border-t border-slate-100/80">
+      {/* Meta información */}
+      <div className="grid grid-cols-2 gap-1.5 pt-1.5 text-[11px] border-t border-slate-100">
         {assignedToName && (
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase block">Dirigida A</span>
-            <span className="font-medium text-slate-800 truncate block mt-0.5">
-              👤 {assignedToName}
+          <div className="min-w-0">
+            <span className={label}>Dirigida a</span>
+            <span className="font-medium text-slate-800 truncate flex items-center gap-1 mt-0.5">
+              <Icon name="user" size={11} className="text-slate-400 shrink-0" /> {assignedToName}
             </span>
           </div>
         )}
 
-        <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase block">Asignada Por</span>
-          <span className="font-medium text-slate-800 truncate block mt-0.5">
-            🔑 {assignedByName}
+        <div className="min-w-0">
+          <span className={label}>Asignada por</span>
+          <span className="font-medium text-slate-800 truncate flex items-center gap-1 mt-0.5">
+            <Icon name="key" size={11} className="text-slate-400 shrink-0" /> {assignedByName}
           </span>
         </div>
 
         <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase block">Prioridad</span>
-          <span className={`inline-block px-2 py-0.5 rounded-md border text-[10px] font-bold mt-0.5 ${priorityColors[priority]}`}>
+          <span className={label}>Prioridad</span>
+          <span
+            className={`inline-block px-1.5 py-0.5 rounded-md border text-[10px] font-semibold mt-0.5 ${priorityColors[priority]}`}
+          >
             {priority}
           </span>
         </div>
 
-        <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase block">Fecha Límite</span>
-          <span className="font-mono text-slate-700 font-medium block mt-0.5">
-            📅 {dueDate || 'Sin fecha'}
+        <div className="min-w-0">
+          <span className={label}>Fecha límite</span>
+          <span className="font-mono text-slate-700 font-medium flex items-center gap-1 mt-0.5">
+            <Icon name="calendar" size={11} className="text-slate-400 shrink-0" /> {dueDate || 'Sin fecha'}
           </span>
         </div>
 
         <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase block">Holgura Estimada</span>
-          <span className={`font-mono text-[10px] font-bold block mt-0.5 ${
-            isCritical ? 'text-rose-600' : 'text-emerald-600'
-          }`}>
-            {isCritical ? '0 días (Crítica)' : `+${slackDays || 0} días`}
+          <span className={label}>Holgura estimada</span>
+          <span
+            className={`font-mono text-[10px] font-semibold block mt-0.5 ${
+              isCritical ? 'text-rose-600' : 'text-emerald-600'
+            }`}
+          >
+            {isCritical ? '0 días (crítica)' : `+${slackDays || 0} días`}
           </span>
         </div>
       </div>
 
-      {/* Colaboradores Asignados */}
+      {/* Colaboradores */}
       {collaborators.length > 0 && (
-        <div className="pt-2 border-t border-slate-100/80">
-          <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-            🤝 Equipo Colaborador ({collaborators.length})
+        <div className="pt-1.5 border-t border-slate-100">
+          <span className={`${label} mb-1 flex items-center gap-1`}>
+            <Icon name="users" size={11} /> Equipo colaborador ({collaborators.length})
           </span>
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1 flex-wrap">
             {collaborators.map((c) => (
-              <span 
-                key={c.id} 
-                className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-100 text-indigo-800 text-[10px] font-semibold px-2 py-0.5 rounded-lg"
+              <span
+                key={c.id}
+                className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-100 text-indigo-800 text-[10px] font-medium px-1.5 py-0.5 rounded-lg"
               >
-                👤 {c.name}
+                <Icon name="user" size={10} /> {c.name}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* Acciones Rápidas para el Empleado / Desarrollador */}
-      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${statusColors[status]}`}>
+      {/* Acciones */}
+      <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
+        <span className={`text-[10px] font-semibold px-1.5 py-1 rounded-md ${statusColors[status]}`}>
           {status}
         </span>
 
-        {status !== 'Completada' && (
-          <div className="flex gap-1.5">
-            {onRequestExtension && (
-              <button
-                type="button"
-                onClick={onRequestExtension}
-                className="bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 hover:border-amber-300 font-bold px-2.5 py-1 rounded-xl text-[10px] transition-all cursor-pointer"
-                title="Extender la fecha límite de esta tarea"
-              >
-                ⏱️ Tiempo Extra
-              </button>
-            )}
-          </div>
+        {status !== 'Completada' && onRequestExtension && (
+          <button
+            type="button"
+            onClick={onRequestExtension}
+            className="inline-flex items-center gap-1 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 hover:border-amber-300 font-medium px-1.5 py-1 rounded-lg text-[10px] transition-colors cursor-pointer"
+            title="Extender la fecha límite de esta tarea"
+          >
+            <Icon name="clock" size={11} /> Tiempo extra
+          </button>
         )}
       </div>
-
     </div>
   );
 }

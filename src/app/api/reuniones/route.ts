@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/api-auth'; // Ajusta la ruta relativa si es necesario
+import { verifyAuthToken } from '../../../lib/auth';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,9 +9,21 @@ const corsHeaders = {
 };
 
 export async function GET(req: NextRequest) {
+  // 🔒 Verificación de Token JWT — antes este endpoint no verificaba nada, así que
+  // cualquiera podía leer las reuniones de cualquier empleado con solo saber su id.
+  const user = verifyAuthToken(req);
+  if (!user) {
+    return NextResponse.json({ error: 'No autorizado / Token inválido' }, { status: 401, headers: corsHeaders });
+  }
+
   try {
     const { searchParams } = new URL(req.url);
-    const employeeId = searchParams.get('employeeId') || searchParams.get('empleadoId');
+    const requestedEmpId = searchParams.get('employeeId') || searchParams.get('empleadoId');
+
+    // 🛡️ Ownership check (mismo patrón que /api/tareas): un empleado normal solo
+    // puede consultar sus propias reuniones, sin importar qué employeeId mande.
+    const isAdmin = user.rol.toLowerCase() === 'administrador' || user.rol.toLowerCase() === 'admin';
+    const employeeId = isAdmin ? (requestedEmpId || user.id) : user.id;
 
     if (!employeeId) {
       return NextResponse.json(
