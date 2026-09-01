@@ -1,0 +1,33 @@
+{
+  "artboards": [
+    { "file": "Login.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Acceso" },
+    { "file": "Main.dc.html", "x": 470, "y": 0, "w": 390, "h": 844, "title": "Mis tareas" },
+    { "file": "Detalle.dc.html", "x": 940, "y": 0, "w": 390, "h": 844, "title": "Detalle de actividad" },
+    { "file": "Avisos.dc.html", "x": 1410, "y": 0, "w": 390, "h": 844, "title": "Avisos" },
+    { "file": "Revision.dc.html", "x": 1880, "y": 0, "w": 390, "h": 844, "title": "Revisión remota" }
+  ],
+  "annotations": [
+    {
+      "id": "nota-trabajador",
+      "x": 0,
+      "y": -160,
+      "w": 860,
+      "text": "TRABAJADOR\nEntra, ve sus tareas con el avance, abre una y reporta progreso, adjunta evidencia o pide tiempo extra."
+    },
+    {
+      "id": "nota-avisos",
+      "x": 1410,
+      "y": -160,
+      "w": 390,
+      "text": "TODOS LOS ROLES\nRecordatorios de vencimiento y solicitudes de revisión. Esto es lo que llega como notificación al celular."
+    },
+    {
+      "id": "nota-gerencia",
+      "x": 1880,
+      "y": -160,
+      "w": 390,
+      "text": "GERENCIA Y COORDINACIÓN\nRevisar estando fuera: abre videollamada o llamada con quien entregó, y aprueba o pide correcciones sin volver a la oficina."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

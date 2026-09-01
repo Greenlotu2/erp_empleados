@@ -2418,7 +2418,11 @@ export default function AdminDashboard() {
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
-                <div>
+                <div
+                  className={
+                    newEmployeeData.nivel === "Gerencia" ? "col-span-2" : ""
+                  }
+                >
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                     Nivel Jerárquico
                   </label>
@@ -2428,6 +2432,12 @@ export default function AdminDashboard() {
                       setNewEmployeeData({
                         ...newEmployeeData,
                         nivel: e.target.value,
+                        // Gerencia es Dirección: no pertenece a un área, así que
+                        // se limpia el valor al cambiar de nivel.
+                        area:
+                          e.target.value === "Gerencia"
+                            ? ""
+                            : newEmployeeData.area,
                       })
                     }
                     className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
@@ -2438,32 +2448,36 @@ export default function AdminDashboard() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Área
-                  </label>
-                  <select
-                    value={newEmployeeData.area}
-                    onChange={(e) =>
-                      setNewEmployeeData({
-                        ...newEmployeeData,
-                        area: e.target.value,
-                      })
-                    }
-                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                  >
-                    <option value="">— Sin área (Dirección) —</option>
-                    {AREAS.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* Área solo aplica a Coordinadores y Trabajadores. */}
+                {newEmployeeData.nivel !== "Gerencia" && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Área
+                    </label>
+                    <select
+                      value={newEmployeeData.area}
+                      onChange={(e) =>
+                        setNewEmployeeData({
+                          ...newEmployeeData,
+                          area: e.target.value,
+                        })
+                      }
+                      className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                    >
+                      <option value="">— Sin área —</option>
+                      {AREAS.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <p className="text-[10px] text-slate-400 -mt-1">
-                Nivel agrupa al integrante en el panel "Equipo" del calendario
-                de revisiones; Área aplica a Coordinadores/Trabajadores.
+                {newEmployeeData.nivel === "Gerencia"
+                  ? "Gerencia pertenece a Dirección: no se le asigna área."
+                  : 'Nivel agrupa al integrante en el panel "Equipo" del calendario de revisiones.'}
               </p>
 
               <div>
@@ -2740,7 +2754,11 @@ export default function AdminDashboard() {
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
-                <div>
+                <div
+                  className={
+                    editFormData.nivel === "Gerencia" ? "col-span-2" : ""
+                  }
+                >
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                     Nivel Jerárquico
                   </label>
@@ -2750,6 +2768,11 @@ export default function AdminDashboard() {
                       setEditFormData({
                         ...editFormData,
                         nivel: e.target.value,
+                        // Gerencia es Dirección: no pertenece a un área.
+                        area:
+                          e.target.value === "Gerencia"
+                            ? ""
+                            : editFormData.area,
                       })
                     }
                     className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
@@ -2760,25 +2783,31 @@ export default function AdminDashboard() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Área
-                  </label>
-                  <select
-                    value={editFormData.area}
-                    onChange={(e) =>
-                      setEditFormData({ ...editFormData, area: e.target.value })
-                    }
-                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                  >
-                    <option value="">— Sin área (Dirección) —</option>
-                    {AREAS.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* Área solo aplica a Coordinadores y Trabajadores. */}
+                {editFormData.nivel !== "Gerencia" && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Área
+                    </label>
+                    <select
+                      value={editFormData.area}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          area: e.target.value,
+                        })
+                      }
+                      className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                    >
+                      <option value="">— Sin área —</option>
+                      {AREAS.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div>

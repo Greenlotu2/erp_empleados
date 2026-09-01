@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Geist, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #2563eb; } a:hover { color: #1d4ed8; }
+    .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Encabezado -->
+  <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 20px 16px 14px; display: flex; align-items: center; gap: 12px;">
+    <div style="flex-grow: 1;">
+      <div style="font-size: 20px; font-weight: 600; color: #0f172a;">Avisos</div>
+      <div style="font-size: 13px; color: #64748b; margin-top: 2px;">3 sin leer</div>
+    </div>
+    <div style="font-size: 13px; font-weight: 500; color: #2563eb; min-height: 44px; display: flex; align-items: center;">Marcar leídos</div>
+  </div>
+
+  <div style="flex-grow: 1; overflow: hidden; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 8px;">
+
+    <div class="lbl" style="margin-bottom: 2px;">Hoy</div>
+
+    <!-- Recordatorio de vencimiento -->
+    <div style="background: #ffffff; border: 1px solid #fde68a; border-radius: 12px; padding: 14px; display: flex; gap: 12px;">
+      <span style="width: 38px; height: 38px; border-radius: 10px; background: #fffbeb; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 4 6 4 9s-4 4-4 9M17 3c0 5-4 6-4 9s4 4 4 9" /></svg>
+      </span>
+      <div style="flex-grow: 1; min-width: 0;">
+        <div style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.35;">Vence hoy: Integración de Pasarela de Pagos</div>
+        <div style="font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4;">Va en 60%. Repórtalo o pide tiempo extra.</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">Hace 20 min</div>
+      </div>
+      <span style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb; flex-shrink: 0; margin-top: 6px;"></span>
+    </div>
+
+    <!-- Solicitud de revisión -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; gap: 12px;">
+      <span style="width: 38px; height: 38px; border-radius: 10px; background: #eff6ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2" /><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h4" /><rect x="9" y="2" width="6" height="3" rx="1" /></svg>
+      </span>
+      <div style="flex-grow: 1; min-width: 0;">
+        <div style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.35;">Manuel envió una tarea a revisión</div>
+        <div style="font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4;">Desarrollo de componentes UI para Extensión ERP</div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+          <span style="height: 36px; padding: 0 14px; border-radius: 9px; background: #2563eb; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center;">Revisar</span>
+          <span style="height: 36px; padding: 0 14px; border-radius: 9px; background: #ffffff; border: 1px solid #e2e8f0; color: #475569; font-size: 13px; font-weight: 500; display: flex; align-items: center;">Después</span>
+        </div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">Hace 1 h</div>
+      </div>
+      <span style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb; flex-shrink: 0; margin-top: 6px;"></span>
+    </div>
+
+    <!-- Reunión agendada -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; gap: 12px;">
+      <span style="width: 38px; height: 38px; border-radius: 10px; background: #eef2ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="m16 10 5-3v10l-5-3Z" /></svg>
+      </span>
+      <div style="flex-grow: 1; min-width: 0;">
+        <div style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.35;">Sesión de revisión a las 5:00 pm</div>
+        <div style="font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4;">Con Andrea · videollamada</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">Hace 3 h</div>
+      </div>
+      <span style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb; flex-shrink: 0; margin-top: 6px;"></span>
+    </div>
+
+    <div class="lbl" style="margin-top: 10px; margin-bottom: 2px;">Ayer</div>
+
+    <!-- Tarea aprobada -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; gap: 12px; opacity: 0.72;">
+      <span style="width: 38px; height: 38px; border-radius: 10px; background: #ecfdf5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" /></svg>
+      </span>
+      <div style="flex-grow: 1; min-width: 0;">
+        <div style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.35;">Tarea aprobada</div>
+        <div style="font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4;">Prueba de extensión: marcar completada · +15 pts</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">Ayer, 6:12 pm</div>
+      </div>
+    </div>
+
+    <!-- Tarea rechazada -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; gap: 12px; opacity: 0.72;">
+      <span style="width: 38px; height: 38px; border-radius: 10px; background: #fef2f2; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3Z" /><path d="M12 9v5M12 17.5v.5" /></svg>
+      </span>
+      <div style="flex-grow: 1; min-width: 0;">
+        <div style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.35;">Se pidió corregir una entrega</div>
+        <div style="font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4;">Nueva fecha límite: 5 sep</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">Ayer, 11:40 am</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Barra de navegación -->
+  <div style="background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; padding: 10px 8px 26px;">
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2" /><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h4" /><rect x="9" y="2" width="6" height="3" rx="1" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Tareas</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" /><path d="M10.5 20a2 2 0 0 0 3 0" /></svg>
+      <span style="font-size: 11px; font-weight: 600; color: #2563eb;">Avisos</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c0-3.3 2.9-5 6.5-5s6.5 1.7 6.5 5" /><path d="M16 5.5a3.5 3.5 0 0 1 0 6.9M21.5 20c0-2.6-1.6-4.2-4-4.7" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Equipo</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Perfil</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
