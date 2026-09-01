@@ -43,6 +43,20 @@ export default function LoginPage() {
         });
 
       if (authError) {
+        // No enmascarar TODOS los errores como "credenciales inválidas": el
+        // límite de intentos y la cuenta sin confirmar necesitan otra acción
+        // del usuario, y verlos como "contraseña mala" manda a buscar donde no es.
+        const msg = (authError.message || "").toLowerCase();
+        if (authError.status === 429 || msg.includes("rate limit")) {
+          throw new Error(
+            "Demasiados intentos desde esta red. Espera unos minutos e inténtalo de nuevo.",
+          );
+        }
+        if (msg.includes("not confirmed")) {
+          throw new Error(
+            "La cuenta aún no está confirmada. Contacta al administrador.",
+          );
+        }
         throw new Error(
           "Credenciales inválidas. Revisa tu usuario/correo y contraseña.",
         );
