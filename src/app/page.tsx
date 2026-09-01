@@ -8,6 +8,7 @@ import { formatFechaLimite } from "../lib/dates";
 import { supabase } from "../lib/supabaseClient";
 import { getCurrentAdminId } from "../lib/currentAdmin";
 import { PALETA_EMPLEADOS, colorLibreEmpleado } from "../lib/coloresEmpleados";
+import { ModalOverlay } from "../components/ModalOverlay";
 
 // Áreas del organigrama (bajo cada Coordinador) — usadas para agrupar a los
 // Trabajadores en el panel "Equipo" del calendario de revisiones.
@@ -2300,7 +2301,7 @@ export default function AdminDashboard() {
 
       {/* 📝 MODAL REGISTRO DE INTEGRANTE */}
       {isNewEmployeeModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setIsNewEmployeeModalOpen(false)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <h3 className="text-sm font-bold text-slate-900">
@@ -2649,12 +2650,12 @@ export default function AdminDashboard() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ✏️ MODAL DE EDICIÓN */}
       {isEditModalOpen && selectedEmployee && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setIsEditModalOpen(false)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <h3 className="text-sm font-bold text-slate-900">
@@ -2875,12 +2876,12 @@ export default function AdminDashboard() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* 🗑️ MODAL DE ELIMINACIÓN DE EMPLEADO */}
       {isDeleteModalOpen && selectedEmployee && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setIsDeleteModalOpen(false)}>
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-red-100 p-3 space-y-2 text-center">
             <div className="w-11 h-11 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
               <Icon name="trash" size={20} />
@@ -2921,12 +2922,12 @@ export default function AdminDashboard() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ⏱️ MODAL DE TIEMPO EXTRA / NUEVA FECHA LÍMITE */}
       {extendDeadlineTarget && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setExtendDeadlineTarget(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <h3 className="text-sm font-bold text-slate-900">
@@ -2999,12 +3000,12 @@ export default function AdminDashboard() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* 🔄 MODAL DE TRANSFORMACIÓN */}
       {isTransformModalOpen && selectedEmployee && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setIsTransformModalOpen(false)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <h3 className="text-sm font-bold text-slate-900">
@@ -3082,12 +3083,12 @@ export default function AdminDashboard() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* 📌 MODAL DE ASIGNACIÓN DE TAREA */}
       {isAssignModalOpen && selectedEmployee && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setIsAssignModalOpen(false)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <div>
@@ -3256,12 +3257,12 @@ export default function AdminDashboard() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* 📊 MODAL DE DETALLES DE MÉTRICAS */}
       {activeMetricModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setActiveMetricModal(null)}>
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2 max-h-[85vh] flex flex-col">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5 shrink-0">
               <div className="flex items-center gap-2">
@@ -3518,7 +3519,7 @@ export default function AdminDashboard() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

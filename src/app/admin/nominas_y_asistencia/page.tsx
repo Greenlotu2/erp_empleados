@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "../../../components/Sidebar";
 import { Icon } from "../../../components/icons";
+import { ModalOverlay } from "../../../components/ModalOverlay";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
 
@@ -923,7 +924,7 @@ export default function NominasAsistenciaPage() {
 
       {/* Modal: nueva semana */}
       {nuevaSemanaOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setNuevaSemanaOpen(false)}>
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <h3 className="text-[13px] font-semibold text-slate-900">
@@ -977,12 +978,12 @@ export default function NominasAsistenciaPage() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Modal: confirmación */}
       {confirmDialog && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setConfirmDialog(null)}>
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <h3 className="text-[13px] font-semibold text-slate-900">
@@ -1016,7 +1017,7 @@ export default function NominasAsistenciaPage() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

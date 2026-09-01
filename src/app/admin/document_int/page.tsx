@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Sidebar from "../../../components/Sidebar";
 import { Icon } from "../../../components/icons";
+import { ModalOverlay } from "../../../components/ModalOverlay";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
 
@@ -1942,8 +1943,8 @@ export default function EquiposPage() {
 
       {/* Modal: nueva línea de negocio (proyecto real) */}
       {isAddProyectoOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2"
+        <ModalOverlay
+          onClose={() => setIsAddProyectoOpen(false)}
           style={{ animation: "modal-backdrop-in 150ms ease-out" }}
         >
           <div
@@ -2002,13 +2003,13 @@ export default function EquiposPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Modal: nueva área propia de la línea de negocio activa */}
       {isAddAreaOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2"
+        <ModalOverlay
+          onClose={() => setIsAddAreaOpen(false)}
           style={{ animation: "modal-backdrop-in 150ms ease-out" }}
         >
           <div
@@ -2073,13 +2074,13 @@ export default function EquiposPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Modal: nueva sub área de la área activa */}
       {isAddSubareaOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2"
+        <ModalOverlay
+          onClose={() => setIsAddSubareaOpen(false)}
           style={{ animation: "modal-backdrop-in 150ms ease-out" }}
         >
           <div
@@ -2144,13 +2145,13 @@ export default function EquiposPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Modal: confirmación real antes de borrar archivo o quitar a alguien del proyecto */}
       {confirmDialog && (
-        <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2"
+        <ModalOverlay
+          onClose={() => setConfirmDialog(null)}
           style={{ animation: "modal-backdrop-in 150ms ease-out" }}
         >
           <div
@@ -2189,12 +2190,15 @@ export default function EquiposPage() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Modal: índice plano de todos los archivos */}
       {verTodosOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3">
+        <ModalOverlay
+          onClose={() => setVerTodosOpen(false)}
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3"
+        >
           <div className="bg-white w-full max-w-3xl rounded-xl shadow-lg border border-slate-200 flex flex-col max-h-[85vh]">
             <div className="flex justify-between items-center border-b border-slate-100 px-3 py-2 shrink-0">
               <div>
@@ -2301,7 +2305,7 @@ export default function EquiposPage() {
               </table>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

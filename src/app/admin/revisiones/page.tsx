@@ -8,6 +8,7 @@ import { formatFechaLimite } from "../../../lib/dates";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
 import { Icon } from "../../../components/icons";
+import { ModalOverlay } from "../../../components/ModalOverlay";
 
 // Una tarea que tuvo seguimiento (≥1 reunión y/o ≥1 revisión vinculada por tarea_id).
 interface TareaHistorial {
@@ -1409,7 +1410,7 @@ export default function RevisionesPage() {
 
       {/* Modal Único para Agendar */}
       {isScheduleModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setIsScheduleModalOpen(false)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <div>
@@ -1899,7 +1900,7 @@ export default function RevisionesPage() {
               </form>
             )}
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       <div className="hidden xl:block p-2 md:p-3 pl-0 h-full shrink-0">

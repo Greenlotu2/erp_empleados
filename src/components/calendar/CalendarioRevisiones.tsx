@@ -11,6 +11,7 @@ import { formatFechaLimite } from "../../lib/dates";
 import { supabase } from "../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../lib/currentAdmin";
 import { PALETA_EMPLEADOS } from "../../lib/coloresEmpleados";
+import { ModalOverlay } from "../ModalOverlay";
 import { Icon } from "../icons";
 
 interface MeetingEvent {
@@ -1456,7 +1457,7 @@ export default function CalendarioRevisiones({
 
       {/* MODAL CREAR NUEVA SESIÓN */}
       {isCreating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-2">
+        <ModalOverlay onClose={() => setIsCreating(false)}>
           <div className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-2 py-1.5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <span className="text-xs font-bold text-slate-800">
@@ -1895,12 +1896,12 @@ export default function CalendarioRevisiones({
               </form>
             )}
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* MODAL DETALLES / EDICIÓN EXISTENTE */}
       {selectedEventDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-2">
+        <ModalOverlay onClose={() => setSelectedEventDetails(null)}>
           <div className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-2 py-1.5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <span className="text-xs font-bold text-slate-700">
@@ -2277,19 +2278,13 @@ export default function CalendarioRevisiones({
               </div>
             )}
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* MODAL DE DETALLE DE ACTIVIDADES (vista ampliada de una categoría del acordeón) */}
       {detalleCategoria && (
-        <div
-          onClick={() => setDetalleCategoria(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-2"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
-          >
+        <ModalOverlay onClose={() => setDetalleCategoria(null)}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
             <div className="px-2 py-1.5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
               <span className="text-xs font-bold text-slate-800">
                 {detalleCategoria.label} ({detalleCategoria.items.length})
@@ -2356,7 +2351,7 @@ export default function CalendarioRevisiones({
               )}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </main>
   );

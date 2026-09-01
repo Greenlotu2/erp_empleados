@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Sidebar from "../../../../components/Sidebar";
 import { Icon } from "../../../../components/icons";
+import { ModalOverlay } from "../../../../components/ModalOverlay";
 import { supabase } from "../../../../lib/supabase";
 
 interface CriticalTask {
@@ -783,7 +784,7 @@ export default function CriticalPathPage() {
 
       {/* ✏️ MODAL DE EDICIÓN DE TAREA CON ESTADO POSTERGADA */}
       {editingTask && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2">
+        <ModalOverlay onClose={() => setEditingTask(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <div>
@@ -1004,7 +1005,7 @@ export default function CriticalPathPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );
