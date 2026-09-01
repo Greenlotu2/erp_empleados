@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,79 +16,24 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      const cleanInput = userInput.trim().toLowerCase();
+      // El inicio de sesión pasa por nuestra propia ruta en vez de llamar a
+      // `supabase.auth.signInWithPassword` desde el navegador: así el servidor
+      // puede limitar los intentos fallidos (el rate limit de Supabase Auth no
+      // frena el grant de contraseña). La ruta resuelve usuario→correo, valida
+      // el rol y deja la sesión en cookies.
+      const res = await fetch("/api/auth/web-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userInput, password }),
+      });
 
-      // 1. Obtener el email real a partir del username o email ingresado.
-      //    Se resuelve por una función RPC `security definer` en la base — la
-      //    tabla `empleados` ya NO es legible por usuarios anónimos (RLS).
-      let targetEmail = cleanInput;
+      const data = await res.json().catch(() => ({}));
 
-      const { data: resolvedEmail } = await supabase.rpc(
-        "resolver_email_login",
-        {
-          p_input: cleanInput,
-        },
-      );
-
-      if (typeof resolvedEmail === "string" && resolvedEmail.includes("@")) {
-        targetEmail = resolvedEmail;
+      if (!res.ok) {
+        throw new Error(data.error || "No se pudo iniciar sesión.");
       }
 
-      // 2. Autenticación con Supabase Auth (asigna las cookies SSR en el navegador)
-      const { data: authData, error: authError } =
-        await supabase.auth.signInWithPassword({
-          email: targetEmail,
-          password,
-        });
-
-      if (authError) {
-        // No enmascarar TODOS los errores como "credenciales inválidas": el
-        // límite de intentos y la cuenta sin confirmar necesitan otra acción
-        // del usuario, y verlos como "contraseña mala" manda a buscar donde no es.
-        const msg = (authError.message || "").toLowerCase();
-        if (authError.status === 429 || msg.includes("rate limit")) {
-          throw new Error(
-            "Demasiados intentos desde esta red. Espera unos minutos e inténtalo de nuevo.",
-          );
-        }
-        if (msg.includes("not confirmed")) {
-          throw new Error(
-            "La cuenta aún no está confirmada. Contacta al administrador.",
-          );
-        }
-        throw new Error(
-          "Credenciales inválidas. Revisa tu usuario/correo y contraseña.",
-        );
-      }
-
-      const user = authData.user;
-      if (!user) {
-        throw new Error("No se pudo obtener la información de sesión.");
-      }
-
-      // 3. Consultar el ROL en la tabla 'empleados'
-      const { data: empleadoData, error: empError } = await supabase
-        .from("empleados")
-        .select("rol")
-        .or(`user_id.eq.${user.id},username.ilike.${cleanInput}`)
-        .maybeSingle();
-
-      if (empError) {
-        console.error("Error al consultar el perfil:", empError);
-      }
-
-      const userRole = empleadoData?.rol?.toLowerCase().trim();
-
-      // 4. RESTRICCIÓN DE EMPLEADOS: Si no es admin, revocar acceso
-      if (userRole !== "admin" && userRole !== "administrador") {
-        // Cerrar la sesión de Supabase de inmediato (borra las cookies)
-        await supabase.auth.signOut();
-        throw new Error(
-          "Acceso denegado: Esta plataforma web es exclusiva para Administradores.",
-        );
-      }
-
-      // 5. Forzar refresco de router para sincronizar las cookies con Middleware y redirigir
+      // Refrescar para que el proxy vea las cookies recién puestas y redirigir.
       router.refresh();
       router.push("/");
     } catch (error: any) {
