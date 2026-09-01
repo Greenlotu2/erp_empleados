@@ -9,6 +9,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+// --- Rate limiting contra fuerza bruta -------------------------------------
+// Registra los intentos fallidos en `login_intentos` y bloquea (429) cuando
+// una IP o un correo acumulan demasiados en la ventana de tiempo.
+const VENTANA_MIN = 15;
+const MAX_FALLOS = 10;
+
+function getIp(req: NextRequest): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return req.headers.get("x-real-ip") || "desconocida";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -24,6 +36,40 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanEmail = emailInput.trim().toLowerCase();
+    const ip = getIp(req);
+    const desde = new Date(Date.now() - VENTANA_MIN * 60_000).toISOString();
+
+    // Registrar un intento fallido (IP + correo).
+    const registrarFallo = () =>
+      supabaseAdmin
+        .from("login_intentos")
+        .insert({ ip, email: cleanEmail, exito: false });
+
+    // ¿Demasiados fallos recientes de esta IP o de este correo?
+    const [{ count: fallosIp }, { count: fallosEmail }] = await Promise.all([
+      supabaseAdmin
+        .from("login_intentos")
+        .select("id", { count: "exact", head: true })
+        .eq("ip", ip)
+        .eq("exito", false)
+        .gt("ts", desde),
+      supabaseAdmin
+        .from("login_intentos")
+        .select("id", { count: "exact", head: true })
+        .eq("email", cleanEmail)
+        .eq("exito", false)
+        .gt("ts", desde),
+    ]);
+
+    if ((fallosIp ?? 0) >= MAX_FALLOS || (fallosEmail ?? 0) >= MAX_FALLOS) {
+      return NextResponse.json(
+        {
+          error:
+            "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.",
+        },
+        { status: 429, headers: corsHeaders },
+      );
+    }
 
     // 1. Buscar primero en la columna 'username' (donde se guarda el correo/usuario)
     let { data: empleado } = await supabaseAdmin
@@ -50,6 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!empleado) {
+      await registrarFallo();
       return NextResponse.json(
         { error: "Credenciales inválidas" },
         { status: 401, headers: corsHeaders },
@@ -77,10 +124,25 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isPasswordValid) {
+      await registrarFallo();
       return NextResponse.json(
         { error: "Credenciales inválidas" },
         { status: 401, headers: corsHeaders },
       );
+    }
+
+    // Login correcto: limpiar los fallos de este correo y, de vez en cuando,
+    // barrer registros viejos para que la tabla no crezca.
+    await supabaseAdmin
+      .from("login_intentos")
+      .delete()
+      .eq("email", cleanEmail)
+      .eq("exito", false);
+    if (Math.random() < 0.05) {
+      await supabaseAdmin
+        .from("login_intentos")
+        .delete()
+        .lt("ts", new Date(Date.now() - 24 * 3600_000).toISOString());
     }
 
     // 🔄 4. MIGRACIÓN AL VUELO: si autenticó por texto plano, hashea y borra el texto plano
