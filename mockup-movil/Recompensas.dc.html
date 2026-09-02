@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Geist, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #2563eb; } a:hover { color: #1d4ed8; }
+    .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Encabezado -->
+  <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 18px 16px 12px; display: flex; align-items: center; gap: 12px;">
+    <div style="width: 40px; height: 40px; margin-left: -8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+    </div>
+    <div style="font-size: 16px; font-weight: 600; color: #0f172a; flex-grow: 1;">Recompensas</div>
+  </div>
+
+  <div style="flex-grow: 1; overflow: hidden; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px;">
+
+    <!-- Balance y nivel -->
+    <div style="background: linear-gradient(135deg, #4f46e5 0%, #2563eb 100%); border-radius: 16px; padding: 16px; color: #ffffff;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between;">
+        <div>
+          <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255, 255, 255, 0.75);">Tus puntos</div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6" /><path d="M9 14.5 7.5 22 12 19l4.5 3L15 14.5" /></svg>
+            <span style="font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1;">26</span>
+            <span style="font-size: 15px; opacity: 0.8; margin-top: 6px;">pts</span>
+          </div>
+        </div>
+        <span style="font-size: 11px; font-weight: 600; background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.28); padding: 5px 11px; border-radius: 999px;">Nivel Bronce</span>
+      </div>
+      <div style="margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.8);">
+          <span>Progreso a Plata</span>
+          <span style="font-variant-numeric: tabular-nums;">26 / 300 pts</span>
+        </div>
+        <div style="width: 100%; height: 8px; background: rgba(255, 255, 255, 0.22); border-radius: 999px; overflow: hidden; margin-top: 7px;">
+          <div style="width: 9%; height: 100%; background: #ffffff; border-radius: 999px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Escalera de niveles -->
+    <div style="display: flex; gap: 6px;">
+      <div style="flex-grow: 1; text-align: center; background: #ffffff; border: 1px solid #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); border-radius: 10px; padding: 8px 4px;">
+        <div style="font-size: 12px; font-weight: 600; color: #1d4ed8;">Bronce</div>
+        <div style="font-size: 10px; color: #94a3b8; font-variant-numeric: tabular-nums;">0</div>
+      </div>
+      <div style="flex-grow: 1; text-align: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 4px;">
+        <div style="font-size: 12px; font-weight: 600; color: #64748b;">Plata</div>
+        <div style="font-size: 10px; color: #94a3b8; font-variant-numeric: tabular-nums;">300</div>
+      </div>
+      <div style="flex-grow: 1; text-align: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 4px;">
+        <div style="font-size: 12px; font-weight: 600; color: #64748b;">Oro</div>
+        <div style="font-size: 10px; color: #94a3b8; font-variant-numeric: tabular-nums;">800</div>
+      </div>
+      <div style="flex-grow: 1; text-align: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 4px;">
+        <div style="font-size: 12px; font-weight: 600; color: #64748b;">Diamante</div>
+        <div style="font-size: 10px; color: #94a3b8; font-variant-numeric: tabular-nums;">1500</div>
+      </div>
+    </div>
+
+    <!-- Catálogo -->
+    <div>
+      <div class="lbl" style="margin-bottom: 8px;">Catálogo de canje</div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+          <span style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /><path d="M12 8S9.5 3.5 7 5s2.5 3 5 3 7.5-1.5 5-3S12 8 12 8Z" /></svg>
+          </span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-size: 14px; font-weight: 600; color: #0f172a;">Vale de despensa</div>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin-top: 2px;">Apoyo para compras en supermercados.</div>
+          </div>
+          <div style="text-align: right; flex-shrink: 0;">
+            <div style="font-size: 13px; font-weight: 600; color: #b45309; font-variant-numeric: tabular-nums;">400 pts</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Faltan 374</div>
+          </div>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+          <span style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" /></svg>
+          </span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-size: 14px; font-weight: 600; color: #0f172a;">Vale de gasolina</div>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin-top: 2px;">Apoyo para transporte y movilidad diaria.</div>
+          </div>
+          <div style="text-align: right; flex-shrink: 0;">
+            <div style="font-size: 13px; font-weight: 600; color: #b45309; font-variant-numeric: tabular-nums;">400 pts</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Faltan 374</div>
+          </div>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+          <span style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z" /><path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5" /></svg>
+          </span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-size: 14px; font-weight: 600; color: #0f172a;">Curso o certificación</div>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin-top: 2px;">Pago de capacitación técnica o profesional.</div>
+          </div>
+          <div style="text-align: right; flex-shrink: 0;">
+            <div style="font-size: 13px; font-weight: 600; color: #b45309; font-variant-numeric: tabular-nums;">900 pts</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Faltan 874</div>
+          </div>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+          <span style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /></svg>
+          </span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-size: 14px; font-weight: 600; color: #0f172a;">Día libre</div>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin-top: 2px;">Un día de descanso adicional pagado.</div>
+          </div>
+          <div style="text-align: right; flex-shrink: 0;">
+            <div style="font-size: 13px; font-weight: 600; color: #b45309; font-variant-numeric: tabular-nums;">2500 pts</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Faltan 2474</div>
+          </div>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+          <span style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6" /><path d="M9 14.5 7.5 22 12 19l4.5 3L15 14.5" /></svg>
+          </span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-size: 14px; font-weight: 600; color: #0f172a;">Bono colectivo de equipo</div>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin-top: 2px;">Premio acumulativo por hitos del área o proyecto.</div>
+          </div>
+          <div style="text-align: right; flex-shrink: 0;">
+            <div style="font-size: 12px; font-weight: 600; color: #64748b;">Según equipo</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Historial de puntos -->
+    <div>
+      <div class="lbl" style="margin-bottom: 8px;">Cómo ganaste tus puntos</div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 11px 13px; display: flex; align-items: center; gap: 10px;">
+          <span style="width: 30px; height: 30px; border-radius: 8px; background: #ecfdf5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" /></svg>
+          </span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-size: 13px; color: #1e293b; line-height: 1.3;">Tarea completada (+2 por anticipación)</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">27 ago</div>
+          </div>
+          <span style="font-size: 13px; font-weight: 600; color: #059669; flex-shrink: 0;">+12</span>
+        </div>
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 11px 13px; display: flex; align-items: center; gap: 10px;">
+          <span style="width: 30px; height: 30px; border-radius: 8px; background: #ecfdf5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" /></svg>
+          </span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-size: 13px; color: #1e293b; line-height: 1.3;">Tarea completada (+4 por anticipación)</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">27 ago</div>
+          </div>
+          <span style="font-size: 13px; font-weight: 600; color: #059669; flex-shrink: 0;">+14</span>
+        </div>
+      </div>
+      <div style="font-size: 11px; color: #94a3b8; line-height: 1.45; margin-top: 10px; padding: 0 2px;">Los puntos se otorgan solos al completar una tarea: 10 base más hasta 10 extra por entregarla antes de la fecha límite.</div>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

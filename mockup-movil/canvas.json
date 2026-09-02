@@ -5,7 +5,8 @@
     { "file": "Detalle.dc.html", "x": 940, "y": 0, "w": 390, "h": 844, "title": "Detalle de actividad" },
     { "file": "Avisos.dc.html", "x": 1410, "y": 0, "w": 390, "h": 844, "title": "Avisos" },
     { "file": "Revision.dc.html", "x": 1880, "y": 0, "w": 390, "h": 844, "title": "Revisión remota" },
-    { "file": "Perfil.dc.html", "x": 2350, "y": 0, "w": 390, "h": 844, "title": "Mi perfil" }
+    { "file": "Perfil.dc.html", "x": 2350, "y": 0, "w": 390, "h": 844, "title": "Mi perfil" },
+    { "file": "Recompensas.dc.html", "x": 2820, "y": 0, "w": 390, "h": 844, "title": "Recompensas" }
   ],
   "annotations": [
     {
@@ -35,6 +36,13 @@
       "y": -160,
       "w": 390,
       "text": "TODOS LOS ROLES\nSus datos, horas de servicio y puntos. Edita lo suyo (foto, especialidad, color, contraseña); rol, nivel y área los sigue asignando el admin desde la web."
+    },
+    {
+      "id": "nota-recompensas",
+      "x": 2820,
+      "y": -180,
+      "w": 390,
+      "text": "TRABAJADORES · abre desde Mi perfil\nPuntos, nivel (Bronce/Plata/Oro/Diamante) y catálogo de canje: vales, curso, día libre, bono de equipo. Los puntos se otorgan solos al completar tareas (trigger en Supabase). El canje real está pendiente en la web; aquí se muestra completo para revisión."
     }
   ],
   "launch": { "view": "canvas" }
