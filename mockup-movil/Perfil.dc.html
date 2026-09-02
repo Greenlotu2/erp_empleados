@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Geist, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #2563eb; } a:hover { color: #1d4ed8; }
+    .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Encabezado -->
+  <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 18px 16px 12px;">
+    <div style="font-size: 20px; font-weight: 600; color: #0f172a;">Mi perfil</div>
+  </div>
+
+  <div style="flex-grow: 1; overflow: hidden; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;">
+
+    <!-- Identidad -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center;">
+      <div style="position: relative; width: 76px; height: 76px;">
+        <div style="width: 76px; height: 76px; border-radius: 999px; background: #059669; color: #ffffff; font-size: 26px; font-weight: 600; display: flex; align-items: center; justify-content: center;">JE</div>
+        <div style="position: absolute; bottom: -2px; right: -2px; width: 30px; height: 30px; border-radius: 999px; background: #2563eb; border: 3px solid #ffffff; display: flex; align-items: center; justify-content: center;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" /><circle cx="12" cy="12.5" r="3.5" /></svg>
+        </div>
+      </div>
+      <div style="font-size: 19px; font-weight: 600; color: #0f172a; margin-top: 12px;">Juancarlos Escobar</div>
+      <div style="font-size: 13px; color: #64748b; margin-top: 3px;">Practicante · Coordinador</div>
+      <div style="display: flex; gap: 6px; margin-top: 10px;">
+        <span style="font-size: 11px; font-weight: 600; color: #1d4ed8; background: #eff6ff; border: 1px solid #dbeafe; padding: 4px 9px; border-radius: 6px;">Proyectos y Obra</span>
+        <span style="font-size: 11px; font-weight: 600; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; padding: 4px 9px; border-radius: 6px;">Ocupado</span>
+      </div>
+      <div style="width: 100%; height: 44px; border-radius: 11px; border: 1px solid #cbd5e1; color: #334155; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 14px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+        Editar perfil
+      </div>
+    </div>
+
+    <!-- Horas y puntos -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between;">
+        <span class="lbl">Horas de servicio</span>
+        <span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums;"><span style="font-size: 17px; font-weight: 600; color: #0f172a;">64.2</span> / 250 h</span>
+      </div>
+      <div style="width: 100%; height: 6px; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin-top: 9px;">
+        <div style="width: 26%; height: 100%; background: #059669; border-radius: 999px;"></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 13px; padding-top: 13px; border-top: 1px solid #f1f5f9;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="9" r="6" /><path d="M9 14.5 7.5 22 12 19l4.5 3L15 14.5" /></svg>
+        <span style="font-size: 14px; color: #475569; flex-grow: 1;">Puntos de recompensa</span>
+        <span style="font-size: 16px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums;">26</span>
+      </div>
+    </div>
+
+    <!-- Datos -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 2px 16px;">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f1f5f9;">
+        <span style="font-size: 14px; color: #64748b; width: 96px; flex-shrink: 0;">Correo</span>
+        <span style="font-size: 14px; color: #1e293b; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">theepapirrin09@gmail.com</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f1f5f9;">
+        <span style="font-size: 14px; color: #64748b; width: 96px; flex-shrink: 0;">Especialidad</span>
+        <span style="font-size: 14px; color: #1e293b; flex-grow: 1; min-width: 0;">Dev / Analista de Datos</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0;">
+        <span style="font-size: 14px; color: #64748b; width: 96px; flex-shrink: 0;">Color</span>
+        <span style="display: flex; align-items: center; gap: 8px; flex-grow: 1;">
+          <span style="width: 20px; height: 20px; border-radius: 999px; background: #059669;"></span>
+          <span style="font-size: 13px; color: #94a3b8; font-family: ui-monospace, monospace;">#059669</span>
+        </span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+      </div>
+    </div>
+
+    <!-- Ajustes -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 2px 16px;">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f1f5f9;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" /><path d="M10.5 20a2 2 0 0 0 3 0" /></svg>
+        <span style="font-size: 14px; color: #1e293b; flex-grow: 1;">Notificaciones</span>
+        <span style="width: 42px; height: 24px; border-radius: 999px; background: #2563eb; display: flex; align-items: center; justify-content: flex-end; padding: 0 3px; box-sizing: border-box; flex-shrink: 0;">
+          <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff;"></span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+        <span style="font-size: 14px; color: #1e293b; flex-grow: 1;">Cambiar contraseña</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="m9 6 6 6-6 6" /></svg>
+      </div>
+    </div>
+
+    <!-- Salir -->
+    <div style="height: 46px; border-radius: 12px; background: #ffffff; border: 1px solid #fecaca; color: #b91c1c; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" /><path d="M16 17l5-5-5-5M21 12H9" /></svg>
+      Cerrar sesión
+    </div>
+
+  </div>
+
+  <!-- Barra de navegación -->
+  <div style="background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; padding: 10px 8px 22px;">
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2" /><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h4" /><rect x="9" y="2" width="6" height="3" rx="1" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Tareas</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" /><path d="M10.5 20a2 2 0 0 0 3 0" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Avisos</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c0-3.3 2.9-5 6.5-5s6.5 1.7 6.5 5" /><path d="M16 5.5a3.5 3.5 0 0 1 0 6.9M21.5 20c0-2.6-1.6-4.2-4-4.7" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Equipo</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" /></svg>
+      <span style="font-size: 11px; font-weight: 600; color: #2563eb;">Perfil</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
