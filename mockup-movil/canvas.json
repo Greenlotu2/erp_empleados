@@ -6,7 +6,8 @@
     { "file": "Avisos.dc.html", "x": 1410, "y": 0, "w": 390, "h": 844, "title": "Avisos" },
     { "file": "Revision.dc.html", "x": 1880, "y": 0, "w": 390, "h": 844, "title": "Revisión remota" },
     { "file": "Perfil.dc.html", "x": 2350, "y": 0, "w": 390, "h": 844, "title": "Mi perfil" },
-    { "file": "Recompensas.dc.html", "x": 2820, "y": 0, "w": 390, "h": 844, "title": "Recompensas" }
+    { "file": "Recompensas.dc.html", "x": 2820, "y": 0, "w": 390, "h": 844, "title": "Recompensas" },
+    { "file": "Equipo.dc.html", "x": 3290, "y": 0, "w": 390, "h": 844, "title": "Equipo" }
   ],
   "annotations": [
     {
@@ -43,6 +44,13 @@
       "y": -180,
       "w": 390,
       "text": "TRABAJADORES · abre desde Mi perfil\nPuntos, nivel (Bronce/Plata/Oro/Diamante) y catálogo de canje: vales, curso, día libre, bono de equipo. Los puntos se otorgan solos al completar tareas (trigger en Supabase). El canje real está pendiente en la web; aquí se muestra completo para revisión."
+    },
+    {
+      "id": "nota-equipo",
+      "x": 3290,
+      "y": -160,
+      "w": 390,
+      "text": "TODOS LOS ROLES\nEl equipo agrupado por área (el organigrama real), con el estado de cada quien: Disponible o Ocupado, igual que en el Panel Principal de la web. Filtro por estado arriba. Datos y colores reales de la base."
     }
   ],
   "launch": { "view": "canvas" }

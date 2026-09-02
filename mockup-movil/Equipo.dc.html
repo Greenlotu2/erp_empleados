@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Geist, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #2563eb; } a:hover { color: #1d4ed8; }
+    .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+    .av { width: 40px; height: 40px; border-radius: 999px; color: #ffffff; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .nm { font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.3; }
+    .rl { font-size: 12px; color: #94a3b8; margin-top: 1px; }
+    .st { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; flex-shrink: 0; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Encabezado -->
+  <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 18px 16px 12px;">
+    <div style="display: flex; align-items: baseline; gap: 8px;">
+      <div style="font-size: 20px; font-weight: 600; color: #0f172a;">Equipo</div>
+      <div style="font-size: 13px; color: #94a3b8;">7 integrantes</div>
+    </div>
+    <div style="display: flex; gap: 16px; margin-top: 8px;">
+      <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569;">
+        <span class="dot" style="background: #10b981;"></span> 3 disponibles
+      </span>
+      <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569;">
+        <span class="dot" style="background: #f59e0b;"></span> 4 ocupados
+      </span>
+    </div>
+  </div>
+
+  <!-- Filtro -->
+  <div style="display: flex; gap: 6px; padding: 12px 16px 8px;">
+    <div style="padding: 8px 14px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 13px; font-weight: 600;">Todos</div>
+    <div style="padding: 8px 14px; border-radius: 999px; background: #ffffff; border: 1px solid #e2e8f0; color: #475569; font-size: 13px; font-weight: 500;">Disponibles</div>
+    <div style="padding: 8px 14px; border-radius: 999px; background: #ffffff; border: 1px solid #e2e8f0; color: #475569; font-size: 13px; font-weight: 500;">Ocupados</div>
+  </div>
+
+  <div style="flex-grow: 1; overflow: hidden; padding: 4px 16px; display: flex; flex-direction: column; gap: 10px;">
+
+    <!-- Dirección -->
+    <div>
+      <div class="lbl" style="margin-bottom: 6px;">Dirección</div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div class="row" style="border-bottom: 1px solid #f1f5f9;">
+          <span class="av" style="background: #2563eb;">LR</span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="nm">Luis Romero</div>
+            <div class="rl">Gerencia</div>
+          </div>
+          <span class="st" style="color: #047857;"><span class="dot" style="background: #10b981;"></span>Disponible</span>
+        </div>
+        <div class="row">
+          <span class="av" style="background: #0d9488;">OR</span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="nm">Osvaldo Romero</div>
+            <div class="rl">Gerencia</div>
+          </div>
+          <span class="st" style="color: #047857;"><span class="dot" style="background: #10b981;"></span>Disponible</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Proyectos y Obra -->
+    <div>
+      <div class="lbl" style="margin-bottom: 6px;">Proyectos y Obra</div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div class="row" style="border-bottom: 1px solid #f1f5f9;">
+          <span class="av" style="background: #059669;">JE</span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="nm">Juancarlos Escobar</div>
+            <div class="rl">Coordinador · Practicante</div>
+          </div>
+          <span class="st" style="color: #b45309;"><span class="dot" style="background: #f59e0b;"></span>Ocupado</span>
+        </div>
+        <div class="row">
+          <span class="av" style="background: #7c3aed;">M</span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="nm">Manuel</div>
+            <div class="rl">Arquitectura</div>
+          </div>
+          <span class="st" style="color: #047857;"><span class="dot" style="background: #10b981;"></span>Disponible</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TICs -->
+    <div>
+      <div class="lbl" style="margin-bottom: 6px;">TICs</div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div class="row">
+          <span class="av" style="background: #0891b2;">JL</span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="nm">Jose Luis</div>
+            <div class="rl">Desarrollo</div>
+          </div>
+          <span class="st" style="color: #b45309;"><span class="dot" style="background: #f59e0b;"></span>Ocupado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Administrativo y RRHH -->
+    <div>
+      <div class="lbl" style="margin-bottom: 6px;">Administrativo y RRHH</div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div class="row">
+          <span class="av" style="background: #db2777;">A</span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="nm">Andrea</div>
+            <div class="rl">Administración</div>
+          </div>
+          <span class="st" style="color: #b45309;"><span class="dot" style="background: #f59e0b;"></span>Ocupado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Financiero-Contable -->
+    <div>
+      <div class="lbl" style="margin-bottom: 6px;">Financiero-Contable</div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div class="row">
+          <span class="av" style="background: #ea580c;">R</span>
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="nm">Roberto</div>
+            <div class="rl">Contabilidad</div>
+          </div>
+          <span class="st" style="color: #047857;"><span class="dot" style="background: #10b981;"></span>Disponible</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Barra de navegación -->
+  <div style="background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; padding: 10px 8px 22px;">
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2" /><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h4" /><rect x="9" y="2" width="6" height="3" rx="1" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Tareas</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" /><path d="M10.5 20a2 2 0 0 0 3 0" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Avisos</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c0-3.3 2.9-5 6.5-5s6.5 1.7 6.5 5" /><path d="M16 5.5a3.5 3.5 0 0 1 0 6.9M21.5 20c0-2.6-1.6-4.2-4-4.7" /></svg>
+      <span style="font-size: 11px; font-weight: 600; color: #2563eb;">Equipo</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 44px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" /></svg>
+      <span style="font-size: 11px; font-weight: 500; color: #94a3b8;">Perfil</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
