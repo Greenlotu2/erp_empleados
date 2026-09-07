@@ -1330,27 +1330,22 @@ export default function AdminDashboard() {
     setIsDeleting(true);
 
     try {
-      const empId = selectedEmployee.id;
-
-      await supabase
-        .from("documentos_legales")
-        .delete()
-        .eq("empleado_id", empId);
-      await supabase.from("contratos").delete().eq("empleado_id", empId);
-      await supabase.from("tareas").delete().eq("empleado_id", empId);
-
-      const { error } = await supabase
-        .from("empleados")
-        .delete()
-        .eq("id", empId);
-
-      if (error) throw error;
+      // El borrado pasa por una ruta con service role: limpia todas las tablas
+      // hijas (raya, reuniones, revisiones, notificaciones, recompensas…),
+      // borra al empleado y su cuenta de Supabase Auth.
+      const res = await fetch("/api/empleados/eliminar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ empleadoId: selectedEmployee.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo eliminar.");
 
       setIsDeleteModalOpen(false);
       setSelectedEmployee(null);
       await fetchDashboardData();
     } catch (error: any) {
-      console.error("Error al eliminar empleado de Supabase:", error);
+      console.error("Error al eliminar empleado:", error);
       alert(error.message || "Error al eliminar el integrante.");
     } finally {
       setIsDeleting(false);
