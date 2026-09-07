@@ -9,6 +9,7 @@ import {
   limpiarFallos,
   MENSAJE_BLOQUEO,
 } from "../../../../lib/rateLimitLogin";
+import { sinPersistencia } from "../../../../lib/sessionCookies";
 
 // Login del dashboard web. Antes el navegador llamaba directo a
 // `supabase.auth.signInWithPassword`, así que no había forma de limitar los
@@ -56,8 +57,13 @@ export async function POST(req: NextRequest) {
             return cookieStore.getAll();
           },
           setAll(cookiesToSet) {
+            // Cookies DE SESIÓN: la sesión se cierra al cerrar el navegador.
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+              cookieStore.set(
+                name,
+                value,
+                value ? sinPersistencia(options) : options,
+              ),
             );
           },
         },

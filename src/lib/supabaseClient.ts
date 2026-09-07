@@ -17,18 +17,26 @@
 // exportado desde aquí (patrón Singleton + `globalThis` para sobrevivir el Fast
 // Refresh de Next.js en dev, que si no re-ejecuta este módulo y crea otro cliente
 // más) queda una sola instancia real en todo el navegador.
-import { createBrowserClient } from '@supabase/ssr';
+import { createBrowserClient } from "@supabase/ssr";
+import { browserSessionCookies } from "./sessionCookies";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
 
 const globalForSupabase = globalThis as unknown as {
   supabase?: ReturnType<typeof createBrowserClient>;
 };
 
 export const supabase =
-  globalForSupabase.supabase || createBrowserClient(supabaseUrl, supabaseAnonKey);
+  globalForSupabase.supabase ||
+  // `cookies` propio para escribir cookies DE SESIÓN: la sesión se cierra al
+  // cerrar el navegador (ver src/lib/sessionCookies.ts).
+  createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    cookies: browserSessionCookies,
+  });
 
-if (process.env.NODE_ENV !== 'production') globalForSupabase.supabase = supabase;
+if (process.env.NODE_ENV !== "production")
+  globalForSupabase.supabase = supabase;

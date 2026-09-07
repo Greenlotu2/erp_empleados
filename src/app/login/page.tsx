@@ -113,22 +113,9 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
-                />
-                <label
-                  htmlFor="remember-me"
-                  className="ml-1 block text-slate-700 text-xs select-none cursor-pointer"
-                >
-                  Recordarme
-                </label>
-              </div>
-            </div>
+            <p className="text-[11px] text-slate-400 leading-snug">
+              Por seguridad, la sesión se cierra al cerrar el navegador.
+            </p>
 
             <div>
               <button
