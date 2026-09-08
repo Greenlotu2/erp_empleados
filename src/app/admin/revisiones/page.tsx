@@ -9,6 +9,8 @@ import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
 import { Icon } from "../../../components/icons";
 import { ModalOverlay } from "../../../components/ModalOverlay";
+import { ArchivoImg } from "../../../components/ArchivoImg";
+import { abrirArchivo } from "../../../lib/storageUrls";
 
 // Una tarea que tuvo seguimiento (≥1 reunión y/o ≥1 revisión vinculada por tarea_id).
 interface TareaHistorial {
@@ -520,10 +522,8 @@ export default function RevisionesPage() {
           .from("documentacion")
           .upload(path, minutaFile);
         if (upErr) throw upErr;
-        const { data: pub } = supabase.storage
-          .from("documentacion")
-          .getPublicUrl(path);
-        adjuntoUrl = pub?.publicUrl || null;
+        // Bucket privado: se guarda la ruta, no una URL pública.
+        adjuntoUrl = path;
         adjuntoNombre = minutaFile.name;
       }
 
@@ -1287,14 +1287,15 @@ export default function RevisionesPage() {
                           )}
 
                           {ev.tipo === "revision" && ev.meta?.evidencia_url && (
-                            <a
-                              href={ev.meta.evidencia_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-block mt-1 text-[10px] font-bold text-blue-600 hover:underline"
+                            <button
+                              type="button"
+                              onClick={() =>
+                                abrirArchivo(ev.meta.evidencia_url)
+                              }
+                              className="inline-block mt-1 text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
                             >
                               {ev.meta.evidencia_nombre || "Ver evidencia"}
-                            </a>
+                            </button>
                           )}
 
                           {ev.tipo === "reunion" && (
@@ -1359,27 +1360,29 @@ export default function RevisionesPage() {
                                 (/\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(
                                   ev.meta.adjunto_nombre || ev.meta.adjunto_url,
                                 ) ? (
-                                  <a
-                                    href={ev.meta.adjunto_url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="block mt-1"
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      abrirArchivo(ev.meta.adjunto_url)
+                                    }
+                                    className="block mt-1 cursor-pointer"
                                   >
-                                    <img
-                                      src={ev.meta.adjunto_url}
+                                    <ArchivoImg
+                                      path={ev.meta.adjunto_url}
                                       alt={ev.meta.adjunto_nombre || "adjunto"}
                                       className="max-h-40 rounded-lg border border-slate-200"
                                     />
-                                  </a>
+                                  </button>
                                 ) : (
-                                  <a
-                                    href={ev.meta.adjunto_url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-block mt-1 text-[10px] font-bold text-blue-600 hover:underline"
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      abrirArchivo(ev.meta.adjunto_url)
+                                    }
+                                    className="inline-block mt-1 text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
                                   >
                                     {ev.meta.adjunto_nombre || "Ver adjunto"}
-                                  </a>
+                                  </button>
                                 ))}
                               <div className="flex flex-wrap items-center gap-1 mt-1">
                                 {ev.meta?.reunionTitulo && (

@@ -9,6 +9,7 @@ import { supabase } from "../lib/supabaseClient";
 import { getCurrentAdminId } from "../lib/currentAdmin";
 import { PALETA_EMPLEADOS, colorLibreEmpleado } from "../lib/coloresEmpleados";
 import { ModalOverlay } from "../components/ModalOverlay";
+import { abrirArchivo } from "../lib/storageUrls";
 
 // Áreas del organigrama (bajo cada Coordinador) — usadas para agrupar a los
 // Trabajadores en el panel "Equipo" del calendario de revisiones.
@@ -917,16 +918,11 @@ export default function AdminDashboard() {
 
       if (uploadErr) throw uploadErr;
 
-      const { data: publicUrlData } = supabase.storage
-        .from("documentacion")
-        .getPublicUrl(fileName);
-
-      const publicUrl = publicUrlData?.publicUrl;
-
+      // Bucket privado: se guarda la ruta, no una URL pública.
       const { error: dbErr } = await supabase
         .from("documentos_legales")
         .update({
-          archivo_path: publicUrl,
+          archivo_path: fileName,
           estado: "Verificado",
         })
         .eq("id", docId);
@@ -1128,10 +1124,8 @@ export default function AdminDashboard() {
                 .upload(fileName, doc.archivo);
 
               if (!docUploadErr) {
-                const { data: docUrlData } = supabase.storage
-                  .from("documentacion")
-                  .getPublicUrl(fileName);
-                filePublicUrl = docUrlData?.publicUrl || null;
+                // Bucket privado: se guarda la ruta, no una URL pública.
+                filePublicUrl = fileName;
                 estadoDoc = "Verificado";
               }
             }
@@ -1497,15 +1491,16 @@ export default function AdminDashboard() {
                                 </span>
                               )}
                               {notif.evidenceUrl && (
-                                <a
-                                  href={notif.evidenceUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    abrirArchivo(notif.evidenceUrl)
+                                  }
                                   title={notif.evidenceName || "Ver evidencia"}
-                                  className="text-[10px] text-purple-700 font-medium bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 hover:bg-purple-100 inline-flex items-center gap-1"
+                                  className="text-[10px] text-purple-700 font-medium bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 hover:bg-purple-100 inline-flex items-center gap-1 cursor-pointer"
                                 >
                                   <Icon name="paperclip" size={10} /> Evidencia
-                                </a>
+                                </button>
                               )}
                             </div>
 
@@ -2034,14 +2029,13 @@ export default function AdminDashboard() {
                         </div>
 
                         {doc.fileUrl ? (
-                          <a
-                            href={doc.fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold px-1.5 py-1 rounded-lg text-[11px] transition-colors"
+                          <button
+                            type="button"
+                            onClick={() => abrirArchivo(doc.fileUrl)}
+                            className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold px-1.5 py-1 rounded-lg text-[11px] transition-colors cursor-pointer"
                           >
                             Ver PDF
-                          </a>
+                          </button>
                         ) : (
                           <div>
                             <input

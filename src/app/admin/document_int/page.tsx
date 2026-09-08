@@ -6,6 +6,7 @@ import { Icon } from "../../../components/icons";
 import { ModalOverlay } from "../../../components/ModalOverlay";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
+import { abrirArchivo } from "../../../lib/storageUrls";
 
 // Menú desplegable de filtro por columna (estilo autofiltro de Excel).
 function FiltroColumna({
@@ -542,7 +543,7 @@ export default function EquiposPage() {
       "Archivo",
       "Fecha",
       "Peso (bytes)",
-      "URL",
+      "Ruta en bucket",
     ];
     const filas = todosOrdenados.map((a) =>
       [
@@ -553,7 +554,7 @@ export default function EquiposPage() {
         a.nombre.replace(/"/g, "'"),
         a.created_at?.slice(0, 10) || "",
         tamanosPorPath[a.storage_path] || 0,
-        a.url,
+        a.storage_path || "",
       ]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`)
         .join(","),
@@ -691,16 +692,14 @@ export default function EquiposPage() {
         .upload(path, file);
       if (uploadErr) throw uploadErr;
 
-      const { data: urlData } = supabase.storage
-        .from(ARCHIVOS_BUCKET)
-        .getPublicUrl(path);
-
+      // El bucket es privado: se guarda la RUTA, no una URL pública. El link
+      // firmado se genera al abrir el archivo (ver lib/storageUrls).
       const { data, error } = await (supabase.from("proyecto_archivos") as any)
         .insert({
           proyecto_id: activeProyectoId,
           nombre: file.name,
           storage_path: path,
-          url: urlData?.publicUrl || "",
+          url: path,
           subido_por: currentEmpleadoId,
           area: areaFiltro,
           subarea: subareaFiltro,
@@ -1746,11 +1745,14 @@ export default function EquiposPage() {
                                       className="w-1.5 h-1.5 rounded-full shrink-0"
                                       style={{ backgroundColor: st.color }}
                                     />
-                                    <a
-                                      href={archivo.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex-1 min-w-0"
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        abrirArchivo(
+                                          archivo.storage_path || archivo.url,
+                                        )
+                                      }
+                                      className="flex-1 min-w-0 text-left cursor-pointer"
                                       title={archivo.nombre}
                                     >
                                       <span className="block text-[11px] font-medium text-slate-700 truncate hover:underline">
@@ -1765,7 +1767,7 @@ export default function EquiposPage() {
                                           ? ` · ${formatBytes(tamanosPorPath[archivo.storage_path])}`
                                           : ""}
                                       </span>
-                                    </a>
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() =>
@@ -1830,11 +1832,14 @@ export default function EquiposPage() {
                                 key={archivo.id}
                                 className="flex items-center gap-1 px-1 py-0.5"
                               >
-                                <a
-                                  href={archivo.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex-1 min-w-0"
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    abrirArchivo(
+                                      archivo.storage_path || archivo.url,
+                                    )
+                                  }
+                                  className="flex-1 min-w-0 text-left cursor-pointer"
                                   title={archivo.nombre}
                                 >
                                   <span className="block text-[11px] font-medium text-slate-700 truncate hover:underline">
@@ -1846,7 +1851,7 @@ export default function EquiposPage() {
                                       ? ` · ${formatBytes(tamanosPorPath[archivo.storage_path])}`
                                       : ""}
                                   </span>
-                                </a>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() =>
