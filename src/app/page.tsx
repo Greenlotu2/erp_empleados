@@ -12,13 +12,16 @@ import { ModalOverlay } from "../components/ModalOverlay";
 import { abrirArchivo } from "../lib/storageUrls";
 
 // Áreas del organigrama (bajo cada Coordinador) — usadas para agrupar a los
-// Trabajadores en el panel "Equipo" del calendario de revisiones.
+// Trabajadores en el panel "Equipo" del calendario de revisiones y del Panel
+// Principal.
 const AREAS = [
   "Administrativo y RRHH",
   "Proyectos y Obra",
   "TICs",
   "Financiero-Contable",
 ];
+// Gerencia/Dirección no lleva área (ver el modal de alta/edición de integrante).
+const SIN_AREA = "Sin área (Dirección)";
 
 // 🛠️ Funciones para dar formato a fecha y hora
 const formatDate = (dateString?: string | null) => {
@@ -212,6 +215,7 @@ export default function AdminDashboard() {
     "todos" | "trabajadores" | "estudiantes"
   >("todos");
   const [teamProjectFilter, setTeamProjectFilter] = useState<string>("all");
+  const [teamAreaFilter, setTeamAreaFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<
     "actividad" | "documentos" | "contrato" | "recompensas"
   >("actividad");
@@ -806,9 +810,25 @@ export default function AdminDashboard() {
       if (teamFilter === "trabajadores" && esEstudiante) return false;
       if (teamFilter === "estudiantes" && !esEstudiante) return false;
       if (proyectoNombre && emp.currentProject !== proyectoNombre) return false;
+      if (teamAreaFilter !== "all" && (emp.area || SIN_AREA) !== teamAreaFilter)
+        return false;
       return true;
     });
-  }, [employees, teamFilter, teamProjectFilter, dbProjects]);
+  }, [employees, teamFilter, teamProjectFilter, teamAreaFilter, dbProjects]);
+
+  // Agrupa el Equipo por área organizacional (Dirección/Gerencia sin área va al
+  // final) — antes la lista salía plana, sin distinguir de qué área es cada quien.
+  const equipoPorArea = useMemo(() => {
+    const porArea = new Map<string, Employee[]>();
+    filteredEmployees.forEach((emp) => {
+      const area = emp.area || SIN_AREA;
+      if (!porArea.has(area)) porArea.set(area, []);
+      porArea.get(area)!.push(emp);
+    });
+    return [...AREAS, SIN_AREA]
+      .filter((area) => porArea.has(area))
+      .map((area) => ({ area, integrantes: porArea.get(area)! }));
+  }, [filteredEmployees]);
 
   const totalEmployees = employees.length;
   const activeNow = employees.filter((e) => e.status === "Ocupado").length;
@@ -1658,24 +1678,47 @@ export default function AdminDashboard() {
                 ))}
               </div>
 
-              <div className="relative">
-                <Icon
-                  name="folder"
-                  size={13}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
-                <select
-                  value={teamProjectFilter}
-                  onChange={(e) => setTeamProjectFilter(e.target.value)}
-                  className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="all">Todos los proyectos</option>
-                  {dbProjects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-1">
+                <div className="relative">
+                  <Icon
+                    name="folder"
+                    size={13}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <select
+                    value={teamProjectFilter}
+                    onChange={(e) => setTeamProjectFilter(e.target.value)}
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="all">Todos los proyectos</option>
+                    {dbProjects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="relative">
+                  <Icon
+                    name="users"
+                    size={13}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <select
+                    value={teamAreaFilter}
+                    onChange={(e) => setTeamAreaFilter(e.target.value)}
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="all">Todas las áreas</option>
+                    {AREAS.map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                    <option value={SIN_AREA}>{SIN_AREA}</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1686,101 +1729,114 @@ export default function AdminDashboard() {
                   No hay integrantes en esta categoría.
                 </p>
               ) : (
-                filteredEmployees.map((emp) => {
-                  const isSelected =
-                    selectedEmployee && emp.id === selectedEmployee.id;
-                  const esEstudiante =
-                    emp.role === "Practicante" ||
-                    emp.role === "Servicio Social";
-                  const hasPendingDocs = emp.documents?.some(
-                    (d) =>
-                      d.status === "Pendiente" || d.status === "Por Vencer",
-                  );
+                equipoPorArea.map((grupo) => (
+                  <div key={grupo.area} className="space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 pt-1.5 first:pt-0">
+                      {grupo.area} ({grupo.integrantes.length})
+                    </p>
+                    {grupo.integrantes.map((emp) => {
+                      const isSelected =
+                        selectedEmployee && emp.id === selectedEmployee.id;
+                      const esEstudiante =
+                        emp.role === "Practicante" ||
+                        emp.role === "Servicio Social";
+                      const hasPendingDocs = emp.documents?.some(
+                        (d) =>
+                          d.status === "Pendiente" || d.status === "Por Vencer",
+                      );
 
-                  return (
-                    <div
-                      key={emp.id}
-                      onClick={() => setSelectedEmployee(emp)}
-                      className={`p-2 rounded-lg border transition-colors cursor-pointer relative ${
-                        isSelected
-                          ? "bg-blue-50/50 border-blue-500 shadow-sm ring-1 ring-blue-500/20"
-                          : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-xs"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-base shrink-0 shadow-inner overflow-hidden border border-slate-200 relative">
-                            {renderAvatar(emp.avatar, emp.name)}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1">
-                              <h4 className="font-bold text-slate-900 text-sm leading-tight">
-                                {emp.name}
-                              </h4>
-
-                              <span
-                                className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs"
-                                style={{
-                                  backgroundColor: emp.color || "#2563eb",
-                                }}
-                                title={`Color asignado: ${emp.color || "#2563eb"}`}
-                              />
-
-                              {hasPendingDocs && (
-                                <span
-                                  className="inline-flex items-center text-amber-600"
-                                  title="Expediente incompleto"
-                                >
-                                  <Icon name="alert-triangle" size={12} />
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-500">
-                              {emp.role}{" "}
-                              {emp.especialidad ? `• ${emp.especialidad}` : ""}
-                            </p>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`inline-flex items-center gap-1 px-1 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                            emp.status === "Disponible"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-amber-50 text-amber-700 border border-amber-200"
+                      return (
+                        <div
+                          key={emp.id}
+                          onClick={() => setSelectedEmployee(emp)}
+                          className={`p-2 rounded-lg border transition-colors cursor-pointer relative ${
+                            isSelected
+                              ? "bg-blue-50/50 border-blue-500 shadow-sm ring-1 ring-blue-500/20"
+                              : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-xs"
                           }`}
                         >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${emp.status === "Disponible" ? "bg-emerald-500" : "bg-amber-500"}`}
-                          ></span>
-                          {emp.status}
-                        </span>
-                      </div>
+                          <div className="flex items-start justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-base shrink-0 shadow-inner overflow-hidden border border-slate-200 relative">
+                                {renderAvatar(emp.avatar, emp.name)}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1">
+                                  <h4 className="font-bold text-slate-900 text-sm leading-tight">
+                                    {emp.name}
+                                  </h4>
 
-                      <div className="mt-1 pt-1 border-t border-slate-100/80 flex items-center justify-between text-[11px] text-slate-500">
-                        {esEstudiante ? (
-                          <span className="inline-flex items-center gap-1 text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded-md">
-                            <Icon name="clock" size={11} />{" "}
-                            {emp.horasAcumuladas || 0} /{" "}
-                            {emp.horasTotalesObjetivo || 480} hrs
-                          </span>
-                        ) : (
-                          <span>
-                            Historial:{" "}
-                            <strong className="text-slate-800">
-                              {emp.taskHistory.length} tareas
-                            </strong>
-                          </span>
-                        )}
-                        <span className="truncate max-w-[150px] inline-flex items-center gap-1">
-                          <Icon name="folder" size={11} className="shrink-0" />
-                          <strong className="text-slate-700 font-medium truncate">
-                            {emp.currentProject}
-                          </strong>
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs"
+                                    style={{
+                                      backgroundColor: emp.color || "#2563eb",
+                                    }}
+                                    title={`Color asignado: ${emp.color || "#2563eb"}`}
+                                  />
+
+                                  {hasPendingDocs && (
+                                    <span
+                                      className="inline-flex items-center text-amber-600"
+                                      title="Expediente incompleto"
+                                    >
+                                      <Icon name="alert-triangle" size={12} />
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                  {emp.role}{" "}
+                                  {emp.especialidad
+                                    ? `• ${emp.especialidad}`
+                                    : ""}
+                                </p>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`inline-flex items-center gap-1 px-1 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                emp.status === "Disponible"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-amber-50 text-amber-700 border border-amber-200"
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${emp.status === "Disponible" ? "bg-emerald-500" : "bg-amber-500"}`}
+                              ></span>
+                              {emp.status}
+                            </span>
+                          </div>
+
+                          <div className="mt-1 pt-1 border-t border-slate-100/80 flex items-center justify-between text-[11px] text-slate-500">
+                            {esEstudiante ? (
+                              <span className="inline-flex items-center gap-1 text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded-md">
+                                <Icon name="clock" size={11} />{" "}
+                                {emp.horasAcumuladas || 0} /{" "}
+                                {emp.horasTotalesObjetivo || 480} hrs
+                              </span>
+                            ) : (
+                              <span>
+                                Historial:{" "}
+                                <strong className="text-slate-800">
+                                  {emp.taskHistory.length} tareas
+                                </strong>
+                              </span>
+                            )}
+                            <span className="truncate max-w-[150px] inline-flex items-center gap-1">
+                              <Icon
+                                name="folder"
+                                size={11}
+                                className="shrink-0"
+                              />
+                              <strong className="text-slate-700 font-medium truncate">
+                                {emp.currentProject}
+                              </strong>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
               )}
             </div>
           </div>
