@@ -5,8 +5,14 @@ import { sinPersistencia } from "./lib/sessionCookies";
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ✅ Deja pasar todas las rutas /api/ sin verificar sesión
-  if (pathname.startsWith("/api/")) {
+  // ✅ Deja pasar /api/ (JWT propio), /movil (PWA, su propia sesión por JWT en
+  // localStorage) y el manifest de la PWA (el navegador lo pide SIN sesión
+  // para poder instalarla — si el proxy lo manda a /login, nunca se instala).
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/movil") ||
+    pathname === "/manifest.webmanifest"
+  ) {
     return NextResponse.next();
   }
 
