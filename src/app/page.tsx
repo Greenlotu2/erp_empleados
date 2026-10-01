@@ -2448,8 +2448,6 @@ export default function AdminDashboard() {
                     <option value="Desarrollador Web">Desarrollador Web</option>
                     <option value="Practicante">Practicante</option>
                     <option value="Servicio Social">Servicio Social</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Arquitectura">Arquitectura</option>
                     <option value="Otro">Otro...</option>
                   </select>
                 </div>
@@ -2786,8 +2784,6 @@ export default function AdminDashboard() {
                     <option value="Desarrollador Web">Desarrollador Web</option>
                     <option value="Practicante">Practicante</option>
                     <option value="Servicio Social">Servicio Social</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Arquitectura">Arquitectura</option>
                   </select>
                 </div>
 
