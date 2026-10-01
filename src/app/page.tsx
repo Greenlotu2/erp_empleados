@@ -25,6 +25,16 @@ const AREAS = [
 // a cualquier otro nivel sin área le falta un dato, no es un caso normal.
 const SIN_AREA = "Sin área asignada";
 
+// Roles de siempre — "Practicante"/"Servicio Social" son los únicos con trato
+// especial en el código (sin raya, por horas); cualquier otro rol (de esta
+// lista o escrito a mano) se comporta como uno general.
+const ROLES_BASE = [
+  "Administrador",
+  "Desarrollador Web",
+  "Practicante",
+  "Servicio Social",
+];
+
 // 🛠️ Funciones para dar formato a fecha y hora
 const formatDate = (dateString?: string | null) => {
   if (!dateString) return "Sin fecha";
@@ -180,6 +190,82 @@ interface DocumentRequirement {
   archivo?: File | null;
 }
 
+// Selector con alta al vuelo: si lo que se busca no está en la lista,
+// "+ Agregar nuevo…" cambia a un campo de texto. Tanto Área como Rol son TEXT
+// libre en la base (sin catálogo propio ni constraint de valores), así que lo
+// recién escrito queda disponible de inmediato — no hace falta tocar código ni
+// SQL cada vez que se suma uno. Usado para Área y para Rol.
+function ComboConAlta({
+  value,
+  onChange,
+  opciones,
+  permitirVacio = false,
+  textoVacio = "— Ninguno —",
+  textoAgregar = "+ Agregar nuevo…",
+  placeholderNuevo = "Escribe el nombre",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  opciones: string[];
+  permitirVacio?: boolean;
+  textoVacio?: string;
+  textoAgregar?: string;
+  placeholderNuevo?: string;
+}) {
+  const [editando, setEditando] = useState(
+    value !== "" && !opciones.includes(value),
+  );
+
+  if (editando) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          autoFocus
+          placeholder={placeholderNuevo}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setEditando(false);
+            onChange("");
+          }}
+          title="Elegir de la lista en vez de escribir"
+          className="shrink-0 text-slate-400 hover:text-slate-600 cursor-pointer"
+        >
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        if (e.target.value === "__nueva__") {
+          setEditando(true);
+          onChange("");
+        } else {
+          onChange(e.target.value);
+        }
+      }}
+      className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+    >
+      {permitirVacio && <option value="">{textoVacio}</option>}
+      {opciones.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+      <option value="__nueva__">{textoAgregar}</option>
+    </select>
+  );
+}
+
 export default function AdminDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
@@ -266,7 +352,6 @@ export default function AdminDashboard() {
     correo: string;
     password: string;
     rol: string;
-    customRol: string;
     nivel: string;
     area: string;
     especialidad: string;
@@ -280,7 +365,6 @@ export default function AdminDashboard() {
     correo: "",
     password: "",
     rol: "Practicante",
-    customRol: "",
     nivel: "Trabajador",
     area: "",
     especialidad: "",
@@ -800,6 +884,30 @@ export default function AdminDashboard() {
     }
   };
 
+  // Áreas que existen de verdad (las sugeridas + cualquiera que alguien haya
+  // escrito a mano desde el modal de alta/edición) — el filtro y la
+  // agrupación del Equipo salen de aquí, nunca de la lista fija, para que un
+  // área nueva aparezca sola sin tocar código.
+  const areasConocidas = useMemo(() => {
+    const vistas = new Set<string>(AREAS);
+    employees.forEach((e) => {
+      if (e.area) vistas.add(e.area);
+    });
+    return Array.from(vistas).sort((a, b) => a.localeCompare(b, "es"));
+  }, [employees]);
+
+  // Mismo patrón para Rol: los de siempre + cualquiera que ya se haya escrito
+  // a mano. "Practicante"/"Servicio Social" siguen siendo los únicos con
+  // trato especial en el código (sin raya, por horas); un rol nuevo se
+  // comporta como cualquier otro general.
+  const rolesConocidos = useMemo(() => {
+    const vistos = new Set<string>(ROLES_BASE);
+    employees.forEach((e) => {
+      if (e.role) vistos.add(e.role);
+    });
+    return Array.from(vistos).sort((a, b) => a.localeCompare(b, "es"));
+  }, [employees]);
+
   const filteredEmployees = useMemo(() => {
     const proyectoNombre =
       teamProjectFilter === "all"
@@ -827,10 +935,10 @@ export default function AdminDashboard() {
       if (!porArea.has(area)) porArea.set(area, []);
       porArea.get(area)!.push(emp);
     });
-    return [...AREAS, SIN_AREA]
+    return [...areasConocidas, SIN_AREA]
       .filter((area) => porArea.has(area))
       .map((area) => ({ area, integrantes: porArea.get(area)! }));
-  }, [filteredEmployees]);
+  }, [filteredEmployees, areasConocidas]);
 
   const totalEmployees = employees.length;
   const activeNow = employees.filter((e) => e.status === "Ocupado").length;
@@ -1096,10 +1204,9 @@ export default function AdminDashboard() {
         );
       }
 
-      const finalRol =
-        newEmployeeData.rol === "Otro"
-          ? newEmployeeData.customRol.trim() || "General"
-          : newEmployeeData.rol;
+      // "Otro..." ya no existe como opción: el propio ComboConAlta deja
+      // escribir el rol directamente en newEmployeeData.rol.
+      const finalRol = newEmployeeData.rol.trim() || "General";
 
       const res = await fetch("/admin/create-user", {
         method: "POST",
@@ -1179,7 +1286,6 @@ export default function AdminDashboard() {
         correo: "",
         password: "",
         rol: "Practicante",
-        customRol: "",
         nivel: "Trabajador",
         area: "",
         especialidad: "",
@@ -1722,7 +1828,7 @@ export default function AdminDashboard() {
                     className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
                   >
                     <option value="all">Todas las áreas</option>
-                    {AREAS.map((a) => (
+                    {areasConocidas.map((a) => (
                       <option key={a} value={a}>
                         {a}
                       </option>
@@ -2432,51 +2538,20 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Área / Rol
+                    Rol
                   </label>
-                  <select
+                  <ComboConAlta
                     value={newEmployeeData.rol}
-                    onChange={(e) =>
-                      setNewEmployeeData({
-                        ...newEmployeeData,
-                        rol: e.target.value,
-                      })
+                    onChange={(v) =>
+                      setNewEmployeeData({ ...newEmployeeData, rol: v })
                     }
-                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                  >
-                    <option value="Administrador">Administrador</option>
-                    <option value="Desarrollador Web">Desarrollador Web</option>
-                    <option value="Practicante">Practicante</option>
-                    <option value="Servicio Social">Servicio Social</option>
-                    <option value="Otro">Otro...</option>
-                  </select>
+                    opciones={rolesConocidos}
+                    textoAgregar="+ Agregar nuevo rol…"
+                    placeholderNuevo="Nombre del rol nuevo"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Especialidad
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. React / Backend"
-                    value={newEmployeeData.especialidad}
-                    onChange={(e) =>
-                      setNewEmployeeData({
-                        ...newEmployeeData,
-                        especialidad: e.target.value,
-                      })
-                    }
-                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-1.5">
-                <div
-                  className={
-                    newEmployeeData.nivel === "Gerencia" ? "col-span-2" : ""
-                  }
-                >
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                     Nivel Jerárquico
                   </label>
@@ -2501,33 +2576,27 @@ export default function AdminDashboard() {
                     <option value="Trabajador">Trabajador</option>
                   </select>
                 </div>
-
-                {/* Área solo aplica a Coordinadores y Trabajadores. */}
-                {newEmployeeData.nivel !== "Gerencia" && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                      Área
-                    </label>
-                    <select
-                      value={newEmployeeData.area}
-                      onChange={(e) =>
-                        setNewEmployeeData({
-                          ...newEmployeeData,
-                          area: e.target.value,
-                        })
-                      }
-                      className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                    >
-                      <option value="">— Sin área —</option>
-                      {AREAS.map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
+
+              {/* Área solo aplica a Coordinadores y Trabajadores. */}
+              {newEmployeeData.nivel !== "Gerencia" && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Área
+                  </label>
+                  <ComboConAlta
+                    value={newEmployeeData.area}
+                    onChange={(v) =>
+                      setNewEmployeeData({ ...newEmployeeData, area: v })
+                    }
+                    opciones={areasConocidas}
+                    permitirVacio
+                    textoVacio="— Sin área —"
+                    textoAgregar="+ Agregar nueva área…"
+                    placeholderNuevo="Nombre del área nueva"
+                  />
+                </div>
+              )}
               <p className="text-[10px] text-slate-400 -mt-1">
                 {newEmployeeData.nivel === "Gerencia"
                   ? "Gerencia pertenece a Dirección: no se le asigna área."
@@ -2771,46 +2840,20 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Rol / Puesto
+                    Rol
                   </label>
-                  <select
+                  <ComboConAlta
                     value={editFormData.rol}
-                    onChange={(e) =>
-                      setEditFormData({ ...editFormData, rol: e.target.value })
+                    onChange={(v) =>
+                      setEditFormData({ ...editFormData, rol: v })
                     }
-                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                  >
-                    <option value="Administrador">Administrador</option>
-                    <option value="Desarrollador Web">Desarrollador Web</option>
-                    <option value="Practicante">Practicante</option>
-                    <option value="Servicio Social">Servicio Social</option>
-                  </select>
+                    opciones={rolesConocidos}
+                    textoAgregar="+ Agregar nuevo rol…"
+                    placeholderNuevo="Nombre del rol nuevo"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Especialidad
-                  </label>
-                  <input
-                    type="text"
-                    value={editFormData.especialidad}
-                    onChange={(e) =>
-                      setEditFormData({
-                        ...editFormData,
-                        especialidad: e.target.value,
-                      })
-                    }
-                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-1.5">
-                <div
-                  className={
-                    editFormData.nivel === "Gerencia" ? "col-span-2" : ""
-                  }
-                >
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                     Nivel Jerárquico
                   </label>
@@ -2834,33 +2877,27 @@ export default function AdminDashboard() {
                     <option value="Trabajador">Trabajador</option>
                   </select>
                 </div>
-
-                {/* Área solo aplica a Coordinadores y Trabajadores. */}
-                {editFormData.nivel !== "Gerencia" && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                      Área
-                    </label>
-                    <select
-                      value={editFormData.area}
-                      onChange={(e) =>
-                        setEditFormData({
-                          ...editFormData,
-                          area: e.target.value,
-                        })
-                      }
-                      className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
-                    >
-                      <option value="">— Sin área —</option>
-                      {AREAS.map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
+
+              {/* Área solo aplica a Coordinadores y Trabajadores. */}
+              {editFormData.nivel !== "Gerencia" && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Área
+                  </label>
+                  <ComboConAlta
+                    value={editFormData.area}
+                    onChange={(v) =>
+                      setEditFormData({ ...editFormData, area: v })
+                    }
+                    opciones={areasConocidas}
+                    permitirVacio
+                    textoVacio="— Sin área —"
+                    textoAgregar="+ Agregar nueva área…"
+                    placeholderNuevo="Nombre del área nueva"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
