@@ -52,7 +52,7 @@ function FiltroColumna({
   );
 }
 
-// Áreas "base" sugeridas (mismas 4 del organigrama). No todas las líneas de negocio
+// Áreas "base" sugeridas (mismas 5 del organigrama). No todas las líneas de negocio
 // comparten las mismas áreas — cada proyecto puede tener además áreas propias,
 // agregadas a mano con el botón "+" y guardadas libremente en `proyecto_areas.area`
 // (columna TEXT sin restricción a esta lista).
@@ -61,6 +61,7 @@ const AREAS = [
   "Proyectos y Obra",
   "TICs",
   "Financiero-Contable",
+  "Ventas",
 ] as const;
 type Area = string;
 

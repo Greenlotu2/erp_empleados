@@ -19,9 +19,11 @@ const AREAS = [
   "Proyectos y Obra",
   "TICs",
   "Financiero-Contable",
+  "Ventas",
 ];
-// Gerencia/Dirección no lleva área (ver el modal de alta/edición de integrante).
-const SIN_AREA = "Sin área (Dirección)";
+// Gerencia/Dirección no lleva área (ver el modal de alta/edición de integrante);
+// a cualquier otro nivel sin área le falta un dato, no es un caso normal.
+const SIN_AREA = "Sin área asignada";
 
 // 🛠️ Funciones para dar formato a fecha y hora
 const formatDate = (dateString?: string | null) => {
@@ -1083,6 +1085,15 @@ export default function AdminDashboard() {
 
       if (!cleanEmail || !cleanPassword) {
         throw new Error("Correo y contraseña son obligatorios.");
+      }
+
+      // Área obligatoria salvo para Gerencia (Dirección no lleva área) — si no,
+      // la persona queda "Sin área asignada" desde el día uno, como le pasó a
+      // Dayana antes de este cambio.
+      if (newEmployeeData.nivel !== "Gerencia" && !newEmployeeData.area) {
+        throw new Error(
+          "Selecciona el área del nuevo integrante (solo Gerencia no lleva área).",
+        );
       }
 
       const finalRol =
