@@ -11,7 +11,7 @@ interface Empleado {
   id: string;
   nombre: string;
   color?: string | null;
-  area?: string | null;
+  area?: string[] | null;
   nivel?: string | null;
   rol?: string | null;
 }
@@ -850,7 +850,7 @@ export default function NominasAsistenciaPage() {
                             </span>
                             <span className="flex items-center gap-1">
                               <span className="text-[9.5px] text-slate-400 truncate">
-                                {e.rol || e.area || e.nivel || "—"}
+                                {e.rol || e.area?.join(", ") || e.nivel || "—"}
                               </span>
                               {convenio && (
                                 <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1 py-0 shrink-0">

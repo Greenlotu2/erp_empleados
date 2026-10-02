@@ -314,9 +314,10 @@ export default function KpisPanel() {
         if (empError) throw empError;
 
         const tareas: TareaKpi[] = data || [];
-        const areaPorEmpleado: Record<string, string | null> = {};
+        // Un empleado puede estar en varias áreas a la vez.
+        const areasPorEmpleado: Record<string, string[]> = {};
         (empData || []).forEach((e: any) => {
-          areaPorEmpleado[e.id] = e.area || null;
+          areasPorEmpleado[e.id] = e.area || [];
         });
         const hoyStr = new Date().toISOString().split("T")[0];
         const hoyMs = new Date(hoyStr).getTime();
@@ -420,7 +421,9 @@ export default function KpisPanel() {
         const tareasFinanciero = tareas.filter(
           (t) =>
             t.empleado_id &&
-            areaPorEmpleado[t.empleado_id] === "Financiero-Contable",
+            (areasPorEmpleado[t.empleado_id] || []).includes(
+              "Financiero-Contable",
+            ),
         );
         const completadasFin = tareasFinanciero.filter(
           (t) => t.estado === "Completada",

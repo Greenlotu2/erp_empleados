@@ -69,7 +69,8 @@ interface Empleado {
   id: string;
   nombre: string;
   nivel?: string | null;
-  area?: string | null;
+  // Un empleado puede pertenecer a varias áreas organizacionales a la vez.
+  area?: string[] | null;
   color?: string | null;
   horas_acumuladas?: number | null;
 }
@@ -405,7 +406,7 @@ export default function EquiposPage() {
   // De los ya asignados al proyecto, solo los que pertenecen al área seleccionada
   // (antes se mostraba el equipo completo sin importar qué área estuviera activa).
   const personasActivasFiltradas = areaFiltro
-    ? personasActivas.filter((e) => e.area === areaFiltro)
+    ? personasActivas.filter((e) => (e.area || []).includes(areaFiltro))
     : personasActivas;
   // Sub-áreas de la línea + área activas.
   const subareasActivas = areaFiltro
@@ -575,7 +576,9 @@ export default function EquiposPage() {
   // el área seleccionada como filtro, y que todavía no están en el proyecto.
   const personasSugeridas = areaFiltro
     ? empleados.filter(
-        (e) => e.area === areaFiltro && !personasActivasIds.includes(e.id),
+        (e) =>
+          (e.area || []).includes(areaFiltro) &&
+          !personasActivasIds.includes(e.id),
       )
     : [];
 

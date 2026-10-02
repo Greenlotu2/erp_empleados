@@ -30,7 +30,7 @@ const SIN_AREA = "Sin área asignada";
 // lista o escrito a mano) se comporta como uno general.
 const ROLES_BASE = [
   "Administrador",
-  "Desarrollador Web",
+  "Trabajador",
   "Practicante",
   "Servicio Social",
 ];
@@ -144,7 +144,9 @@ interface Employee {
   email: string;
   role: string;
   nivel?: string;
-  area?: string | null;
+  // Un empleado puede pertenecer a más de un área (ej. Ventas y Proyectos y
+  // Obra a la vez) — por eso es un arreglo y no un solo texto.
+  area?: string[] | null;
   especialidad?: string;
   currentTask: string;
   currentProject: string;
@@ -266,6 +268,113 @@ function ComboConAlta({
   );
 }
 
+// Área puede ser más de una (ej. alguien en Ventas y en Proyectos y Obra a la
+// vez) — chips con las ya elegidas + un selector para sumar otra, existente o
+// escrita a mano.
+function AreasMultiSelect({
+  value,
+  onChange,
+  opciones,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  opciones: string[];
+}) {
+  const [agregando, setAgregando] = useState(false);
+  const [nueva, setNueva] = useState("");
+  const disponibles = opciones.filter((o) => !value.includes(o));
+
+  const agregar = (area: string) => {
+    const limpio = area.trim();
+    if (limpio && !value.includes(limpio)) onChange([...value, limpio]);
+    setNueva("");
+    setAgregando(false);
+  };
+  const quitar = (area: string) => onChange(value.filter((a) => a !== area));
+
+  return (
+    <div className="space-y-1.5">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {value.map((a) => (
+            <span
+              key={a}
+              className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-md"
+            >
+              {a}
+              <button
+                type="button"
+                onClick={() => quitar(a)}
+                title="Quitar área"
+                className="hover:text-blue-900 cursor-pointer"
+              >
+                <Icon name="x" size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {agregando ? (
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            autoFocus
+            placeholder="Nombre del área nueva"
+            value={nueva}
+            onChange={(e) => setNueva(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                agregar(nueva);
+              }
+            }}
+            className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => agregar(nueva)}
+            title="Agregar"
+            className="shrink-0 text-blue-600 hover:text-blue-800 cursor-pointer"
+          >
+            <Icon name="check" size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAgregando(false);
+              setNueva("");
+            }}
+            title="Cancelar"
+            className="shrink-0 text-slate-400 hover:text-slate-600 cursor-pointer"
+          >
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+      ) : (
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value === "__nueva__") setAgregando(true);
+            else if (e.target.value) agregar(e.target.value);
+          }}
+          className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+        >
+          <option value="">
+            {value.length === 0 ? "— Sin área —" : "+ Agregar otra área…"}
+          </option>
+          {disponibles.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+          <option value="__nueva__">+ Agregar nueva área…</option>
+        </select>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
@@ -353,7 +462,7 @@ export default function AdminDashboard() {
     password: string;
     rol: string;
     nivel: string;
-    area: string;
+    area: string[];
     especialidad: string;
     disponibilidad: string;
     horasTotalesObjetivo: string;
@@ -366,7 +475,7 @@ export default function AdminDashboard() {
     password: "",
     rol: "Practicante",
     nivel: "Trabajador",
-    area: "",
+    area: [],
     especialidad: "",
     disponibilidad: "Disponible",
     horasTotalesObjetivo: "480",
@@ -409,7 +518,7 @@ export default function AdminDashboard() {
     correo: "",
     rol: "Practicante",
     nivel: "Trabajador",
-    area: "",
+    area: [] as string[],
     especialidad: "",
     disponibilidad: "Disponible",
     horasTotalesObjetivo: "480",
@@ -891,7 +1000,7 @@ export default function AdminDashboard() {
   const areasConocidas = useMemo(() => {
     const vistas = new Set<string>(AREAS);
     employees.forEach((e) => {
-      if (e.area) vistas.add(e.area);
+      (e.area || []).forEach((a) => vistas.add(a));
     });
     return Array.from(vistas).sort((a, b) => a.localeCompare(b, "es"));
   }, [employees]);
@@ -920,20 +1029,27 @@ export default function AdminDashboard() {
       if (teamFilter === "trabajadores" && esEstudiante) return false;
       if (teamFilter === "estudiantes" && !esEstudiante) return false;
       if (proyectoNombre && emp.currentProject !== proyectoNombre) return false;
-      if (teamAreaFilter !== "all" && (emp.area || SIN_AREA) !== teamAreaFilter)
-        return false;
+      if (teamAreaFilter !== "all") {
+        const areasDelEmpleado =
+          emp.area && emp.area.length > 0 ? emp.area : [SIN_AREA];
+        if (!areasDelEmpleado.includes(teamAreaFilter)) return false;
+      }
       return true;
     });
   }, [employees, teamFilter, teamProjectFilter, teamAreaFilter, dbProjects]);
 
   // Agrupa el Equipo por área organizacional (Dirección/Gerencia sin área va al
-  // final) — antes la lista salía plana, sin distinguir de qué área es cada quien.
+  // final) — antes la lista salía plana, sin distinguir de qué área es cada
+  // quien. A alguien con varias áreas se le ve en cada grupo al que pertenece.
   const equipoPorArea = useMemo(() => {
     const porArea = new Map<string, Employee[]>();
     filteredEmployees.forEach((emp) => {
-      const area = emp.area || SIN_AREA;
-      if (!porArea.has(area)) porArea.set(area, []);
-      porArea.get(area)!.push(emp);
+      const areasDelEmpleado =
+        emp.area && emp.area.length > 0 ? emp.area : [SIN_AREA];
+      areasDelEmpleado.forEach((area) => {
+        if (!porArea.has(area)) porArea.set(area, []);
+        porArea.get(area)!.push(emp);
+      });
     });
     return [...areasConocidas, SIN_AREA]
       .filter((area) => porArea.has(area))
@@ -1198,9 +1314,12 @@ export default function AdminDashboard() {
       // Área obligatoria salvo para Gerencia (Dirección no lleva área) — si no,
       // la persona queda "Sin área asignada" desde el día uno, como le pasó a
       // Dayana antes de este cambio.
-      if (newEmployeeData.nivel !== "Gerencia" && !newEmployeeData.area) {
+      if (
+        newEmployeeData.nivel !== "Gerencia" &&
+        newEmployeeData.area.length === 0
+      ) {
         throw new Error(
-          "Selecciona el área del nuevo integrante (solo Gerencia no lleva área).",
+          "Selecciona al menos un área del nuevo integrante (solo Gerencia no lleva área).",
         );
       }
 
@@ -1217,7 +1336,7 @@ export default function AdminDashboard() {
           nombre: newEmployeeData.nombre.trim(),
           rol: finalRol,
           nivel: newEmployeeData.nivel,
-          area: newEmployeeData.area || null,
+          area: newEmployeeData.area.length > 0 ? newEmployeeData.area : null,
           especialidad: newEmployeeData.especialidad.trim(),
           disponibilidad: newEmployeeData.disponibilidad,
           horasTotalesObjetivo: newEmployeeData.horasTotalesObjetivo,
@@ -1287,7 +1406,7 @@ export default function AdminDashboard() {
         password: "",
         rol: "Practicante",
         nivel: "Trabajador",
-        area: "",
+        area: [],
         especialidad: "",
         disponibilidad: "Disponible",
         horasTotalesObjetivo: "480",
@@ -1394,7 +1513,7 @@ export default function AdminDashboard() {
       correo: selectedEmployee.email,
       rol: selectedEmployee.role,
       nivel: selectedEmployee.nivel || "Trabajador",
-      area: selectedEmployee.area || "",
+      area: selectedEmployee.area || [],
       especialidad: selectedEmployee.especialidad || "",
       disponibilidad: selectedEmployee.status,
       horasTotalesObjetivo: String(
@@ -1425,7 +1544,7 @@ export default function AdminDashboard() {
           username: editFormData.correo,
           rol: editFormData.rol,
           nivel: editFormData.nivel,
-          area: editFormData.area || null,
+          area: editFormData.area.length > 0 ? editFormData.area : null,
           especialidad: editFormData.especialidad,
           disponibilidad: editFormData.disponibilidad === "Disponible",
           color: editFormData.color,
@@ -2565,7 +2684,7 @@ export default function AdminDashboard() {
                         // se limpia el valor al cambiar de nivel.
                         area:
                           e.target.value === "Gerencia"
-                            ? ""
+                            ? []
                             : newEmployeeData.area,
                       })
                     }
@@ -2578,22 +2697,18 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Área solo aplica a Coordinadores y Trabajadores. */}
+              {/* Área solo aplica a Coordinadores y Trabajadores; puede ser más de una. */}
               {newEmployeeData.nivel !== "Gerencia" && (
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                     Área
                   </label>
-                  <ComboConAlta
+                  <AreasMultiSelect
                     value={newEmployeeData.area}
                     onChange={(v) =>
                       setNewEmployeeData({ ...newEmployeeData, area: v })
                     }
                     opciones={areasConocidas}
-                    permitirVacio
-                    textoVacio="— Sin área —"
-                    textoAgregar="+ Agregar nueva área…"
-                    placeholderNuevo="Nombre del área nueva"
                   />
                 </div>
               )}
@@ -2866,7 +2981,7 @@ export default function AdminDashboard() {
                         // Gerencia es Dirección: no pertenece a un área.
                         area:
                           e.target.value === "Gerencia"
-                            ? ""
+                            ? []
                             : editFormData.area,
                       })
                     }
@@ -2879,22 +2994,18 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Área solo aplica a Coordinadores y Trabajadores. */}
+              {/* Área solo aplica a Coordinadores y Trabajadores; puede ser más de una. */}
               {editFormData.nivel !== "Gerencia" && (
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                     Área
                   </label>
-                  <ComboConAlta
+                  <AreasMultiSelect
                     value={editFormData.area}
                     onChange={(v) =>
                       setEditFormData({ ...editFormData, area: v })
                     }
                     opciones={areasConocidas}
-                    permitirVacio
-                    textoVacio="— Sin área —"
-                    textoAgregar="+ Agregar nueva área…"
-                    placeholderNuevo="Nombre del área nueva"
                   />
                 </div>
               )}
