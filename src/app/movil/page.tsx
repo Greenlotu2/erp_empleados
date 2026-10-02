@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   leerSesion,
   cerrarSesion,
+  sesionPermitida,
   type MovilEmpleado,
 } from "../../lib/movilSesion";
 
@@ -18,7 +19,8 @@ export default function MovilInicioPage() {
 
   useEffect(() => {
     const sesion = leerSesion();
-    if (!sesion) {
+    if (!sesion || !sesionPermitida(sesion.employee)) {
+      cerrarSesion();
       router.replace("/movil/login");
       return;
     }

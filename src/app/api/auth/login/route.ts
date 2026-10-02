@@ -10,6 +10,8 @@ import {
   MENSAJE_BLOQUEO,
 } from "../../../../lib/rateLimitLogin";
 
+const NIVELES_MOVIL = ["Gerencia", "Coordinador"];
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -103,6 +105,20 @@ export async function POST(req: NextRequest) {
 
     await limpiarFallos(cleanEmail);
 
+    // La PWA móvil (body.app === "movil") es solo para Gerencia y
+    // Coordinadores. Se valida después de la contraseña para no revelar el
+    // nivel de nadie a quien no la conoce. La extensión no manda `app`, así
+    // que para ella no cambia nada.
+    if (body.app === "movil" && !NIVELES_MOVIL.includes(empleado.nivel)) {
+      return NextResponse.json(
+        {
+          error:
+            "La app móvil por ahora es solo para coordinadores y gerencia.",
+        },
+        { status: 403, headers: corsHeaders },
+      );
+    }
+
     // 🔄 4. MIGRACIÓN AL VUELO: si autenticó por texto plano, hashea y borra el texto plano
     if (needsPasswordMigration) {
       const newHash = await bcrypt.hash(passwordInput, 10);
@@ -130,6 +146,7 @@ export async function POST(req: NextRequest) {
           nombre: empleado.nombre,
           email: empleado.username || empleado.email || cleanEmail,
           rol: empleado.rol,
+          nivel: empleado.nivel,
           horas_acumuladas: empleado.horas_acumuladas || 0,
           horas_totales_objetivo: empleado.horas_totales_objetivo,
           puntos_recompensa: empleado.puntos_recompensa || 0,

@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { guardarSesion } from "../../../lib/movilSesion";
 
 // Login de la PWA — pasa por /api/auth/login, el mismo endpoint que ya usa la
-// extensión de Chrome (JWT propio). A diferencia del login web, aquí entra
-// cualquier rol, no solo administradores.
+// extensión de Chrome (JWT propio). Manda `app: "movil"` para que el servidor
+// deje entrar solo a Gerencia y Coordinadores.
 export default function MovilLoginPage() {
   const router = useRouter();
   const [userInput, setUserInput] = useState("");
@@ -23,7 +23,11 @@ export default function MovilLoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userInput.trim(), password }),
+        body: JSON.stringify({
+          email: userInput.trim(),
+          password,
+          app: "movil",
+        }),
       });
       const data = await res.json().catch(() => ({}));
 
