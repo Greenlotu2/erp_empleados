@@ -62,7 +62,7 @@ export default function MovilLoginPage() {
       <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-auto">
         <h1 className="text-lg font-semibold text-slate-900">Iniciar sesión</h1>
         <p className="text-[13px] text-slate-500 mt-1">
-          Consulta tus tareas y avisos desde el celular.
+          Supervisa a tu equipo y revisa entregas desde el celular.
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-5">

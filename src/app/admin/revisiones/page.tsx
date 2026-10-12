@@ -11,6 +11,7 @@ import { Icon } from "../../../components/icons";
 import { ModalOverlay } from "../../../components/ModalOverlay";
 import { ArchivoImg } from "../../../components/ArchivoImg";
 import { abrirArchivo } from "../../../lib/storageUrls";
+import { renderRich } from "../../../lib/textoRico";
 
 // Una tarea que tuvo seguimiento (≥1 reunión y/o ≥1 revisión vinculada por tarea_id).
 interface TareaHistorial {
@@ -471,29 +472,6 @@ export default function RevisionesPage() {
       const caret = start + text.length;
       el.setSelectionRange(caret, caret);
     });
-  };
-
-  // Convierte el Markdown ligero de una minuta a HTML seguro (escapa primero, luego
-  // inyecta solo nuestras etiquetas). Se usa para el cuerpo de los eventos del hilo.
-  const renderRich = (raw: string) => {
-    let s = (raw || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-    s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
-    s = s.replace(/__([^_\n]+)__/g, "<u>$1</u>");
-    s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
-    s = s.replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
-    s = s.replace(
-      /`([^`\n]+)`/g,
-      '<code class="bg-slate-100 rounded px-1 text-[10px]">$1</code>',
-    );
-    s = s.replace(
-      /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noreferrer" class="text-blue-600 underline">$1</a>',
-    );
-    s = s.replace(/^\s*[-*]\s+/gm, "• ");
-    return { __html: s };
   };
 
   // 📝 Agregar una minuta (nota tipo acta) al hilo de la tarea seleccionada.

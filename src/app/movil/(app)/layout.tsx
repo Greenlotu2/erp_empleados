@@ -1,0 +1,41 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  cerrarSesion,
+  leerSesion,
+  sesionPermitida,
+} from "../../../lib/movilSesion";
+import { NavInferior } from "../_componentes/comunes";
+
+// Pantallas con sesión iniciada (todo /movil salvo /movil/login). Si no hay
+// sesión válida —o es de un nivel sin acceso— manda al login antes de pintar.
+export default function AppMovilLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const router = useRouter();
+  const [listo, setListo] = useState(false);
+
+  useEffect(() => {
+    const sesion = leerSesion();
+    if (!sesion || !sesionPermitida(sesion.employee)) {
+      cerrarSesion();
+      router.replace("/movil/login");
+      return;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setListo(true);
+  }, [router]);
+
+  if (!listo) return null;
+
+  return (
+    <div className="min-h-screen flex flex-col pb-24">
+      {children}
+      <NavInferior />
+    </div>
+  );
+}
