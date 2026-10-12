@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Avatar, Cargando, ErrorCarga } from "../../../../_componentes/comunes";
+import { Archivo, Avatar, Cargando, Contactar, ErrorCarga } from "../../../../_componentes/comunes";
 import { apiMovil, SesionExpirada } from "../../../../_lib/api";
 import { esPorRevisar, fechaCorta, primerNombre } from "../../../../_lib/equipo";
 import { especialidadVisible, fechaHora, useDetalleTarea } from "../../../../_lib/tarea";
@@ -158,6 +158,15 @@ export default function RevisarPage() {
           </div>
         </section>
 
+        {/* Revisar a distancia */}
+        {r?.celular && (
+          <section className="bg-slate-900 rounded-xl px-4 py-3.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Revisar a distancia</p>
+            <p className="text-[13px] text-slate-300 mt-1 mb-3">¿Fuera de oficina? Habla con {nombre} antes de decidir.</p>
+            <Contactar telefono={r.celular} />
+          </section>
+        )}
+
         {/* La entrega */}
         <section className="bg-white border border-slate-200 rounded-xl px-4 py-3.5">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entrega</p>
@@ -165,23 +174,7 @@ export default function RevisarPage() {
             <p className="text-[13px] text-slate-600 mt-1.5 whitespace-pre-wrap">{entrega.cuerpo}</p>
           )}
           {entrega?.archivo?.url ? (
-            <a
-              href={entrega.archivo.url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2.5 flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5"
-            >
-              <span className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" />
-                  <path d="M14 3v6h6" />
-                </svg>
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-[13px] font-semibold text-slate-700 truncate">{entrega.archivo.nombre}</span>
-                <span className="block text-[11px] text-blue-600">Abrir evidencia</span>
-              </span>
-            </a>
+            <Archivo nombre={entrega.archivo.nombre} url={entrega.archivo.url} />
           ) : (
             <p className="text-[13px] text-slate-400 mt-1.5">Sin evidencia adjunta.</p>
           )}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { iniciales } from "../_lib/equipo";
@@ -146,5 +147,111 @@ export function NavInferior() {
         );
       })}
     </nav>
+  );
+}
+
+// ---------- contactar a una persona ----------
+
+// Número para wa.me: solo dígitos; a uno de 10 dígitos (México) se le antepone 52.
+function numeroWhatsApp(tel: string) {
+  const d = tel.replace(/\D/g, "");
+  return d.length === 10 ? `52${d}` : d;
+}
+
+// Botón "Contactar" → menú con Llamar (marcador del teléfono) y WhatsApp.
+// No se muestra si la persona no ha capturado su celular.
+export function Contactar({
+  telefono,
+  compacto = false,
+}: {
+  telefono: string | null | undefined;
+  compacto?: boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  if (!telefono) return null;
+  const opcion =
+    "flex items-center gap-2 px-3.5 h-11 text-sm font-medium text-slate-700 active:bg-slate-50";
+  return (
+    <div className={compacto ? "relative shrink-0" : "relative w-full"}>
+      <button
+        type="button"
+        onClick={() => setAbierto((a) => !a)}
+        className={`font-semibold flex items-center gap-1.5 cursor-pointer ${
+          compacto
+            ? "h-9 px-3 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-[13px]"
+            : "h-[50px] w-full justify-center rounded-[11px] bg-blue-600 text-white text-[15px]"
+        }`}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
+        </svg>
+        Contactar
+      </button>
+      {abierto && (
+        <div className="absolute right-0 top-full mt-1.5 z-20 w-44 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-100">
+          <a href={`tel:${telefono.replace(/[^\d+]/g, "")}`} className={opcion}>
+            Llamar
+          </a>
+          <a
+            href={`https://wa.me/${numeroWhatsApp(telefono)}`}
+            target="_blank"
+            rel="noreferrer"
+            className={opcion}
+          >
+            WhatsApp
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- archivo adjunto (evidencia, minuta) ----------
+
+const EXT_IMAGEN = /\.(png|jpe?g|webp|gif|heic|heif|bmp)$/i;
+const EXT_PDF = /\.pdf$/i;
+
+// Imagen → vista previa en la misma pantalla (tocar la abre completa).
+// PDF y otros → tarjeta que abre el archivo en el visor del teléfono.
+// La URL viene firmada por la API (vence en 1 h).
+export function Archivo({ nombre, url }: { nombre: string; url: string }) {
+  const ruta = url.split("?")[0];
+  const esImagen = EXT_IMAGEN.test(nombre) || EXT_IMAGEN.test(ruta);
+  const esPdf = EXT_PDF.test(nombre) || EXT_PDF.test(ruta);
+
+  if (esImagen) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="block mt-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={nombre}
+          loading="lazy"
+          className="w-full max-h-64 object-contain rounded-lg border border-slate-200 bg-slate-50"
+        />
+        <span className="block text-[11px] text-slate-400 mt-1 truncate">{nombre} · tocar para ampliar</span>
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-2 flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5 active:bg-slate-50"
+    >
+      <span
+        className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-bold ${
+          esPdf ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500"
+        }`}
+      >
+        {esPdf ? "PDF" : (nombre.split(".").pop() || "").slice(0, 4).toUpperCase() || "DOC"}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13px] font-semibold text-slate-700 truncate">{nombre}</span>
+        <span className="block text-[11px] text-blue-600">Abrir documento</span>
+      </span>
+    </a>
   );
 }

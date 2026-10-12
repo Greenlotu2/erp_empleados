@@ -12,6 +12,7 @@ export interface Persona {
   avatar_url: string | null;
   rol: string | null;
   especialidad: string | null;
+  celular: string | null;
 }
 
 export interface DetalleTarea extends TareaMovil {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { renderRich } from "../../../../../lib/textoRico";
-import { Avatar, Cargando, ErrorCarga } from "../../../_componentes/comunes";
+import { Archivo, Avatar, Cargando, Contactar, ErrorCarga } from "../../../_componentes/comunes";
 import { esPorRevisar, fechaCorta, urgencia } from "../../../_lib/equipo";
 import {
   especialidadVisible,
@@ -137,6 +137,7 @@ function Contenido({ tarea: t, hilo }: { tarea: DetalleTarea; hilo: EventoHilo[]
                 Responsable{especialidad ? ` · ${especialidad}` : ""}
               </p>
             </div>
+            <Contactar telefono={r.celular} compacto />
           </div>
           {(t.colaboradores.length > 0 || t.asignadaPor) && (
             <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs text-slate-500">
@@ -234,19 +235,7 @@ function Contenido({ tarea: t, hilo }: { tarea: DetalleTarea; hilo: EventoHilo[]
                         dangerouslySetInnerHTML={renderRich(ev.cuerpo)}
                       />
                     )}
-                    {ev.archivo?.url && (
-                      <a
-                        href={ev.archivo.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 flex items-center gap-2 text-[13px] font-medium text-blue-600"
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 12.5 12.5 21a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8" />
-                        </svg>
-                        <span className="truncate">{ev.archivo.nombre}</span>
-                      </a>
-                    )}
+                    {ev.archivo?.url && <Archivo nombre={ev.archivo.nombre} url={ev.archivo.url} />}
                     {ev.enlace && (
                       <a
                         href={ev.enlace}

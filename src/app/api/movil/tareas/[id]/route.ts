@@ -61,7 +61,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/movil/tareas/[id
       await Promise.all([
         supabaseAdmin
           .from("empleados")
-          .select("id, nombre, color, avatar_url, rol, especialidad")
+          .select("id, nombre, color, avatar_url, rol, especialidad, celular")
           .in("id", idsPersonas),
         tarea.proyecto_id
           ? supabaseAdmin
