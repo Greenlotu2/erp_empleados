@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { renderRich } from "../../../../../lib/textoRico";
-import { Archivo, Avatar, Cargando, Contactar, ErrorCarga } from "../../../_componentes/comunes";
+import { Archivo, Avatar, Contactar, DeslizarParaActualizar, ErrorCarga } from "../../../_componentes/comunes";
+import { EsqueletoDetalle } from "../../../_componentes/esqueletos";
 import { esPorRevisar, fechaCorta, urgencia } from "../../../_lib/equipo";
 import {
   especialidadVisible,
@@ -48,7 +49,7 @@ export default function SeguimientoPage() {
     window.history.length > 1 ? router.back() : router.push("/movil");
 
   return (
-    <>
+    <DeslizarParaActualizar onActualizar={cargar}>
       <header className="bg-white border-b border-slate-200 px-4 pt-5 pb-3.5 flex items-center gap-3 sticky top-0 z-10">
         <button
           type="button"
@@ -66,7 +67,7 @@ export default function SeguimientoPage() {
       {error ? (
         <ErrorCarga mensaje={error} reintentar={cargar} />
       ) : !datos ? (
-        <Cargando />
+        <EsqueletoDetalle />
       ) : (
         <>
           <Contenido tarea={datos.tarea} hilo={datos.hilo} />
@@ -91,7 +92,7 @@ export default function SeguimientoPage() {
           )}
         </>
       )}
-    </>
+    </DeslizarParaActualizar>
   );
 }
 

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Avatar, Cargando, ErrorCarga } from "../../_componentes/comunes";
+import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../../_componentes/comunes";
+import { EsqueletoAvisos } from "../../_componentes/esqueletos";
 import { apiMovil, SesionExpirada } from "../../_lib/api";
 import { fechaCorta, primerNombre } from "../../_lib/equipo";
 import { fechaHora } from "../../_lib/tarea";
@@ -63,7 +64,7 @@ export default function AvisosPage() {
     : 0;
 
   return (
-    <>
+    <DeslizarParaActualizar onActualizar={cargar}>
       <header className="bg-white border-b border-slate-200 px-4 pt-5 pb-3">
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold text-slate-900">Avisos</h1>
@@ -78,7 +79,7 @@ export default function AvisosPage() {
       {error ? (
         <ErrorCarga mensaje={error} reintentar={cargar} />
       ) : !datos ? (
-        <Cargando />
+        <EsqueletoAvisos />
       ) : (
         <div className="px-4 pt-3 flex flex-col gap-2">
           {total === 0 && datos.recientes.length === 0 && (
@@ -188,7 +189,7 @@ export default function AvisosPage() {
           })}
         </div>
       )}
-    </>
+    </DeslizarParaActualizar>
   );
 }
 

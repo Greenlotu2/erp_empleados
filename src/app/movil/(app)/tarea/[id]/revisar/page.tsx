@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Archivo, Avatar, Cargando, Contactar, ErrorCarga } from "../../../../_componentes/comunes";
+import { Archivo, Avatar, Contactar, ErrorCarga } from "../../../../_componentes/comunes";
+import { EsqueletoDetalle } from "../../../../_componentes/esqueletos";
 import { apiMovil, SesionExpirada } from "../../../../_lib/api";
 import { esPorRevisar, fechaCorta, primerNombre } from "../../../../_lib/equipo";
 import { especialidadVisible, fechaHora, useDetalleTarea } from "../../../../_lib/tarea";
@@ -68,7 +69,7 @@ export default function RevisarPage() {
   );
 
   if (error) return <>{encabezado}<ErrorCarga mensaje={error} reintentar={cargar} /></>;
-  if (!datos) return <>{encabezado}<Cargando /></>;
+  if (!datos) return <>{encabezado}<EsqueletoDetalle /></>;
 
   const { tarea: t, hilo } = datos;
   const r = t.responsable;

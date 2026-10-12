@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarSesion, leerSesion } from "../../../../../lib/movilSesion";
 import { PALETA_EMPLEADOS } from "../../../../../lib/coloresEmpleados";
-import { Avatar, Cargando, ErrorCarga } from "../../../_componentes/comunes";
+import { Avatar, ErrorCarga } from "../../../_componentes/comunes";
+import { EsqueletoFormulario } from "../../../_componentes/esqueletos";
 import { apiMovil, SesionExpirada } from "../../../_lib/api";
 import { reducirFoto, usePerfil, type PerfilMovil } from "../../../_lib/perfil";
 
@@ -13,7 +14,7 @@ export default function EditarPerfilPage() {
 
   const encabezado = <Encabezado />;
   if (error) return <>{encabezado}<ErrorCarga mensaje={error} reintentar={cargar} /></>;
-  if (!datos) return <>{encabezado}<Cargando /></>;
+  if (!datos) return <>{encabezado}<EsqueletoFormulario /></>;
 
   return (
     <>

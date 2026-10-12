@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cerrarSesion } from "../../../../lib/movilSesion";
-import { Avatar, Cargando, ErrorCarga } from "../../_componentes/comunes";
+import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../../_componentes/comunes";
+import { EsqueletoPerfil } from "../../_componentes/esqueletos";
 import { fechaLarga, usePerfil } from "../../_lib/perfil";
 import {
   activarPush,
@@ -24,14 +25,14 @@ export default function PerfilPage() {
   );
 
   if (error) return <>{encabezado}<ErrorCarga mensaje={error} reintentar={cargar} /></>;
-  if (!datos) return <>{encabezado}<Cargando /></>;
+  if (!datos) return <>{encabezado}<EsqueletoPerfil /></>;
 
   const p = datos.perfil;
   const especialidad = p.especialidad && p.especialidad !== "General" ? p.especialidad : null;
   const faltanDatos = !p.celular || !p.emergencia_telefono;
 
   return (
-    <>
+    <DeslizarParaActualizar onActualizar={cargar}>
       {encabezado}
 
       <div className="px-4 pt-3 flex flex-col gap-2.5">
@@ -125,7 +126,7 @@ export default function PerfilPage() {
           Cerrar sesión
         </button>
       </div>
-    </>
+    </DeslizarParaActualizar>
   );
 }
 

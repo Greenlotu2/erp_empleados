@@ -3,7 +3,8 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Avatar, Cargando, ErrorCarga } from "../../_componentes/comunes";
+import { Avatar, ErrorCarga } from "../../_componentes/comunes";
+import { EsqueletoFormulario } from "../../_componentes/esqueletos";
 import { apiMovil, SesionExpirada } from "../../_lib/api";
 import {
   primerNombre,
@@ -27,7 +28,7 @@ function hoyLocal() {
 // useSearchParams necesita un límite de Suspense en una página cliente.
 export default function AsignarPage() {
   return (
-    <Suspense fallback={<Cargando />}>
+    <Suspense fallback={<EsqueletoFormulario />}>
       <Asignar />
     </Suspense>
   );
@@ -62,7 +63,7 @@ function Asignar() {
   const tareasDelResponsable = (datos?.tareas || []).filter((t) => t.empleado_id === empleadoId);
 
   if (error) return <ErrorCarga mensaje={error} reintentar={recargar} />;
-  if (!datos) return <Cargando />;
+  if (!datos) return <EsqueletoFormulario />;
 
   const enviar = async () => {
     setErrorEnvio(null);

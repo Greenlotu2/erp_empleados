@@ -28,6 +28,9 @@ export default function AppMovilLayout({
       return;
     }
     registrarServiceWorker();
+    // El "deslizar para actualizar" lo hace la app (DeslizarParaActualizar);
+    // se apaga el del navegador para que no recargue la página completa.
+    document.documentElement.style.overscrollBehaviorY = "contain";
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setListo(true);
   }, [router]);

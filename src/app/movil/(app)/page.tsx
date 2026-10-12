@@ -2,11 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Avatar,
-  Cargando,
-  ErrorCarga,
-} from "../_componentes/comunes";
+import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../_componentes/comunes";
+import { EsqueletoTareas } from "../_componentes/esqueletos";
 import {
   esPorRevisar,
   fechaCorta,
@@ -72,14 +69,14 @@ export default function TareasEquipoPage() {
   }, [lista, agrupar, porId]);
 
   if (error) return <ErrorCarga mensaje={error} reintentar={recargar} />;
-  if (!datos) return <Cargando />;
+  if (!datos) return <EsqueletoTareas />;
 
   const yo = porId[datos.yo.id];
   const porRevisar = tareasEquipo.filter(esPorRevisar).length;
   const vencidas = lista.filter((t) => urgencia(t) === "vencida").length;
 
   return (
-    <>
+    <DeslizarParaActualizar onActualizar={recargar}>
       {/* Encabezado */}
       <header className="bg-white border-b border-slate-200 px-4 pt-5 pb-3">
         <div className="flex items-center gap-3">
@@ -209,7 +206,7 @@ export default function TareasEquipoPage() {
       </Link>
       {/* Espacio para que el botón no tape la última tarjeta */}
       <div className="h-16" />
-    </>
+    </DeslizarParaActualizar>
   );
 }
 

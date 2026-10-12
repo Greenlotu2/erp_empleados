@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { iniciales } from "../_lib/equipo";
@@ -253,5 +253,95 @@ export function Archivo({ nombre, url }: { nombre: string; url: string }) {
         <span className="block text-[11px] text-blue-600">Abrir documento</span>
       </span>
     </a>
+  );
+}
+
+// ---------- deslizar para actualizar ("pull to refresh") ----------
+
+const UMBRAL = 64; // px (ya amortiguados) para que al soltar se actualice
+const MAXIMO = 96;
+
+// Envuelve el contenido de una pantalla de consulta. Estando hasta arriba,
+// jalar hacia abajo muestra el indicador; al soltar pasado el umbral llama a
+// `onActualizar` (los datos actuales siguen visibles mientras recarga).
+export function DeslizarParaActualizar({
+  onActualizar,
+  children,
+}: {
+  onActualizar: () => Promise<unknown>;
+  children: React.ReactNode;
+}) {
+  const [distancia, setDistancia] = useState(0);
+  const [actualizando, setActualizando] = useState(false);
+  const [arrastrando, setArrastrando] = useState(false);
+  const inicioY = useRef<number | null>(null);
+
+  const alTocar = (e: React.TouchEvent) => {
+    if (actualizando || window.scrollY > 0) return;
+    inicioY.current = e.touches[0].clientY;
+  };
+
+  const alMover = (e: React.TouchEvent) => {
+    if (inicioY.current === null) return;
+    const d = e.touches[0].clientY - inicioY.current;
+    if (d <= 0 || window.scrollY > 0) {
+      setDistancia(0);
+      return;
+    }
+    setArrastrando(true);
+    // Amortiguado: cuesta más jalar entre más se baja.
+    setDistancia(Math.min(MAXIMO, d * 0.5));
+  };
+
+  const alSoltar = async () => {
+    if (inicioY.current === null) return;
+    inicioY.current = null;
+    setArrastrando(false);
+    if (distancia < UMBRAL) {
+      setDistancia(0);
+      return;
+    }
+    setActualizando(true);
+    setDistancia(48);
+    try {
+      await onActualizar();
+    } finally {
+      setActualizando(false);
+      setDistancia(0);
+    }
+  };
+
+  const listo = distancia >= UMBRAL;
+
+  return (
+    <div onTouchStart={alTocar} onTouchMove={alMover} onTouchEnd={alSoltar} onTouchCancel={alSoltar}>
+      <div
+        aria-hidden={!actualizando}
+        className={`flex items-end justify-center overflow-hidden ${arrastrando ? "" : "transition-[height] duration-200"}`}
+        style={{ height: distancia }}
+      >
+        <span className="mb-2 w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+          {actualizando ? (
+            <span className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
+          ) : (
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={listo ? "#2563eb" : "#94a3b8"}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ transform: `rotate(${listo ? 180 : (distancia / UMBRAL) * 180}deg)` }}
+            >
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+          )}
+        </span>
+      </div>
+      {actualizando && <span className="sr-only" role="status">Actualizando…</span>}
+      {children}
+    </div>
   );
 }

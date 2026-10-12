@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Avatar, Cargando, ErrorCarga } from "../../_componentes/comunes";
+import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../../_componentes/comunes";
+import { EsqueletoEquipo } from "../../_componentes/esqueletos";
 import {
   esPorRevisar,
   SIN_AREA,
@@ -64,13 +65,13 @@ export default function EquipoPage() {
   }, [datos, filtro]);
 
   if (error) return <ErrorCarga mensaje={error} reintentar={recargar} />;
-  if (!datos) return <Cargando />;
+  if (!datos) return <EsqueletoEquipo />;
 
   const total = datos.empleados.length;
   const disponibles = datos.empleados.filter((e) => e.disponibilidad).length;
 
   return (
-    <>
+    <DeslizarParaActualizar onActualizar={recargar}>
       <header className="bg-white border-b border-slate-200 px-4 pt-5 pb-3">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold text-slate-900">Equipo</h1>
@@ -146,7 +147,7 @@ export default function EquipoPage() {
           </section>
         ))}
       </div>
-    </>
+    </DeslizarParaActualizar>
   );
 }
 
