@@ -1,57 +1,152 @@
 {
   "artboards": [
-    { "file": "Login.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Acceso" },
-    { "file": "Main.dc.html", "x": 470, "y": 0, "w": 390, "h": 844, "title": "Mis tareas" },
-    { "file": "Detalle.dc.html", "x": 940, "y": 0, "w": 390, "h": 844, "title": "Detalle de actividad" },
-    { "file": "Avisos.dc.html", "x": 1410, "y": 0, "w": 390, "h": 844, "title": "Avisos" },
-    { "file": "Revision.dc.html", "x": 1880, "y": 0, "w": 390, "h": 844, "title": "Revisión remota" },
-    { "file": "Perfil.dc.html", "x": 2350, "y": 0, "w": 390, "h": 844, "title": "Mi perfil" },
-    { "file": "Recompensas.dc.html", "x": 2820, "y": 0, "w": 390, "h": 844, "title": "Recompensas" },
-    { "file": "Equipo.dc.html", "x": 3290, "y": 0, "w": 390, "h": 844, "title": "Equipo" }
+    {
+      "file": "Login.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Acceso"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Tareas del equipo"
+    },
+    {
+      "file": "AsignarTarea.dc.html",
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Asignar tarea"
+    },
+    {
+      "file": "Detalle.dc.html",
+      "x": 1410,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Seguimiento de actividad"
+    },
+    {
+      "file": "Avisos.dc.html",
+      "x": 1880,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Avisos"
+    },
+    {
+      "file": "Revision.dc.html",
+      "x": 2350,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Revisión remota"
+    },
+    {
+      "file": "Equipo.dc.html",
+      "x": 2820,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Equipo"
+    },
+    {
+      "file": "Perfil.dc.html",
+      "x": 3290,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Mi perfil"
+    },
+    {
+      "file": "EditarPerfil.dc.html",
+      "x": 3760,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Editar perfil"
+    },
+    {
+      "file": "Extension.dc.html",
+      "x": 2365,
+      "y": 1100,
+      "w": 360,
+      "h": 640,
+      "title": "Extensión del trabajador: resultado de la revisión"
+    }
   ],
   "annotations": [
     {
-      "id": "nota-trabajador",
+      "id": "nota-acceso",
       "x": 0,
-      "y": -160,
+      "y": -180,
       "w": 860,
-      "text": "TRABAJADOR\nEntra, ve sus tareas con el avance, abre una y reporta progreso, adjunta evidencia o pide tiempo extra."
+      "text": "SOLO COORDINADORES Y GERENCIA\nLos trabajadores siguen usando la extensión de Chrome; aquí no pueden entrar (ya aplicado en el login real). Al abrir: las tareas de su equipo, lo urgente primero (por revisar y por vencer). La pestaña \"Mis tareas\" muestra las propias."
+    },
+    {
+      "id": "nota-asignar",
+      "x": 940,
+      "y": -180,
+      "w": 390,
+      "text": "ASIGNAR TAREA\nDesde el botón \"Asignar\" de Tareas o de Equipo. Mismos campos que la web: responsable (con su carga actual), título, descripción, proyecto, fecha límite, prioridad, colaboradores y si depende de otra tarea. Le llega aviso y la fecha límite va al calendario, igual que en la web."
+    },
+    {
+      "id": "nota-seguimiento",
+      "x": 1410,
+      "y": -180,
+      "w": 390,
+      "text": "SEGUIMIENTO\nEl avance y la evidencia los reporta el trabajador desde la extensión; aquí solo se consultan. \"Contactar\" al responsable, enviarle un recordatorio o ampliar la fecha límite."
     },
     {
       "id": "nota-avisos",
-      "x": 1410,
-      "y": -160,
-      "w": 390,
-      "text": "TODOS LOS ROLES\nRecordatorios de vencimiento y solicitudes de revisión. Esto es lo que llega como notificación al celular."
-    },
-    {
-      "id": "nota-gerencia",
       "x": 1880,
-      "y": -160,
-      "w": 390,
-      "text": "GERENCIA Y COORDINACIÓN\nRevisar estando fuera: abre videollamada o llamada con quien entregó, y aprueba o pide correcciones sin volver a la oficina."
-    },
-    {
-      "id": "nota-perfil",
-      "x": 2350,
-      "y": -160,
-      "w": 390,
-      "text": "TODOS LOS ROLES\nSus datos, horas de servicio y puntos. Edita lo suyo (foto, especialidad, color, contraseña); rol, nivel y área los sigue asignando el admin desde la web."
-    },
-    {
-      "id": "nota-recompensas",
-      "x": 2820,
       "y": -180,
       "w": 390,
-      "text": "TRABAJADORES · abre desde Mi perfil\nPuntos, nivel (Bronce/Plata/Oro/Diamante) y catálogo de canje: vales, curso, día libre, bono de equipo. Los puntos se otorgan solos al completar tareas (trigger en Supabase). El canje real está pendiente en la web; aquí se muestra completo para revisión."
+      "text": "AVISOS\nEntregas por revisar, tareas por vencer de su gente y reuniones. Esto es lo que llega como notificación al celular."
+    },
+    {
+      "id": "nota-revision",
+      "x": 2350,
+      "y": -180,
+      "w": 390,
+      "text": "REVISIÓN REMOTA\nRevisar estando fuera: \"Contactar\" a quien entregó para comentarlo, y aprobar o pedir correcciones sin volver a la oficina."
     },
     {
       "id": "nota-equipo",
-      "x": 3290,
-      "y": -160,
+      "x": 2820,
+      "y": -180,
       "w": 390,
-      "text": "TODOS LOS ROLES\nEl equipo agrupado por área (el organigrama real), con el estado de cada quien: Disponible o Ocupado, igual que en el Panel Principal de la web. Filtro por estado arriba. Datos y colores reales de la base."
+      "text": "EQUIPO\nOrganigrama por área con el estado de cada quien y su carga: tareas activas, por revisar y por vencer. Ayuda a decidir a quién asignar lo siguiente. Botón \"Asignar\" arriba; tocar a una persona abre Asignar tarea con ella ya elegida."
+    },
+    {
+      "id": "nota-perfil",
+      "x": 3290,
+      "y": -180,
+      "w": 390,
+      "text": "MI PERFIL\nResumen de sus datos. Se quitaron horas de servicio y Recompensas: son de los trabajadores. \"Editar perfil\" abre la pantalla de al lado."
+    },
+    {
+      "id": "nota-editar",
+      "x": 3760,
+      "y": -180,
+      "w": 390,
+      "text": "EDITAR PERFIL\nFoto (cámara o galería) y DATOS PERSONALES que edita la persona: celular, nacimiento, correo personal, contacto de emergencia. Separados y bloqueados, los DATOS DE LA EMPRESA (rol, nivel, área, especialidad, usuario) que solo cambia el admin desde la web."
+    },
+    {
+      "id": "nota-extension",
+      "x": 2350,
+      "y": 920,
+      "w": 390,
+      "text": "↑ LO QUE RECIBE EL TRABAJADOR (extensión de Chrome)\nSi le piden correcciones, la tarea regresa a \"Por hacer\" marcada \"Corregir\", con el comentario del coordinador y la nueva fecha; la reenvía con evidencia. Si se aprueba, aparece un aviso con el comentario y los puntos ganados."
     }
   ],
-  "launch": { "view": "canvas" }
+  "launch": {
+    "view": "canvas"
+  }
 }

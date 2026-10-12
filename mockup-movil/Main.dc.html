@@ -12,133 +12,119 @@
     body { margin: 0; font-family: Geist, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
     a { color: #2563eb; } a:hover { color: #1d4ed8; }
     .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
+    .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; }
+    .who { display: flex; align-items: center; gap: 8px; }
+    .av { width: 26px; height: 26px; border-radius: 999px; color: #ffffff; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .nm { font-size: 13px; font-weight: 600; color: #334155; }
+    .tag { font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #1d4ed8; background: #eff6ff; border: 1px solid #dbeafe; padding: 3px 7px; border-radius: 6px; }
+    .ttl { font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.35; margin-top: 8px; }
+    .bar { width: 100%; height: 6px; background: #f1f5f9; border-radius: 999px; overflow: hidden; }
+    .meta { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b; }
   </style>
 </helmet>
 
-<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden;">
+<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden; position: relative;">
 
   <!-- Encabezado -->
-  <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 18px 16px 12px; display: flex; align-items: center; gap: 12px;">
-    <div style="width: 44px; height: 44px; border-radius: 999px; background: #059669; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; flex-shrink: 0;">JE</div>
-    <div style="flex-grow: 1; min-width: 0;">
-      <div style="font-size: 13px; color: #64748b;">Buenos días,</div>
-      <div style="font-size: 17px; font-weight: 600; color: #0f172a; line-height: 1.3;">Juancarlos Escobar</div>
+  <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 18px 16px 12px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="width: 44px; height: 44px; border-radius: 999px; background: #059669; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; flex-shrink: 0;">JE</div>
+      <div style="flex-grow: 1; min-width: 0;">
+        <div style="font-size: 13px; color: #64748b;">Buenos días,</div>
+        <div style="font-size: 17px; font-weight: 600; color: #0f172a; line-height: 1.3;">Juancarlos Escobar</div>
+      </div>
+      <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" /><path d="M10.5 20a2 2 0 0 0 3 0" /></svg>
+        <span style="position: absolute; top: 8px; right: 8px; width: 16px; height: 16px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff;">3</span>
+      </div>
     </div>
-    <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" /><path d="M10.5 20a2 2 0 0 0 3 0" /></svg>
-      <span style="position: absolute; top: 8px; right: 8px; width: 16px; height: 16px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff;">3</span>
+    <!-- Equipo / Mías -->
+    <div style="display: flex; background: #f1f5f9; border-radius: 10px; padding: 3px; margin-top: 12px;">
+      <div style="flex: 1; text-align: center; padding: 7px 0; border-radius: 8px; background: #ffffff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); font-size: 13px; font-weight: 600; color: #0f172a;">Mi equipo</div>
+      <div style="flex: 1; text-align: center; padding: 7px 0; font-size: 13px; font-weight: 500; color: #64748b;">Mis tareas</div>
     </div>
   </div>
 
-  <!-- Resumen del día -->
+  <!-- Resumen del equipo -->
   <div style="display: flex; gap: 8px; padding: 12px 16px 0;">
-    <div style="flex-grow: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px;">
+    <div style="flex: 1; background: #ffffff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 10px 12px;">
+      <div class="lbl" style="color: #2563eb;">Por revisar</div>
+      <div style="font-size: 22px; font-weight: 600; color: #1d4ed8; font-variant-numeric: tabular-nums; line-height: 1.2;">2</div>
+    </div>
+    <div style="flex: 1; background: #ffffff; border: 1px solid #fecaca; border-radius: 12px; padding: 10px 12px;">
+      <div class="lbl" style="color: #dc2626;">Vencidas</div>
+      <div style="font-size: 22px; font-weight: 600; color: #dc2626; font-variant-numeric: tabular-nums; line-height: 1.2;">1</div>
+    </div>
+    <div style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px;">
       <div class="lbl">Activas</div>
-      <div style="font-size: 22px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.2;">4</div>
-    </div>
-    <div style="flex-grow: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px;">
-      <div class="lbl">Vencen hoy</div>
-      <div style="font-size: 22px; font-weight: 600; color: #d97706; font-variant-numeric: tabular-nums; line-height: 1.2;">1</div>
-    </div>
-    <div style="flex-grow: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px;">
-      <div class="lbl">Horas</div>
-      <div style="font-size: 22px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.2;">64.2</div>
+      <div style="font-size: 22px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.2;">9</div>
     </div>
   </div>
 
-  <!-- Filtro segmentado -->
+  <!-- Filtro -->
   <div style="display: flex; gap: 6px; padding: 12px 16px 8px;">
-    <div style="padding: 9px 14px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 13px; font-weight: 600;">Todas</div>
-    <div style="padding: 9px 14px; border-radius: 999px; background: #ffffff; border: 1px solid #e2e8f0; color: #475569; font-size: 13px; font-weight: 500;">En proceso</div>
-    <div style="padding: 9px 14px; border-radius: 999px; background: #ffffff; border: 1px solid #e2e8f0; color: #475569; font-size: 13px; font-weight: 500;">En revisión</div>
+    <div style="padding: 8px 14px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 13px; font-weight: 600;">Urgentes primero</div>
+    <div style="padding: 8px 14px; border-radius: 999px; background: #ffffff; border: 1px solid #e2e8f0; color: #475569; font-size: 13px; font-weight: 500;">Por persona</div>
+    <div style="padding: 8px 14px; border-radius: 999px; background: #ffffff; border: 1px solid #e2e8f0; color: #475569; font-size: 13px; font-weight: 500;">Por proyecto</div>
   </div>
 
-  <!-- Lista de tareas -->
+  <!-- Lista -->
   <div style="flex-grow: 1; overflow: hidden; padding: 0 16px; display: flex; flex-direction: column; gap: 10px;">
 
-    <!-- Tarea crítica -->
-    <div style="background: #ffffff; border: 1px solid #fda4af; box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.08); border-radius: 12px; padding: 14px; position: relative; overflow: hidden;">
-      <div style="position: absolute; top: 0; right: 0; background: #e11d48; color: #ffffff; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 8px; border-bottom-left-radius: 10px; display: flex; align-items: center; gap: 4px;">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-2 8 9-12h-7l2-8Z" /></svg>
-        Crítica
+    <!-- Por revisar -->
+    <div class="card" style="border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div class="who"><span class="av" style="background: #7c3aed;">M</span><span class="nm">Manuel</span></div>
+        <span style="font-size: 10px; font-weight: 600; color: #ffffff; background: #2563eb; padding: 4px 8px; border-radius: 6px;">Por revisar</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; padding-right: 72px;">
-        <span style="font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #1d4ed8; background: #eff6ff; border: 1px solid #dbeafe; padding: 3px 7px; border-radius: 6px;">LUMIA</span>
-        <span style="font-size: 10px; font-weight: 600; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; padding: 3px 7px; border-radius: 6px;">Urgente</span>
+      <div class="ttl">Desarrollo de componentes UI para Extensión ERP</div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+        <span class="tag">INOVA</span>
+        <span class="meta">Entregada hace 1 h</span>
+        <span style="margin-left: auto; height: 32px; padding: 0 14px; border-radius: 9px; background: #2563eb; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center;">Revisar</span>
       </div>
-      <div style="font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.35; margin-top: 8px;">Integración de Pasarela de Pagos</div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 11px; font-weight: 500; color: #64748b;">
-        <span>Avance</span>
-        <span style="color: #1e293b; font-variant-numeric: tabular-nums; font-weight: 600;">60%</span>
-      </div>
-      <div style="width: 100%; height: 6px; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin-top: 6px;">
-        <div style="width: 60%; height: 100%; background: #2563eb; border-radius: 999px;"></div>
-      </div>
-      <div style="display: flex; align-items: center; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9;">
-        <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #dc2626; font-weight: 500;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /></svg>
+    </div>
+
+    <!-- Vencida -->
+    <div class="card" style="border-color: #fda4af;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div class="who"><span class="av" style="background: #db2777;">A</span><span class="nm">Andrea</span></div>
+        <span style="display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: #ffffff; background: #e11d48; padding: 4px 8px; border-radius: 6px;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           Vence hoy
         </span>
-        <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" /></svg>
-          Andrea
-        </span>
       </div>
+      <div class="ttl">Integración de Pasarela de Pagos</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 11px; font-weight: 500; color: #64748b;">
+        <span style="display: flex; align-items: center; gap: 8px;"><span class="tag">LUMIA</span> Avance</span>
+        <span style="color: #1e293b; font-variant-numeric: tabular-nums; font-weight: 600;">60%</span>
+      </div>
+      <div class="bar" style="margin-top: 6px;"><div style="width: 60%; height: 100%; background: #e11d48; border-radius: 999px;"></div></div>
     </div>
 
-    <!-- Tarea en revisión -->
-    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #1d4ed8; background: #eff6ff; border: 1px solid #dbeafe; padding: 3px 7px; border-radius: 6px;">INOVA</span>
-        <span style="font-size: 10px; font-weight: 600; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; padding: 3px 7px; border-radius: 6px;">Alta</span>
-        <span style="margin-left: auto; font-size: 10px; font-weight: 600; color: #ffffff; background: #2563eb; padding: 4px 8px; border-radius: 6px;">En revisión</span>
-      </div>
-      <div style="font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.35; margin-top: 8px;">Desarrollo de componentes UI para Extensión ERP</div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 11px; font-weight: 500; color: #64748b;">
-        <span>Avance</span>
-        <span style="color: #1e293b; font-variant-numeric: tabular-nums; font-weight: 600;">100%</span>
-      </div>
-      <div style="width: 100%; height: 6px; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin-top: 6px;">
-        <div style="width: 100%; height: 100%; background: #2563eb; border-radius: 999px;"></div>
-      </div>
-      <div style="display: flex; align-items: center; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9;">
-        <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /></svg>
-          18 sep
-        </span>
-        <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" /></svg>
-          Manuel
-        </span>
-      </div>
-    </div>
-
-    <!-- Tarea normal -->
-    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #1d4ed8; background: #eff6ff; border: 1px solid #dbeafe; padding: 3px 7px; border-radius: 6px;">INGECONSTRUCTIVA</span>
-        <span style="font-size: 10px; font-weight: 600; color: #334155; background: #f1f5f9; border: 1px solid #e2e8f0; padding: 3px 7px; border-radius: 6px;">Media</span>
-      </div>
-      <div style="font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.35; margin-top: 8px;">Documentación de API y autenticación JWT</div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 11px; font-weight: 500; color: #64748b;">
-        <span>Avance</span>
-        <span style="color: #1e293b; font-variant-numeric: tabular-nums; font-weight: 600;">35%</span>
-      </div>
-      <div style="width: 100%; height: 6px; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin-top: 6px;">
-        <div style="width: 35%; height: 100%; background: #2563eb; border-radius: 999px;"></div>
-      </div>
-      <div style="display: flex; align-items: center; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9;">
-        <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b;">
+    <!-- Normal -->
+    <div class="card">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div class="who"><span class="av" style="background: #0891b2;">JL</span><span class="nm">Jose Luis</span></div>
+        <span class="meta">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /></svg>
           24 sep
         </span>
-        <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" /></svg>
-          Jose Luis
-        </span>
       </div>
+      <div class="ttl">Documentación de API y autenticación JWT</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 11px; font-weight: 500; color: #64748b;">
+        <span style="display: flex; align-items: center; gap: 8px;"><span class="tag">INGECONSTRUCTIVA</span> Avance</span>
+        <span style="color: #1e293b; font-variant-numeric: tabular-nums; font-weight: 600;">35%</span>
+      </div>
+      <div class="bar" style="margin-top: 6px;"><div style="width: 35%; height: 100%; background: #2563eb; border-radius: 999px;"></div></div>
     </div>
 
+  </div>
+
+  <!-- Asignar tarea -->
+  <div style="position: absolute; right: 16px; bottom: 96px; height: 52px; padding: 0 18px 0 14px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+    Asignar
   </div>
 
   <!-- Barra de navegación -->
