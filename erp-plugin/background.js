@@ -148,7 +148,7 @@ if (chrome.alarms) {
 function getConfigExtension() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['custom_api_url', 'jwt_token'], (res) => {
-      const base = (res?.custom_api_url || 'http://localhost:3000/api').replace(/\/+$/, '');
+      const base = (res?.custom_api_url || 'https://erp-empleados-rocal.vercel.app/api').replace(/\/+$/, '');
       resolve({ apiBase: base, token: res?.jwt_token || null });
     });
   });

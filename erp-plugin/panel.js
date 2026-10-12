@@ -18,8 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const SYNC_INTERVAL_MS = 15000; // ⏱️ Fix #7: Cada 15s
   const MAX_DAILY_SECONDS = 5 * 3600; // 5 Horas = 18,000s
 
-  // 🌐 Carga dinámica de URL de API (Fallback a localhost)
-  let API_BASE_URL = "http://localhost:3000/api";
+  // 🌐 URL de la API: producción por defecto; `custom_api_url` en storage la sobreescribe (p. ej. localhost para desarrollo)
+  let API_BASE_URL = "https://erp-empleados-rocal.vercel.app/api";
   chrome.storage.local.get(['custom_api_url'], (res) => {
     if (res?.custom_api_url) {
       API_BASE_URL = res.custom_api_url.replace(/\/+$/, '');
