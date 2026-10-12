@@ -398,8 +398,14 @@ export default function AdminDashboard() {
     title: string;
     currentDueDate?: string;
     rejectNotif?: PluginNotification;
+    comentario?: string;
   } | null>(null);
   const [extendDeadlineValue, setExtendDeadlineValue] = useState("");
+  // Comentario del revisor por notificación pendiente (opcional al aprobar,
+  // obligatorio al rechazar). Lo ve el trabajador en la extensión.
+  const [notifComments, setNotifComments] = useState<Record<string, string>>(
+    {},
+  );
   // IDs de notificaciones ya notificadas al navegador. `null` = todavía no cargamos
   // por primera vez — así no se dispara una ráfaga de notificaciones del navegador
   // por todo lo que ya estaba pendiente antes de abrir la pestaña.
@@ -886,6 +892,18 @@ export default function AdminDashboard() {
   // la base de datos todavía — abre el modal de nueva fecha límite y la notificación
   // se resuelve solo hasta que se confirme ahí (handleConfirmExtendDeadline). Si el
   // admin cierra/cancela el modal, la notificación sigue pendiente para reintentar.
+  // Quién revisó, tal como lo verá el trabajador en la extensión.
+  const nombreRevisor = () =>
+    employees.find((e) => e.id === currentAdminId)?.name || "Administración";
+
+  // Quita el borrador de comentario de una notificación ya resuelta.
+  const limpiarComentario = (notifId: string) =>
+    setNotifComments((prev) => {
+      const resto = { ...prev };
+      delete resto[notifId];
+      return resto;
+    });
+
   const handleResolveNotification = async (
     notif: PluginNotification,
     nuevoEstado: "Aprobado" | "Rechazado",
@@ -904,14 +922,17 @@ export default function AdminDashboard() {
         (tareaRechazada as any)?.titulo || notif.taskTitle,
         (tareaRechazada as any)?.fecha_limite || notif.taskDueDate || undefined,
         notif,
+        notifComments[notif.id] || "",
       );
       return;
     }
 
+    const comentario = (notifComments[notif.id] || "").trim() || null;
+
     try {
       const { error } = await supabase
         .from("notificaciones")
-        .update({ estado: nuevoEstado })
+        .update({ estado: nuevoEstado, comentario })
         .eq("id", notif.id);
 
       if (error) throw error;
@@ -922,6 +943,10 @@ export default function AdminDashboard() {
             estado: "Completada",
             porcentaje_avance: 100,
             fecha_completado: new Date().toISOString(),
+            revision_resultado: "Aprobado",
+            revision_comentario: comentario,
+            revision_por: nombreRevisor(),
+            revision_fecha: new Date().toISOString(),
           })
           .eq("id", taskIdNum);
 
@@ -932,6 +957,7 @@ export default function AdminDashboard() {
       }
 
       setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+      limpiarComentario(notif.id);
       await fetchDashboardData();
     } catch (err: any) {
       console.error("Error resolviendo notificación:", err);
@@ -950,6 +976,7 @@ export default function AdminDashboard() {
     taskTitle: string,
     currentDueDate?: string,
     rejectNotif?: PluginNotification,
+    comentario?: string,
   ) => {
     setExtendDeadlineValue("");
     setExtendDeadlineTarget({
@@ -957,6 +984,7 @@ export default function AdminDashboard() {
       title: taskTitle,
       currentDueDate,
       rejectNotif,
+      comentario,
     });
   };
 
@@ -966,8 +994,13 @@ export default function AdminDashboard() {
 
     try {
       const updatePayload: any = { fecha_limite: extendDeadlineValue };
+      const comentario = (extendDeadlineTarget.comentario || "").trim();
       if (extendDeadlineTarget.rejectNotif) {
         updatePayload.estado = "En Proceso";
+        updatePayload.revision_resultado = "Rechazado";
+        updatePayload.revision_comentario = comentario;
+        updatePayload.revision_por = nombreRevisor();
+        updatePayload.revision_fecha = new Date().toISOString();
       }
 
       const { error } = await supabase
@@ -981,10 +1014,11 @@ export default function AdminDashboard() {
         const notif = extendDeadlineTarget.rejectNotif;
         await supabase
           .from("notificaciones")
-          .update({ estado: "Rechazado" })
+          .update({ estado: "Rechazado", comentario })
           .eq("id", notif.id);
 
         setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+        limpiarComentario(notif.id);
       }
 
       setExtendDeadlineTarget(null);
@@ -1764,6 +1798,19 @@ export default function AdminDashboard() {
                                 </button>
                               )}
                             </div>
+
+                            <textarea
+                              rows={2}
+                              value={notifComments[notif.id] || ""}
+                              onChange={(e) =>
+                                setNotifComments((prev) => ({
+                                  ...prev,
+                                  [notif.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Comentario para el trabajador (obligatorio si rechazas)"
+                              className="w-full mt-1 border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] text-slate-800 bg-white outline-none focus:ring-1 focus:ring-blue-400 resize-none"
+                            />
 
                             <div className="flex gap-1 w-full justify-end mt-1">
                               <button
@@ -3250,6 +3297,27 @@ export default function AdminDashboard() {
                   className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
                 />
               </div>
+
+              {extendDeadlineTarget.rejectNotif && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Qué hay que corregir
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={extendDeadlineTarget.comentario || ""}
+                    onChange={(e) =>
+                      setExtendDeadlineTarget({
+                        ...extendDeadlineTarget,
+                        comentario: e.target.value,
+                      })
+                    }
+                    placeholder="El trabajador lo verá en su extensión junto a la tarea."
+                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 bg-white outline-none resize-none"
+                  />
+                </div>
+              )}
 
               <div className="flex gap-1 pt-1.5 border-t border-slate-100">
                 <button

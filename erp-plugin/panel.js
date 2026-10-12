@@ -176,6 +176,9 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
 
+      <!-- Avisos de revisión (aprobaciones con comentario) -->
+      <div id="avisos-revision"></div>
+
       <!-- Pestañas Principales -->
       <div class="tabs-container">
         <button id="tab-tareas" class="tab-btn">📋 Tareas</button>
@@ -202,6 +205,67 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     await loadData();
+  }
+
+  // ==========================================
+  // RESULTADO DE REVISIÓN (comentarios del coordinador)
+  // ==========================================
+  // La web guarda en la tarea el resultado de la última revisión. "Rechazado"
+  // con la tarea de vuelta en proceso = hay que corregir; al reenviarla el
+  // servidor limpia el resultado.
+  function esPorCorregir(t) {
+    const st = (t.estado || '').toLowerCase();
+    return t.revision_resultado === 'Rechazado' &&
+      !st.includes('completa') && !st.includes('revisi');
+  }
+
+  function escapeHtml(texto) {
+    return String(texto ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function formatFechaHora(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  }
+
+  const AVISOS_VISTOS_KEY = 'avisos_revision_vistos';
+  const DIAS_AVISO_APROBACION = 3;
+
+  // Aviso verde arriba de las pestañas por cada tarea aprobada en los últimos
+  // días que el trabajador no haya cerrado (se recuerda en chrome.storage).
+  function renderAvisosRevision(tareas) {
+    const cont = document.getElementById('avisos-revision');
+    if (!cont) return;
+    const limite = Date.now() - DIAS_AVISO_APROBACION * 24 * 3600 * 1000;
+    const aprobadas = tareas.filter(t =>
+      t.revision_resultado === 'Aprobado' && t.revision_fecha &&
+      new Date(t.revision_fecha).getTime() >= limite);
+
+    chrome.storage.local.get([AVISOS_VISTOS_KEY], (res) => {
+      const vistos = new Set(res?.[AVISOS_VISTOS_KEY] || []);
+      const pendientes = aprobadas.filter(t => !vistos.has(`${t.id}|${t.revision_fecha}`));
+      cont.innerHTML = pendientes.map(t => `
+        <div class="review-approved">
+          <span class="review-approved-icon">✅</span>
+          <div class="review-approved-text">
+            <div class="review-approved-title">Aprobada: ${escapeHtml(t.titulo || 'Tarea')}</div>
+            ${t.revision_comentario ? `<div class="review-approved-body">“${escapeHtml(t.revision_comentario)}”</div>` : ''}
+            <div class="review-comment-date">${escapeHtml(t.revision_por || '')}${t.revision_por ? ' · ' : ''}${formatFechaHora(t.revision_fecha)}</div>
+          </div>
+          <button class="review-approved-close" data-key="${t.id}|${t.revision_fecha}" title="Cerrar">✕</button>
+        </div>`).join('');
+
+      cont.querySelectorAll('.review-approved-close').forEach(btn => {
+        btn.onclick = () => {
+          vistos.add(btn.dataset.key);
+          chrome.storage.local.set({ [AVISOS_VISTOS_KEY]: Array.from(vistos).slice(-100) });
+          btn.closest('.review-approved')?.remove();
+        };
+      });
+    });
   }
 
   // ==========================================
@@ -515,6 +579,8 @@ document.addEventListener('DOMContentLoaded', () => {
         actualizarPuntosUI(res.data.puntosRecompensa);
       }
 
+      renderAvisosRevision(tareas);
+
       const hoyFiltro = new Date().toISOString().split('T')[0];
 
       const filtered = tareas.filter(t => {
@@ -522,6 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const avance = t.porcentaje_avance ?? 0;
         const isDoneFiltro = st.includes('completa');
         const isOverdueFiltro = t.fecha_limite && t.fecha_limite < hoyFiltro && !isDoneFiltro;
+        const porCorregirFiltro = esPorCorregir(t);
 
         // Las tareas nuevas siempre se crean como 'En Proceso' (ningún flujo del CRM
         // usa 'Por Hacer' como estado real) — se usa el avance para distinguir "sin
@@ -530,11 +597,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // sin importar su avance.
         if (activeSubFilter === 'por_hacer') {
           return st === 'por hacer' || st === 'todo' || st === 'nueva' || st === 'por_hacer' ||
-            (st === 'en proceso' && (avance === 0 || isOverdueFiltro));
+            (st === 'en proceso' && (avance === 0 || isOverdueFiltro || porCorregirFiltro));
         }
         if (activeSubFilter === 'pendientes') {
           return st === 'pendiente' || st === 'en revisión' || st === 'en_revision' ||
-            (st === 'en proceso' && avance > 0 && !isOverdueFiltro);
+            (st === 'en proceso' && avance > 0 && !isOverdueFiltro && !porCorregirFiltro);
         }
         if (activeSubFilter === 'completadas') return st === 'completada' || st === 'finalizada';
         return true;
@@ -555,10 +622,15 @@ document.addEventListener('DOMContentLoaded', () => {
           const hoy = new Date().toISOString().split('T')[0];
           const isOverdue = t.fecha_limite && t.fecha_limite < hoy && !isDone;
 
+          const porCorregir = esPorCorregir(t);
+
           let statusBadgeClass = 'badge-status-pending';
           let statusText = 'Por hacer';
 
-          if (isDone) {
+          if (porCorregir) {
+            statusBadgeClass = 'badge-status-fix';
+            statusText = '↩ Corregir';
+          } else if (isDone) {
             statusBadgeClass = 'badge-status-completed';
             statusText = '✓ Completada';
           } else if (isReview) {
@@ -570,6 +642,13 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           const desc = t.descripcion ? `<div class="card-desc">${t.descripcion}</div>` : '';
+          const comentarioRevision = porCorregir ? `
+            <div class="review-comment">
+              <div class="review-comment-title">💬 Correcciones de ${escapeHtml(t.revision_por || 'tu coordinador')}</div>
+              <div class="review-comment-body">${escapeHtml(t.revision_comentario || 'Revisa la tarea y vuelve a enviarla.')}</div>
+              ${t.revision_fecha ? `<div class="review-comment-date">${formatFechaHora(t.revision_fecha)}</div>` : ''}
+            </div>` : '';
+          if (porCorregir) item.classList.add('card-fix');
           const fechaLim = t.fecha_limite ? `<span>📅 ${t.fecha_limite}</span>` : '<span>📅 Sin fecha límite</span>';
           const proyectoNombre = t.proyectos?.nombre || t.proyecto_nombre || 'General';
 
@@ -580,7 +659,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             
             ${desc}
-            
+            ${comentarioRevision}
+
             <div class="card-footer">
               <div class="card-meta">
                 <span class="card-badge ${statusBadgeClass}">${statusText}</span>
@@ -595,7 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   </label>
                   <span class="evidence-name" data-id="${t.id}">${evidenciasPendientes.get(String(t.id))?.nombre || ''}</span>
                   <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
-                    🚀 Enviar a Revisión
+                    ${porCorregir ? '🚀 Reenviar' : '🚀 Enviar a Revisión'}
                   </button>
                 </div>
               ` : ''}

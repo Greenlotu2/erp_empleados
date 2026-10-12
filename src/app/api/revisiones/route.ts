@@ -198,7 +198,9 @@ export async function POST(request: NextRequest) {
     if (!isNaN(numericTaskId)) {
       await supabaseAdmin
         .from("tareas")
-        .update({ estado: "En Revisión" })
+        // Al reenviarla se limpia el resultado anterior: la extensión deja de
+        // mostrarla como "Corregir" (el comentario queda en el historial).
+        .update({ estado: "En Revisión", revision_resultado: null })
         .eq("id", numericTaskId);
     }
 

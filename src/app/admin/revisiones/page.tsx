@@ -233,7 +233,7 @@ export default function RevisionesPage() {
           .eq("tarea_id", tareaId),
         (supabase.from("notificaciones") as any)
           .select(
-            "id, titulo_tarea, estado, created_at, evidencia_url, evidencia_nombre",
+            "id, titulo_tarea, estado, created_at, evidencia_url, evidencia_nombre, comentario",
           )
           .eq("tarea_id", tareaId)
           .in("estado", ["Aprobado", "Rechazado"]),
@@ -895,7 +895,7 @@ export default function RevisionesPage() {
         tipo: "decision",
         fecha: n.created_at || "",
         titulo: n.estado === "Aprobado" ? "Tarea aprobada" : "Tarea rechazada",
-        cuerpo: n.titulo_tarea || "",
+        cuerpo: n.comentario || n.titulo_tarea || "",
       });
     });
 
