@@ -35,6 +35,7 @@ export interface DatosEquipo {
   yo: { id: string; nombre: string; nivel: string; area: string[] };
   empleados: EmpleadoMovil[];
   tareas: TareaMovil[];
+  proyectos: { id: string; nombre: string }[];
 }
 
 // Carga /api/movil/equipo; si la sesión venció, manda al login.

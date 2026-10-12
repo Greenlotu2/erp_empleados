@@ -196,6 +196,19 @@ export default function TareasEquipoPage() {
           </section>
         ))}
       </div>
+
+      {/* Asignar tarea */}
+      <Link
+        href="/movil/asignar"
+        className="fixed right-4 bottom-24 z-10 h-[52px] pl-3.5 pr-[18px] rounded-full bg-blue-600 text-white text-[15px] font-semibold flex items-center gap-1.5 shadow-[0_8px_20px_rgba(37,99,235,0.35)]"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Asignar
+      </Link>
+      {/* Espacio para que el botón no tape la última tarjeta */}
+      <div className="h-16" />
     </>
   );
 }

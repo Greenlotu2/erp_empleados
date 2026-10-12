@@ -48,6 +48,9 @@ export async function GET(req: Request) {
       {
         yo: usuario,
         empleados: empleados.data || [],
+        proyectos: (proyectos.data || [])
+          .map((p) => ({ id: p.id, nombre: p.nombre }))
+          .sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
         tareas: (tareas.data || []).map((t) => ({
           ...t,
           proyecto: t.proyecto_id ? nombreProyecto[t.proyecto_id] || null : null,
