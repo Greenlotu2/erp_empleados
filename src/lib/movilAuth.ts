@@ -56,22 +56,23 @@ export async function verificarMovil(req: Request): Promise<ResultadoMovil> {
     area: emp.area || [],
   };
 
-  if (usuario.nivel === "Gerencia") {
-    return { ok: true, usuario, equipoIds: null };
-  }
+  return { ok: true, usuario, equipoIds: await idsEquipo(usuario) };
+}
 
-  let equipoIds: string[] = [usuario.id];
-  if (usuario.area.length > 0) {
-    const { data: companeros } = await supabaseAdmin
-      .from("empleados")
-      .select("id")
-      .overlaps("area", usuario.area);
-    equipoIds = Array.from(
-      new Set([usuario.id, ...(companeros || []).map((c) => c.id)]),
-    );
-  }
-
-  return { ok: true, usuario, equipoIds };
+// Ids de empleados que puede ver alguien de Gerencia/Coordinación; null = todos.
+// Lo usan la API de la app y los avisos programados (resumen diario, etc.).
+export async function idsEquipo(u: {
+  id: string;
+  nivel: string;
+  area: string[] | null;
+}): Promise<string[] | null> {
+  if (u.nivel === "Gerencia") return null;
+  if (!u.area || u.area.length === 0) return [u.id];
+  const { data: companeros } = await supabaseAdmin
+    .from("empleados")
+    .select("id")
+    .overlaps("area", u.area);
+  return Array.from(new Set([u.id, ...(companeros || []).map((c) => c.id)]));
 }
 
 export function opcionesMovil() {

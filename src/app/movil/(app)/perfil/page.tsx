@@ -1,10 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cerrarSesion } from "../../../../lib/movilSesion";
 import { Avatar, Cargando, ErrorCarga } from "../../_componentes/comunes";
 import { fechaLarga, usePerfil } from "../../_lib/perfil";
+import {
+  activarPush,
+  desactivarPush,
+  estadoPush,
+  type EstadoPush,
+} from "../../_lib/push";
 
 export default function PerfilPage() {
   const router = useRouter();
@@ -86,9 +93,12 @@ export default function PerfilPage() {
           </div>
         </section>
 
+        <Notificaciones />
+
         <button
           type="button"
-          onClick={() => {
+          onClick={async () => {
+            await desactivarPush();
             cerrarSesion();
             router.replace("/movil/login");
           }}
@@ -113,5 +123,84 @@ function Fila({ etiqueta, valor }: { etiqueta: string; valor: string | null | un
         {valor || "Sin capturar"}
       </span>
     </div>
+  );
+}
+
+function Notificaciones() {
+  const [estado, setEstado] = useState<EstadoPush | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  useEffect(() => {
+    estadoPush().then(setEstado);
+  }, []);
+
+  const cambiar = async () => {
+    setAviso(null);
+    setOcupado(true);
+    try {
+      if (estado === "activo") {
+        await desactivarPush();
+      } else {
+        await activarPush();
+        setAviso("Listo. Te mandamos una notificación de prueba.");
+      }
+      setEstado(await estadoPush());
+    } catch (err: any) {
+      setAviso(err.message || "No se pudieron activar las notificaciones.");
+      setEstado(await estadoPush());
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const activo = estado === "activo";
+  const puede = estado === "activo" || estado === "inactivo";
+
+  return (
+    <section className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+      <div className="flex items-center gap-3">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+          <path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" />
+          <path d="M10.5 20a2 2 0 0 0 3 0" />
+        </svg>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-slate-800">Notificaciones</p>
+          <p className="text-xs text-slate-400">Entregas, vencimientos y reuniones</p>
+        </div>
+        {puede && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={activo}
+            aria-label="Notificaciones"
+            disabled={ocupado}
+            onClick={cambiar}
+            className={`w-[46px] h-[26px] rounded-full p-[3px] flex shrink-0 transition-colors cursor-pointer disabled:opacity-50 ${
+              activo ? "bg-blue-600 justify-end" : "bg-slate-300 justify-start"
+            }`}
+          >
+            <span className="w-5 h-5 rounded-full bg-white shadow" />
+          </button>
+        )}
+      </div>
+      {estado === "ios-sin-instalar" && (
+        <p className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 mt-2.5 leading-relaxed">
+          En iPhone primero agrega la app a tu pantalla de inicio: en Safari toca
+          <strong> Compartir </strong>→<strong> Agregar a inicio</strong>, ábrela desde ahí y
+          vuelve a esta pantalla.
+        </p>
+      )}
+      {estado === "no-soportado" && (
+        <p className="text-xs text-slate-500 mt-2">Este navegador no admite notificaciones.</p>
+      )}
+      {estado === "bloqueado" && (
+        <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mt-2.5">
+          Las notificaciones están bloqueadas para este sitio. Actívalas en los ajustes del
+          navegador o del teléfono y vuelve a intentar.
+        </p>
+      )}
+      {aviso && <p className="text-xs text-slate-600 mt-2">{aviso}</p>}
+    </section>
   );
 }

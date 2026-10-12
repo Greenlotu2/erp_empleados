@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/api-auth";
+import { enviarPush, revisoresDe } from "../../../lib/push";
 import { verifyAuthToken } from "../../../lib/auth";
 
 const corsHeaders = {
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
     // A) Obtener información de la tarea (incluye fecha límite para mostrarla en Revisiones)
     const { data: tarea } = await supabaseAdmin
       .from("tareas")
-      .select("proyecto_id, fecha_limite")
+      .select("proyecto_id, fecha_limite, revision_resultado")
       .eq("id", numericTaskId)
       .maybeSingle();
 
@@ -202,6 +203,20 @@ export async function POST(request: NextRequest) {
         // mostrarla como "Corregir" (el comentario queda en el historial).
         .update({ estado: "En Revisión", revision_resultado: null })
         .eq("id", numericTaskId);
+    }
+
+    // E) Push a quien puede revisarla (Gerencia + coordinadores de su área).
+    // Si venía de una corrección se avisa como reenvío.
+    if (targetEmpId) {
+      const reenvio = tarea?.revision_resultado === "Rechazado";
+      await enviarPush(await revisoresDe(targetEmpId), {
+        titulo: reenvio
+          ? `${targetEmpName || "Alguien"} reenvió una corrección`
+          : `${targetEmpName || "Alguien"} envió una tarea a revisión`,
+        cuerpo: taskTitle.trim() + (evidenciaUrl ? " · con evidencia" : ""),
+        url: isNaN(numericTaskId) ? "/movil/avisos" : `/movil/tarea/${numericTaskId}/revisar`,
+        etiqueta: isNaN(numericTaskId) ? undefined : `revision-${numericTaskId}`,
+      });
     }
 
     return NextResponse.json(

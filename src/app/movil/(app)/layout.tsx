@@ -8,6 +8,7 @@ import {
   sesionPermitida,
 } from "../../../lib/movilSesion";
 import { NavInferior } from "../_componentes/comunes";
+import { registrarServiceWorker } from "../_lib/push";
 
 // Pantallas con sesión iniciada (todo /movil salvo /movil/login). Si no hay
 // sesión válida —o es de un nivel sin acceso— manda al login antes de pintar.
@@ -26,6 +27,7 @@ export default function AppMovilLayout({
       router.replace("/movil/login");
       return;
     }
+    registrarServiceWorker();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setListo(true);
   }, [router]);
