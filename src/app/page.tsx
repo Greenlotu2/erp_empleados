@@ -668,7 +668,12 @@ export default function AdminDashboard() {
             role: emp.rol || "Practicante",
             nivel: emp.nivel || "Trabajador",
             area: emp.area || null,
-            especialidad: emp.especialidad || "General",
+            // "General" era el valor por defecto cuando no se capturaba nada; no
+            // distingue a nadie, así que no se muestra en la tarjeta.
+            especialidad:
+              emp.especialidad && emp.especialidad !== "General"
+                ? emp.especialidad
+                : "",
             currentTask: activeTask
               ? activeTask.titulo
               : "Sin tareas asignadas aún",
@@ -1545,7 +1550,7 @@ export default function AdminDashboard() {
           rol: editFormData.rol,
           nivel: editFormData.nivel,
           area: editFormData.area.length > 0 ? editFormData.area : null,
-          especialidad: editFormData.especialidad,
+          especialidad: editFormData.especialidad.trim() || null,
           disponibilidad: editFormData.disponibilidad === "Disponible",
           color: editFormData.color,
           horas_totales_objetivo: esEstudiante
@@ -2697,6 +2702,24 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Especialidad
+                </label>
+                <input
+                  type="text"
+                  value={newEmployeeData.especialidad}
+                  onChange={(e) =>
+                    setNewEmployeeData({
+                      ...newEmployeeData,
+                      especialidad: e.target.value,
+                    })
+                  }
+                  placeholder="Ej. Arquitecto, Ingeniero civil, Contador…"
+                  className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                />
+              </div>
+
               {/* Área solo aplica a Coordinadores y Trabajadores; puede ser más de una. */}
               {newEmployeeData.nivel !== "Gerencia" && (
                 <div>
@@ -2779,7 +2802,7 @@ export default function AdminDashboard() {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Sueldo o Beca
+                  Sueldo o Beca (Mensual)
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">
@@ -2992,6 +3015,24 @@ export default function AdminDashboard() {
                     <option value="Trabajador">Trabajador</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Especialidad
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.especialidad}
+                  onChange={(e) =>
+                    setEditFormData({
+                      ...editFormData,
+                      especialidad: e.target.value,
+                    })
+                  }
+                  placeholder="Ej. Arquitecto, Ingeniero civil, Contador…"
+                  className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                />
               </div>
 
               {/* Área solo aplica a Coordinadores y Trabajadores; puede ser más de una. */}

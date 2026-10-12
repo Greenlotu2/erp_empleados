@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         username: cleanEmail,
         nombre: nombre.trim(),
         rol: rol || "Practicante",
-        especialidad: especialidad || "General",
+        especialidad: especialidad || null,
         disponibilidad: disponibilidad === "Disponible",
         avatar_url: avatarUrl || null,
         color: color || "#2563eb",
