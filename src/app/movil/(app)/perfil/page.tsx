@@ -95,6 +95,20 @@ export default function PerfilPage() {
 
         <Notificaciones />
 
+        <Link
+          href="/movil/perfil/contrasena"
+          className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+            <rect x="4" y="10" width="16" height="11" rx="2" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+          </svg>
+          <span className="flex-1 text-sm text-slate-800">Cambiar contraseña</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m9 6 6 6-6 6" />
+          </svg>
+        </Link>
+
         <button
           type="button"
           onClick={async () => {
