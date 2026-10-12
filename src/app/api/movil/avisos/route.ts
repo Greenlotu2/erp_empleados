@@ -5,6 +5,7 @@ import {
   opcionesMovil,
   verificarMovil,
 } from "../../../../lib/movilAuth";
+import { REUNION_ACTIVA } from "../../../../lib/cronAuth";
 
 // Avisos de la PWA, siempre dentro del alcance del usuario:
 //  - porRevisar: tareas "En Revisión" (mismo criterio que la pantalla Tareas),
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
       supabaseAdmin
         .from("reuniones")
         .select("id, titulo, fecha_inicio, link, lugar, empleado_id, creado_por, tarea_id")
-        .eq("estado", "Programada")
+        .in("estado", REUNION_ACTIVA)
         .gte("fecha_inicio", ahora.toISOString())
         .lte("fecha_inicio", new Date(ahora.getTime() + 7 * DIA).toISOString())
         .order("fecha_inicio"),
@@ -91,13 +92,15 @@ export async function GET(req: Request) {
     const visibles = new Set(equipoIds || []);
     const reunionesUnicas = new Map<string, any>();
     (reuniones.data || []).forEach((r) => {
+      // Sin participante = reunión de todo el equipo: la ven todos.
       const propia =
-        !equipoIds || visibles.has(r.empleado_id) || r.creado_por === usuario.id;
+        !equipoIds || !r.empleado_id || visibles.has(r.empleado_id) || r.creado_por === usuario.id;
       if (!propia) return;
       const clave = `${r.titulo}|${r.fecha_inicio}`;
       const previa = reunionesUnicas.get(clave);
-      if (previa) previa.participantes.add(r.empleado_id);
-      else reunionesUnicas.set(clave, { ...r, participantes: new Set([r.empleado_id]) });
+      const nuevo = previa || { ...r, participantes: new Set<string>() };
+      if (r.empleado_id) nuevo.participantes.add(r.empleado_id);
+      reunionesUnicas.set(clave, nuevo);
     });
 
     return NextResponse.json(

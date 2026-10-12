@@ -11,3 +11,7 @@ const DIA = 24 * 3600 * 1000;
 export function fechaMx(dias = 0) {
   return new Date(Date.now() - 6 * 3600 * 1000 + dias * DIA).toISOString().slice(0, 10);
 }
+
+// Estados de una reunión que todavía va a ocurrir: "Programada" al crearla y
+// "Ajuste por tiempo" cuando se movió o editó en el calendario.
+export const REUNION_ACTIVA = ["Programada", "Ajuste por tiempo"];

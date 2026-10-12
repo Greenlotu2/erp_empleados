@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/api-auth";
-import { esCronAutorizado, fechaMx } from "../../../../lib/cronAuth";
+import { esCronAutorizado, fechaMx, REUNION_ACTIVA } from "../../../../lib/cronAuth";
 import { idsEquipo } from "../../../../lib/movilAuth";
 import { enviarPush, primeraVez } from "../../../../lib/push";
 
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     supabaseAdmin
       .from("reuniones")
       .select("titulo, fecha_inicio, empleado_id, creado_por")
-      .eq("estado", "Programada")
+      .in("estado", REUNION_ACTIVA)
       .gte("fecha_inicio", inicioDia)
       .lte("fecha_inicio", finDia),
   ]);
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
     const vencenHoy = activas.filter((t) => t.fecha_limite.slice(0, 10) === hoy).length;
     const juntas = new Set(
       (reuniones || [])
-        .filter((r) => enEquipo(r.empleado_id) || r.creado_por === d.id)
+        .filter((r) => !r.empleado_id || enEquipo(r.empleado_id) || r.creado_por === d.id)
         .map((r) => `${r.titulo}|${r.fecha_inicio}`),
     ).size;
 
