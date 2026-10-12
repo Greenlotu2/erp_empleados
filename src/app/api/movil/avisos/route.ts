@@ -77,11 +77,11 @@ export async function GET(req: Request) {
     if (idsRevision.length > 0) {
       const { data } = await supabaseAdmin
         .from("revisiones")
-        .select("tarea_id, created_at")
+        .select("tarea_id, fecha_solicitud")
         .in("tarea_id", idsRevision);
       (data || []).forEach((r) => {
-        if (!envio[r.tarea_id] || r.created_at > envio[r.tarea_id]) {
-          envio[r.tarea_id] = r.created_at;
+        if (!envio[r.tarea_id] || r.fecha_solicitud > envio[r.tarea_id]) {
+          envio[r.tarea_id] = r.fecha_solicitud;
         }
       });
     }

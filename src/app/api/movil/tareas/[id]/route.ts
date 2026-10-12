@@ -72,7 +72,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/movil/tareas/[id
           : Promise.resolve({ data: null }),
         supabaseAdmin
           .from("revisiones")
-          .select("id, created_at, comentarios, evidencia_url, evidencia_nombre")
+          .select("id, fecha_solicitud, comentarios, evidencia_url, evidencia_nombre")
           .eq("tarea_id", tareaId),
         supabaseAdmin
           .from("reuniones")
@@ -100,7 +100,8 @@ export async function GET(req: Request, ctx: RouteContext<"/api/movil/tareas/[id
         (revisiones.data || []).map(async (r) => ({
           clave: `rev-${r.id}`,
           tipo: "revision",
-          fecha: r.created_at,
+          // `revisiones` no tiene created_at: su fecha es fecha_solicitud.
+          fecha: r.fecha_solicitud,
           titulo: "Enviada a revisión",
           cuerpo: r.comentarios || "",
           archivo: r.evidencia_url

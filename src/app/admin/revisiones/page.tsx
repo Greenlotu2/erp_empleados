@@ -834,7 +834,7 @@ export default function RevisionesPage() {
       eventos.push({
         key: `rev-${r.id}`,
         tipo: "revision",
-        fecha: r.created_at || r.fecha || "",
+        fecha: r.fecha_solicitud || r.created_at || r.fecha || "",
         titulo: "Enviada a revisión",
         cuerpo: r.comentarios || "",
         meta: {
