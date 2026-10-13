@@ -70,6 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const OJO_ABIERTO = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const OJO_CERRADO = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6A17.4 17.4 0 0 0 2 12s3.5 7 10 7a9.8 9.8 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
   // ==========================================
   // 1. RENDERIZADO DEL LOGIN
   // ==========================================
@@ -90,12 +93,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div class="form-group">
           <label class="form-label">Contraseña</label>
-          <input type="password" id="c-pass" placeholder="••••••••" class="form-input">
+          <div style="position: relative;">
+            <input type="password" id="c-pass" placeholder="••••••••" class="form-input" style="padding-right: 30px;">
+            <button type="button" id="c-verPass" class="ver-pass" title="Mostrar contraseña" aria-label="Mostrar contraseña">${OJO_ABIERTO}</button>
+          </div>
         </div>
 
         <button id="c-btnLogin" class="btn-submit">Conectar al ERP</button>
       </div>
     `;
+
+    // 👁 Mostrar/ocultar la contraseña mientras se escribe.
+    const verPass = document.getElementById('c-verPass');
+    verPass.onclick = () => {
+      const campo = document.getElementById('c-pass');
+      const mostrar = campo.type === 'password';
+      campo.type = mostrar ? 'text' : 'password';
+      verPass.innerHTML = mostrar ? OJO_CERRADO : OJO_ABIERTO;
+      const texto = mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña';
+      verPass.title = texto;
+      verPass.setAttribute('aria-label', texto);
+    };
 
     document.getElementById('c-btnLogin').onclick = async () => {
       const email = document.getElementById('c-user').value.trim();
