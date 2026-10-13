@@ -1,4 +1,12 @@
-import type { Viewport } from "next";
+import type { Metadata, Viewport } from "next";
+
+// iPhone no usa el manifest para el ícono ni el nombre de la pantalla de
+// inicio: toma apple-touch-icon y appleWebApp.title.
+export const metadata: Metadata = {
+  title: "Rocal ERP",
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Rocal ERP", statusBarStyle: "default" },
+};
 
 // El color de la barra de estado cuando está instalada como PWA.
 export const viewport: Viewport = {

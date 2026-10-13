@@ -5,26 +5,25 @@ import type { MetadataRoute } from "next";
 // dashboard admin (todo lo demás) no se ve afectado ni se vuelve instalable.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Rocal — Panel del Empleado",
-    short_name: "Rocal Móvil",
-    description:
-      "Consulta tus tareas y avisos, y revisa entregas desde el celular.",
+    name: "Rocal ERP",
+    short_name: "Rocal ERP",
+    description: "Supervisa a tu equipo y revisa entregas desde el celular.",
     start_url: "/movil",
     scope: "/movil",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#f8fafc",
+    // Fondo de la pantalla de arranque: negro, igual que el ícono.
+    background_color: "#000000",
     theme_color: "#2563eb",
+    // Fondo negro sólido (el PNG original era transparente y Android lo
+    // rellenaba de blanco). La versión maskable deja margen para que el
+    // recorte circular/redondeado del launcher no corte el logo.
     icons: [
+      { src: "/icono-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icono-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       {
-        src: "/icono_rocal.png",
-        sizes: "268x268",
-        type: "image/png",
-        purpose: "any",
-      },
-      {
-        src: "/icono_rocal.png",
-        sizes: "268x268",
+        src: "/icono-maskable-512.png",
+        sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
       },
