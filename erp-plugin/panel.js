@@ -145,16 +145,16 @@ document.addEventListener('DOMContentLoaded', () => {
       <!-- Tarjeta de Usuario -->
       <div class="user-card">
         <div class="avatar">
-          ${(usuarioAutenticado.nombre || usuarioAutenticado.name || 'E').charAt(0).toUpperCase()}
+          ${escapeHtml((usuarioAutenticado.nombre || usuarioAutenticado.name || 'E').charAt(0).toUpperCase())}
         </div>
         <div class="user-info">
-          <div class="user-name">${usuarioAutenticado.nombre || usuarioAutenticado.name || 'Empleado'}</div>
+          <div class="user-name">${escapeHtml(usuarioAutenticado.nombre || usuarioAutenticado.name || 'Empleado')}</div>
           <div class="user-role-container">
             <div class="status-dot"></div>
-            <span class="user-role">${usuarioAutenticado.rol || usuarioAutenticado.role || 'Personal'}</span>
+            <span class="user-role">${escapeHtml(usuarioAutenticado.rol || usuarioAutenticado.role || 'Personal')}</span>
           </div>
         </div>
-        <span id="rewards-badge" class="rewards-badge" title="Puntos de recompensa">🏆 ${usuarioAutenticado.puntos_recompensa || 0} pts</span>
+        <span id="rewards-badge" class="rewards-badge" title="Puntos de recompensa">🏆 ${Number(usuarioAutenticado.puntos_recompensa) || 0} pts</span>
       </div>
 
       <!-- Widget de Timer Automático -->
@@ -225,6 +225,16 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // Solo enlaces http(s) (Zoom, Meet, etc.); cualquier otro esquema se descarta.
+  function enlaceSeguro(url) {
+    try {
+      const u = new URL(String(url || ''));
+      return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null;
+    } catch {
+      return null;
+    }
+  }
+
   function formatFechaHora(iso) {
     const d = new Date(iso);
     if (isNaN(d)) return '';
@@ -255,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${t.revision_comentario ? `<div class="review-approved-body">“${escapeHtml(t.revision_comentario)}”</div>` : ''}
             <div class="review-comment-date">${escapeHtml(t.revision_por || '')}${t.revision_por ? ' · ' : ''}${formatFechaHora(t.revision_fecha)}</div>
           </div>
-          <button class="review-approved-close" data-key="${t.id}|${t.revision_fecha}" title="Cerrar">✕</button>
+          <button class="review-approved-close" data-key="${escapeHtml(`${t.id}|${t.revision_fecha}`)}" title="Cerrar">✕</button>
         </div>`).join('');
 
       cont.querySelectorAll('.review-approved-close').forEach(btn => {
@@ -488,9 +498,9 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `<p style="font-size:10px; color:#64748b; padding: 2px 2px;">Todavía no has ganado puntos — se otorgan al completar tareas.</p>`
       : historial.map(h => `
           <div style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding: 4px 6px; gap: 4px;">
-            <span style="font-size:10px; color:#e2e8f0; flex:1; min-width:0;">${h.motivo}</span>
+            <span style="font-size:10px; color:#e2e8f0; flex:1; min-width:0;">${escapeHtml(h.motivo)}</span>
             <div style="display:flex; align-items:center; gap: 3px; flex-shrink:0;">
-              <span style="font-size:10px; font-weight:700; color:#6ee7b7;">+${h.puntos} pts</span>
+              <span style="font-size:10px; font-weight:700; color:#6ee7b7;">+${Number(h.puntos) || 0} pts</span>
               <span style="font-size:9px; color:#64748b; font-family:monospace;">${formatFechaCorta(h.created_at)}</span>
             </div>
           </div>
@@ -641,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText = '⚠️ Vencida';
           }
 
-          const desc = t.descripcion ? `<div class="card-desc">${t.descripcion}</div>` : '';
+          const desc = t.descripcion ? `<div class="card-desc">${escapeHtml(t.descripcion)}</div>` : '';
           const comentarioRevision = porCorregir ? `
             <div class="review-comment">
               <div class="review-comment-title">💬 Correcciones de ${escapeHtml(t.revision_por || 'tu coordinador')}</div>
@@ -649,13 +659,13 @@ document.addEventListener('DOMContentLoaded', () => {
               ${t.revision_fecha ? `<div class="review-comment-date">${formatFechaHora(t.revision_fecha)}</div>` : ''}
             </div>` : '';
           if (porCorregir) item.classList.add('card-fix');
-          const fechaLim = t.fecha_limite ? `<span>📅 ${t.fecha_limite}</span>` : '<span>📅 Sin fecha límite</span>';
+          const fechaLim = t.fecha_limite ? `<span>📅 ${escapeHtml(t.fecha_limite)}</span>` : '<span>📅 Sin fecha límite</span>';
           const proyectoNombre = t.proyectos?.nombre || t.proyecto_nombre || 'General';
 
           item.innerHTML = `
             <div class="card-header">
-              <span class="card-title">${t.titulo || t.descripcion || 'Tarea sin título'}</span>
-              <span class="card-badge badge-project">📁 ${proyectoNombre}</span>
+              <span class="card-title">${escapeHtml(t.titulo || t.descripcion || 'Tarea sin título')}</span>
+              <span class="card-badge badge-project">📁 ${escapeHtml(proyectoNombre)}</span>
             </div>
             
             ${desc}
@@ -671,10 +681,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card-actions">
                   <label class="btn-attach${evidenciasPendientes.has(String(t.id)) ? ' has-file' : ''}" title="Adjuntar evidencia (opcional, máx. 5MB)">
                     📎
-                    <input type="file" class="file-evidencia" data-id="${t.id}" style="display:none">
+                    <input type="file" class="file-evidencia" data-id="${escapeHtml(t.id)}" style="display:none">
                   </label>
-                  <span class="evidence-name" data-id="${t.id}">${evidenciasPendientes.get(String(t.id))?.nombre || ''}</span>
-                  <button class="btn-action btn-review" data-id="${t.id}" data-title="${t.titulo || t.descripcion}">
+                  <span class="evidence-name" data-id="${escapeHtml(t.id)}">${escapeHtml(evidenciasPendientes.get(String(t.id))?.nombre || '')}</span>
+                  <button class="btn-action btn-review" data-id="${escapeHtml(t.id)}" data-title="${escapeHtml(t.titulo || t.descripcion)}">
                     ${porCorregir ? '🚀 Reenviar' : '🚀 Enviar a Revisión'}
                   </button>
                 </div>
@@ -772,18 +782,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
           item.innerHTML = `
             <div class="card-header">
-              <span class="card-title" style="color:#a5b4fc;">${m.titulo || 'Reunión de equipo'}</span>
-              <span class="card-badge badge-time">⏰ ${horaDisplay}</span>
+              <span class="card-title" style="color:#a5b4fc;">${escapeHtml(m.titulo || 'Reunión de equipo')}</span>
+              <span class="card-badge badge-time">⏰ ${escapeHtml(horaDisplay)}</span>
             </div>
 
-            <div class="card-desc">${m.descripcion || 'Sin orden del día.'}</div>
+            <div class="card-desc">${escapeHtml(m.descripcion || 'Sin orden del día.')}</div>
 
             <div class="card-footer">
               <div class="card-meta">
-                <span>📅 ${fechaDisplay}</span>
+                <span>📅 ${escapeHtml(fechaDisplay)}</span>
               </div>
-              ${m.link ? `
-                <a href="${m.link}" target="_blank" class="btn-meeting-link">
+              ${enlaceSeguro(m.link) ? `
+                <a href="${escapeHtml(enlaceSeguro(m.link))}" target="_blank" rel="noopener noreferrer" class="btn-meeting-link">
                   🔗 Unirme a sesión
                 </a>
               ` : '<span style="font-size:9px; color:#64748b;">Sin enlace asignado</span>'}
