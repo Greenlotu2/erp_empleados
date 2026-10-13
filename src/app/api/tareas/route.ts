@@ -93,10 +93,25 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'No tienes permisos para modificar esta tarea' }, { status: 403, headers: corsHeaders });
     }
 
-    // C) Construir payload de actualización
+    // C) Construir payload de actualización.
+    // 🛡️ El ESTADO solo lo cambia un administrador: un trabajador podía
+    // marcar su tarea como "Completada" sin pasar por revisión (y ganar los
+    // puntos que da el trigger). Él solo reporta su avance, de 0 a 100.
+    if (estado !== undefined && !isAdmin) {
+      return NextResponse.json({ error: 'Solo un administrador puede cambiar el estado de la tarea' }, { status: 403, headers: corsHeaders });
+    }
     const updatePayload: any = {};
     if (estado !== undefined) updatePayload.estado = estado;
-    if (porcentajeAvance !== undefined) updatePayload.porcentaje_avance = porcentajeAvance;
+    if (porcentajeAvance !== undefined) {
+      const avance = Number(porcentajeAvance);
+      if (!Number.isFinite(avance) || avance < 0 || avance > 100) {
+        return NextResponse.json({ error: 'El avance debe estar entre 0 y 100' }, { status: 400, headers: corsHeaders });
+      }
+      updatePayload.porcentaje_avance = Math.round(avance);
+    }
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400, headers: corsHeaders });
+    }
 
     const { data: updatedTask, error: updateErr } = await supabaseAdmin
       .from('tareas')

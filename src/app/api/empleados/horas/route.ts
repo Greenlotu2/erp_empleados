@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/api-auth";
 import { verifyAuthToken } from "../../../../lib/auth";
 
+// Mismo límite que la extensión (MAX_DAILY_SECONDS = 5 h), ahora en el servidor.
+const TOPE_DIARIO_HORAS = 5;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, PATCH, OPTIONS",
@@ -92,6 +95,41 @@ export async function PATCH(req: NextRequest) {
     // 3. Aplicar el cambio de horas.
     //    - deltaHoras  -> incremento ATÓMICO en la base (sin carrera entre panel y background).
     //    - horasAcumuladas -> valor absoluto (compatibilidad; solo para correcciones puntuales).
+    // 🛡️ Un empleado (no admin) solo SUMA horas propias, con tope diario en la
+    // base: antes podía sumarse cualquier cantidad, fijar su total o bajar su
+    // meta de horas mandando la petición a mano.
+    if (!isAdmin) {
+      if (horasAcumuladas !== undefined) {
+        return NextResponse.json(
+          { error: "Solo un administrador puede fijar el total de horas" },
+          { status: 403, headers: corsHeaders },
+        );
+      }
+      const delta = Number(deltaHoras);
+      if (!Number.isFinite(delta) || delta <= 0) {
+        return NextResponse.json(
+          { error: "deltaHoras inválido" },
+          { status: 400, headers: corsHeaders },
+        );
+      }
+      // Suma solo lo que quepa en el tope del día (hora de México) y devuelve
+      // el total. Un envío grande (p. ej. el cierre de turno del proceso de
+      // fondo) se recorta en vez de rechazarse, para no perder horas reales.
+      const { data: nuevoTotal, error: rpcErr } = await supabaseAdmin.rpc(
+        "sumar_horas_con_tope",
+        {
+          p_empleado_id: user.id,
+          p_delta: Math.min(delta, TOPE_DIARIO_HORAS),
+          p_tope: TOPE_DIARIO_HORAS,
+        },
+      );
+      if (rpcErr) throw rpcErr;
+      return NextResponse.json(
+        { success: true, horas_acumuladas: nuevoTotal },
+        { status: 200, headers: corsHeaders },
+      );
+    }
+
     if (deltaHoras !== undefined) {
       const delta = Number(deltaHoras);
       if (!Number.isFinite(delta)) {

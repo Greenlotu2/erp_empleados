@@ -1,15 +1,24 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuthToken } from '../../../../lib/auth';
+import { empleadoDeSesion, esAdminWeb } from '../../../../lib/adminWeb';
+import { supabaseAdmin } from '../../../../lib/api-auth';
+
+async function empleadoPorId(id: string) {
+  const { data } = await supabaseAdmin.from('empleados').select('nivel').eq('id', id).maybeSingle();
+  return data;
+}
 
 export async function POST(req: NextRequest) {
   try {
     let isAuthorized = false;
 
     // 🔒 1. Intento A: Verificar Token JWT en encabezado Authorization (Bearer)
+    // Con token: solo Gerencia/Coordinación (la IA cuesta en cada llamada).
     const jwtCaller = verifyAuthToken(req);
     if (jwtCaller) {
-      isAuthorized = true;
+      const emp = await empleadoPorId(jwtCaller.id);
+      if (emp?.nivel === 'Gerencia' || emp?.nivel === 'Coordinador') isAuthorized = true;
     }
 
     // 🔒 2. Intento B: Verificar Sesión de Supabase vía Cookies (Panel Web)
@@ -27,8 +36,9 @@ export async function POST(req: NextRequest) {
         }
       );
 
+      // Una sesión cualquiera no basta: debe ser de un empleado administrador.
       const { data: { user } } = await supabaseSsr.auth.getUser();
-      if (user) {
+      if (user && esAdminWeb(await empleadoDeSesion(user.id))) {
         isAuthorized = true;
       }
     }

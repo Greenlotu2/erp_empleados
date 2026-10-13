@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuthToken } from '../../../../lib/auth';
+import { supabaseAdmin } from '../../../../lib/api-auth';
+import { empleadoDeSesion, esAdminWeb } from '../../../../lib/adminWeb';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,8 +44,17 @@ export async function POST(req: NextRequest) {
   // (JWT de la extensión o cookie de sesión del panel web).
   let isAuthorized = false;
 
+  // Con token (extensión/app) solo Gerencia o Coordinación: un trabajador no
+  // crea reuniones con la cuenta de Zoom de la empresa.
   const jwtCaller = verifyAuthToken(req);
-  if (jwtCaller) isAuthorized = true;
+  if (jwtCaller) {
+    const { data: emp } = await supabaseAdmin
+      .from('empleados')
+      .select('nivel')
+      .eq('id', jwtCaller.id)
+      .maybeSingle();
+    if (emp?.nivel === 'Gerencia' || emp?.nivel === 'Coordinador') isAuthorized = true;
+  }
 
   if (!isAuthorized) {
     const supabaseSsr = createServerClient(
@@ -59,8 +70,9 @@ export async function POST(req: NextRequest) {
       }
     );
 
+    // Una sesión cualquiera no basta: debe ser de un empleado administrador.
     const { data: { user } } = await supabaseSsr.auth.getUser();
-    if (user) isAuthorized = true;
+    if (user && esAdminWeb(await empleadoDeSesion(user.id))) isAuthorized = true;
   }
 
   if (!isAuthorized) {

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { verifyAuthToken } from "../../../lib/auth";
+import { empleadoDeSesion, esAdminWeb } from "../../../lib/adminWeb";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,14 +45,9 @@ export async function POST(request: NextRequest) {
 
       if (user) {
         // Consultar rol en la tabla empleados
-        const { data: emp } = await supabaseAdmin
-          .from("empleados")
-          .select("rol")
-          .or(`user_id.eq.${user.id},username.ilike.${user.email}`)
-          .maybeSingle();
-
-        const role = emp?.rol?.toLowerCase();
-        if (role === "admin" || role === "administrador") {
+        // Solo por user_id (ver lib/adminWeb.ts: el ilike por correo
+        // permitía suplantar a un administrador con comodines).
+        if (esAdminWeb(await empleadoDeSesion(user.id))) {
           isAuthorized = true;
         }
       }

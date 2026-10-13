@@ -10,6 +10,7 @@ import {
   MENSAJE_BLOQUEO,
 } from "../../../../lib/rateLimitLogin";
 import { sinPersistencia } from "../../../../lib/sessionCookies";
+import { empleadoDeSesion, esAdminWeb } from "../../../../lib/adminWeb";
 
 // Login del dashboard web. Antes el navegador llamaba directo a
 // `supabase.auth.signInWithPassword`, así que no había forma de limitar los
@@ -101,14 +102,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Solo administradores usan el dashboard web.
-    const { data: empleado } = await supabaseAdmin
-      .from("empleados")
-      .select("rol")
-      .or(`user_id.eq.${authData.user.id},username.ilike.${targetEmail}`)
-      .maybeSingle();
-
-    const rol = (empleado?.rol || "").toLowerCase().trim();
-    if (rol !== "admin" && rol !== "administrador") {
+    // Solo por user_id (ver lib/adminWeb.ts: el ilike por correo admitía comodines).
+    if (!esAdminWeb(await empleadoDeSesion(authData.user.id))) {
       // Credenciales correctas pero sin permiso: cerrar la sesión recién abierta
       // para no dejar cookies válidas. No cuenta como intento fallido.
       await supabase.auth.signOut();

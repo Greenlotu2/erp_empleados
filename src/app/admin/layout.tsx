@@ -27,13 +27,12 @@ export default function AdminLayout({
           return;
         }
 
-        const userEmail = session.user.email?.trim().toLowerCase() || "";
-
         // 2. Consultar el rol en 'empleados' filtrando 'username' (que guarda el email) o 'id'
         const { data: empleado, error } = await supabase
           .from("empleados")
           .select("rol")
-          .or(`username.ilike.${userEmail},id.eq.${session.user.id}`)
+          // Solo por user_id: el ilike por correo admitía comodines (_ y %).
+          .eq("user_id", session.user.id)
           .maybeSingle();
 
         if (error) {

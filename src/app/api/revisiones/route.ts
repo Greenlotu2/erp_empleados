@@ -9,6 +9,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+// Tipos de archivo de evidencia que se guardan con su tipo real.
+const TIPOS_EVIDENCIA = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+  "application/zip",
+]);
+
 // 1. OBTENER HISTORIAL DE REVISIONES (GET)
 export async function GET(request: NextRequest) {
   const user = verifyAuthToken(request);
@@ -67,8 +86,6 @@ export async function POST(request: NextRequest) {
     const {
       taskId,
       taskTitle,
-      employeeId,
-      employeeName,
       comentarios,
       evidenciaBase64,
       evidenciaNombre,
@@ -85,8 +102,38 @@ export async function POST(request: NextRequest) {
     // Convertir taskId a número (coincide con BIGINT en Supabase)
     const numericTaskId =
       typeof taskId === "number" ? taskId : parseInt(taskId, 10);
-    const targetEmpId = employeeId || user.id;
-    const targetEmpName = employeeName || user.email;
+    if (isNaN(numericTaskId)) {
+      return NextResponse.json(
+        { error: "Tarea no válida" },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    // 🛡️ Solo el responsable o un colaborador envía la tarea a revisión, y
+    // SIEMPRE a nombre de quien tiene la sesión: `employeeId`/`employeeName`
+    // del cuerpo se ignoran (antes permitían enviar tareas ajenas y suplantar).
+    const { data: tareaDuenio } = await supabaseAdmin
+      .from("tareas")
+      .select("empleado_id, colaboradores_ids")
+      .eq("id", numericTaskId)
+      .maybeSingle();
+    const esSuya =
+      tareaDuenio &&
+      (tareaDuenio.empleado_id === user.id ||
+        (tareaDuenio.colaboradores_ids || []).includes(user.id));
+    if (!esSuya) {
+      return NextResponse.json(
+        { error: "No puedes enviar a revisión una tarea que no es tuya" },
+        { status: 403, headers: corsHeaders },
+      );
+    }
+    const targetEmpId = user.id;
+    const { data: yo } = await supabaseAdmin
+      .from("empleados")
+      .select("nombre")
+      .eq("id", user.id)
+      .maybeSingle();
+    const targetEmpName = yo?.nombre || user.email;
 
     // 🛡️ Idempotencia: si la tarea YA está en 'En Revisión' es que un envío anterior
     // (ej. un doble clic en "Enviar a Revisión" antes de que la extensión alcance a
@@ -137,7 +184,11 @@ export async function POST(request: NextRequest) {
         const { error: uploadErr } = await supabaseAdmin.storage
           .from("documentacion")
           .upload(path, buffer, {
-            contentType: evidenciaTipo || "application/octet-stream",
+            // 🛡️ Solo tipos conocidos; cualquier otro (p. ej. text/html) se
+            // guarda como descarga para que nunca se abra como página.
+            contentType: TIPOS_EVIDENCIA.has(String(evidenciaTipo))
+              ? String(evidenciaTipo)
+              : "application/octet-stream",
           });
 
         if (!uploadErr) {

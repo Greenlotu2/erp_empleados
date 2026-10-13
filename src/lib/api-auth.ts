@@ -58,7 +58,7 @@ export async function verifyApiToken(req: Request) {
   const { data: empleado } = await supabaseAdmin
     .from('empleados')
     .select('id, nombre, rol, username, user_id, horas_acumuladas, horas_totales_objetivo')
-    .or(`user_id.eq.${user.id},username.ilike.${user.email}`)
+    .eq('user_id', user.id) // solo por id de sesión: el ilike por correo admitía comodines
     .maybeSingle();
 
   return { user, empleado, token, error: null };

@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyAuthToken } from "../../../../lib/auth";
+import { empleadoDeSesion, esAdminWeb } from "../../../../lib/adminWeb";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,14 +33,8 @@ async function esAdmin(request: NextRequest): Promise<boolean> {
   } = await supabaseSsr.auth.getUser();
   if (!user) return false;
 
-  const { data: emp } = await supabaseAdmin
-    .from("empleados")
-    .select("rol")
-    .or(`user_id.eq.${user.id},username.ilike.${user.email}`)
-    .maybeSingle();
-
-  const rol = emp?.rol?.toLowerCase();
-  return rol === "admin" || rol === "administrador";
+  // Solo por user_id (ver lib/adminWeb.ts).
+  return esAdminWeb(await empleadoDeSesion(user.id));
 }
 
 export async function POST(request: NextRequest) {
