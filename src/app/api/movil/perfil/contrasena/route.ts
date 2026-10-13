@@ -13,17 +13,12 @@ import {
   MENSAJE_BLOQUEO,
   registrarFallo,
 } from "../../../../../lib/rateLimitLogin";
+import { fijarContrasena, MIN_CONTRASENA } from "../../../../../lib/contrasenas";
 
-// Cambiar la contraseña propia desde la PWA. La contraseña vive en DOS lugares
-// y ambos deben quedar iguales:
-//  - Supabase Auth (empleados.user_id): login de la web /login.
-//  - empleados_auth.password_hash (bcrypt): login de la extensión y de la app.
-// Se cambia primero Supabase Auth (que aplica su propia política de
-// contraseñas); si luego falla empleados_auth, se regresa Supabase Auth a la
-// contraseña actual para no dejarlas desincronizadas. Los intentos con la
-// contraseña actual equivocada cuentan para el mismo bloqueo que el login.
-
-const MIN = 8;
+// Cambiar la contraseña propia desde la PWA. Se guarda en los dos lugares donde
+// vive (ver lib/contrasenas.ts) y, si algo falla, vuelve a la actual. Los
+// intentos con la contraseña actual equivocada cuentan para el mismo bloqueo
+// que el login.
 
 const responder = (cuerpo: object, status: number) =>
   NextResponse.json(cuerpo, { status, headers: corsMovil });
@@ -40,8 +35,8 @@ export async function POST(req: Request) {
   if (!actual || !nueva) {
     return responder({ error: "Escribe tu contraseña actual y la nueva." }, 400);
   }
-  if (nueva.length < MIN) {
-    return responder({ error: `La nueva contraseña debe tener al menos ${MIN} caracteres.` }, 400);
+  if (nueva.length < MIN_CONTRASENA) {
+    return responder({ error: `La nueva contraseña debe tener al menos ${MIN_CONTRASENA} caracteres.` }, 400);
   }
   if (nueva === actual) {
     return responder({ error: "La nueva contraseña debe ser distinta de la actual." }, 400);
@@ -73,34 +68,9 @@ export async function POST(req: Request) {
     }
     await limpiarFallos(correo);
 
-    // 2) Supabase Auth (login web).
-    if (emp?.user_id) {
-      const { error } = await supabaseAdmin.auth.admin.updateUserById(emp.user_id, {
-        password: nueva,
-      });
-      if (error) {
-        return responder(
-          { error: `No se pudo cambiar la contraseña: ${error.message}` },
-          400,
-        );
-      }
-    }
-
-    // 3) empleados_auth (extensión y app). Si falla, se revierte el paso 2.
-    const { error: errHash } = await supabaseAdmin.from("empleados_auth").upsert(
-      {
-        empleado_id: usuario.id,
-        password_hash: await bcrypt.hash(nueva, 10),
-        password: null,
-      },
-      { onConflict: "empleado_id" },
-    );
-    if (errHash) {
-      if (emp?.user_id) {
-        await supabaseAdmin.auth.admin.updateUserById(emp.user_id, { password: actual });
-      }
-      throw errHash;
-    }
+    // 2) Guardar en los dos lugares (web y extensión/app); revierte si falla.
+    const r = await fijarContrasena(usuario.id, nueva, actual);
+    if (!r.ok) return responder({ error: r.error }, 400);
 
     return responder({ success: true }, 200);
   } catch (err: any) {

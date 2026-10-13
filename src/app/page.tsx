@@ -10,6 +10,7 @@ import { getCurrentAdminId } from "../lib/currentAdmin";
 import { PALETA_EMPLEADOS, colorLibreEmpleado } from "../lib/coloresEmpleados";
 import { ModalOverlay } from "../components/ModalOverlay";
 import { abrirArchivo } from "../lib/storageUrls";
+import { RestablecerContrasena } from "../components/RestablecerContrasena";
 
 // Áreas del organigrama (bajo cada Coordinador) — usadas para agrupar a los
 // Trabajadores en el panel "Equipo" del calendario de revisiones y del Panel
@@ -517,6 +518,11 @@ export default function AdminDashboard() {
   });
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // Integrante al que se le está restableciendo la contraseña (modal aparte).
+  const [restablecerPara, setRestablecerPara] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const [editFormData, setEditFormData] = useState({
@@ -3176,6 +3182,25 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
+              {/* Solo Gerencia/Coordinación (el servidor además limita a su área). */}
+              {["Gerencia", "Coordinador"].includes(
+                employees.find((e) => e.id === currentAdminId)?.nivel || "",
+              ) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRestablecerPara({
+                      id: selectedEmployee.id,
+                      name: selectedEmployee.name,
+                    });
+                    setIsEditModalOpen(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-1 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 py-1.5 rounded-xl font-semibold cursor-pointer"
+                >
+                  <Icon name="key" size={12} /> Restablecer contraseña
+                </button>
+              )}
+
               <div className="flex gap-1 pt-1.5 border-t border-slate-100">
                 <button
                   type="button"
@@ -3194,6 +3219,13 @@ export default function AdminDashboard() {
             </form>
           </div>
         </ModalOverlay>
+      )}
+
+      {restablecerPara && (
+        <RestablecerContrasena
+          empleado={restablecerPara}
+          onClose={() => setRestablecerPara(null)}
+        />
       )}
 
       {/* 🗑️ MODAL DE ELIMINACIÓN DE EMPLEADO */}
