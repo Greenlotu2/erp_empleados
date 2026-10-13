@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../../../lib/api-auth";
 import { fijarContrasena, MIN_CONTRASENA } from "../../../lib/contrasenas";
 import { idsEquipo } from "../../../lib/movilAuth";
 import { limpiarFallos } from "../../../lib/rateLimitLogin";
+import { limpiarCredencial } from "../../../lib/credenciales";
 
 // Restablecer la contraseña de un integrante desde el Panel Principal (web),
 // p. ej. cuando un trabajador la olvida. Quién puede:
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const b = await req.json().catch(() => ({}));
   const empleadoId = String(b?.empleadoId || "");
-  const nueva = String(b?.nueva || "");
+  const nueva = limpiarCredencial(b?.nueva);
   if (!empleadoId) return json({ error: "Falta el integrante." }, 400);
   if (nueva.length < MIN_CONTRASENA) {
     return json({ error: `La contraseña debe tener al menos ${MIN_CONTRASENA} caracteres.` }, 400);

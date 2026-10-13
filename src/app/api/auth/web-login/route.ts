@@ -11,6 +11,7 @@ import {
 } from "../../../../lib/rateLimitLogin";
 import { sinPersistencia } from "../../../../lib/sessionCookies";
 import { empleadoDeSesion, esAdminWeb } from "../../../../lib/adminWeb";
+import { limpiarCredencial } from "../../../../lib/credenciales";
 
 // Login del dashboard web. Antes el navegador llamaba directo a
 // `supabase.auth.signInWithPassword`, así que no había forma de limitar los
@@ -23,7 +24,11 @@ import { empleadoDeSesion, esAdminWeb } from "../../../../lib/adminWeb";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userInput, password } = await req.json();
+    const cuerpo = await req.json();
+    // Sin espacios ni caracteres invisibles que se cuelan al copiar y pegar.
+    const userInput = limpiarCredencial(cuerpo?.userInput);
+    const passwordCruda = String(cuerpo?.password ?? "");
+    const password = limpiarCredencial(passwordCruda);
 
     if (!userInput || !password) {
       return NextResponse.json(
@@ -71,11 +76,18 @@ export async function POST(req: NextRequest) {
       },
     );
 
-    const { data: authData, error: authError } =
+    let { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
         email: targetEmail,
         password,
       });
+    // Compatibilidad: contraseñas guardadas antes de limpiar se aceptan tal cual.
+    if ((authError || !authData.user) && passwordCruda !== password) {
+      ({ data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: targetEmail,
+        password: passwordCruda,
+      }));
+    }
 
     if (authError || !authData.user) {
       await registrarFallo(ip, cleanInput);

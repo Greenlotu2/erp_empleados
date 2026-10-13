@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarSesion } from "../../../lib/movilSesion";
+import { VerContrasena } from "../../../components/VerContrasena";
 
 // Login de la PWA — pasa por /api/auth/login, el mismo endpoint que ya usa la
 // extensión de Chrome (JWT propio). Manda `app: "movil"` para que el servidor
@@ -11,6 +12,7 @@ export default function MovilLoginPage() {
   const router = useRouter();
   const [userInput, setUserInput] = useState("");
   const [password, setPassword] = useState("");
+  const [verPassword, setVerPassword] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,15 +93,22 @@ export default function MovilLoginPage() {
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
               Contraseña
             </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              className="w-full h-[50px] px-3.5 rounded-xl border border-slate-200 text-[15px] text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <div className="relative">
+              <input
+                type={verPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                className="w-full h-[50px] pl-3.5 pr-12 rounded-xl border border-slate-200 text-[15px] text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <VerContrasena
+                visible={verPassword}
+                onClick={() => setVerPassword((v) => !v)}
+                className="px-3.5"
+              />
+            </div>
           </div>
 
           <button

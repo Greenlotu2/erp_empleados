@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { verifyAuthToken } from "../../../lib/auth";
 import { empleadoDeSesion, esAdminWeb } from "../../../lib/adminWeb";
+import { limpiarCredencial } from "../../../lib/credenciales";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -62,9 +63,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    // Contraseña y correo sin espacios ni invisibles (igual que al iniciar sesión).
+    const password = limpiarCredencial(body.password);
     const {
       email,
-      password,
       nombre,
       rol,
       especialidad,

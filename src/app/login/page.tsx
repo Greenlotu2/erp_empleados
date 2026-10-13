@@ -2,11 +2,13 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { VerContrasena } from "../../components/VerContrasena";
 
 export default function LoginPage() {
   const router = useRouter();
   const [userInput, setUserInput] = useState(""); // Acepta tanto usuario como correo
   const [password, setPassword] = useState("");
+  const [verPassword, setVerPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -98,17 +100,21 @@ export default function LoginPage() {
               >
                 Contraseña
               </label>
-              <div className="mt-1">
+              <div className="mt-1 relative">
                 <input
                   id="password"
                   name="password"
-                  type="password"
+                  type={verPassword ? "text" : "password"}
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-1.5 py-1.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black text-sm transition-all"
+                  className="appearance-none block w-full pl-1.5 pr-10 py-1.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black text-sm transition-all"
                   placeholder="••••••••"
+                />
+                <VerContrasena
+                  visible={verPassword}
+                  onClick={() => setVerPassword((v) => !v)}
                 />
               </div>
             </div>

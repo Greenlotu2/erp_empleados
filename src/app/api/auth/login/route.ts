@@ -9,6 +9,7 @@ import {
   limpiarFallos,
   MENSAJE_BLOQUEO,
 } from "../../../../lib/rateLimitLogin";
+import { limpiarCredencial } from "../../../../lib/credenciales";
 
 const NIVELES_MOVIL = ["Gerencia", "Coordinador"];
 
@@ -22,8 +23,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     // La extensión envía { email, password }, este fallback acepta ambos
-    const emailInput = body.email || body.username;
-    const passwordInput = body.password;
+    // Sin espacios ni caracteres invisibles que se cuelan al copiar y pegar.
+    const emailInput = limpiarCredencial(body.email || body.username);
+    const passwordCruda = String(body.password ?? "");
+    const passwordInput = limpiarCredencial(passwordCruda);
 
     if (!emailInput || !passwordInput) {
       return NextResponse.json(
@@ -88,6 +91,11 @@ export async function POST(req: NextRequest) {
 
     if (cred?.password_hash) {
       isPasswordValid = await bcrypt.compare(passwordInput, cred.password_hash);
+      // Compatibilidad: contraseñas guardadas antes de limpiar (p. ej. con un
+      // espacio a propósito) se aceptan tal cual llegaron.
+      if (!isPasswordValid && passwordCruda !== passwordInput) {
+        isPasswordValid = await bcrypt.compare(passwordCruda, cred.password_hash);
+      }
     } else if (cred?.password) {
       isPasswordValid = cred.password === passwordInput;
       if (isPasswordValid) {

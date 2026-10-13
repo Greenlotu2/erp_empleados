@@ -14,6 +14,7 @@ import {
   registrarFallo,
 } from "../../../../../lib/rateLimitLogin";
 import { fijarContrasena, MIN_CONTRASENA } from "../../../../../lib/contrasenas";
+import { limpiarCredencial } from "../../../../../lib/credenciales";
 
 // Cambiar la contraseña propia desde la PWA. Se guarda en los dos lugares donde
 // vive (ver lib/contrasenas.ts) y, si algo falla, vuelve a la actual. Los
@@ -29,8 +30,8 @@ export async function POST(req: Request) {
   const { usuario } = auth;
 
   const b = await req.json().catch(() => ({}));
-  const actual = String(b?.actual || "");
-  const nueva = String(b?.nueva || "");
+  const actual = limpiarCredencial(b?.actual);
+  const nueva = limpiarCredencial(b?.nueva);
 
   if (!actual || !nueva) {
     return responder({ error: "Escribe tu contraseña actual y la nueva." }, 400);
