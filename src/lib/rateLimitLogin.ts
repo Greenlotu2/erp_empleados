@@ -5,11 +5,17 @@ import { supabaseAdmin } from "./api-auth";
 // Supabase Auth). Los intentos fallidos se guardan en `login_intentos`, que solo
 // el service role puede tocar.
 //
-// Se cuenta por IP y por correo: la IP frena a quien barre muchas cuentas desde
-// un mismo lugar, el correo frena a quien ataca una cuenta desde varias IPs.
+// Tres contadores en la ventana:
+//  - IP + correo: la misma persona equivocándose desde el mismo lugar.
+//  - Correo (cualquier IP): frena a quien ataca una cuenta desde varias IPs.
+//  - IP (cualquier correo): frena a quien barre muchas cuentas. Es alto a
+//    propósito: en una oficina todos comparten la IP pública, y con 10 bastaba
+//    que una persona olvidara su contraseña para dejar fuera a todos.
 
 export const VENTANA_MIN = 15;
-export const MAX_FALLOS = 10;
+export const MAX_FALLOS = 10; // misma IP + mismo correo
+export const MAX_FALLOS_CORREO = 20;
+export const MAX_FALLOS_IP = 50;
 
 export function getIp(req: Request): string {
   const fwd = req.headers.get("x-forwarded-for");
@@ -17,14 +23,14 @@ export function getIp(req: Request): string {
   return req.headers.get("x-real-ip") || "desconocida";
 }
 
-// true si esta IP o este correo ya superaron el máximo de fallos en la ventana.
+// true si alguno de los tres contadores llegó a su máximo en la ventana.
 export async function estaBloqueado(
   ip: string,
   email: string,
 ): Promise<boolean> {
   const desde = new Date(Date.now() - VENTANA_MIN * 60_000).toISOString();
 
-  const [{ count: fallosIp }, { count: fallosEmail }] = await Promise.all([
+  const [{ count: fallosIp }, { count: fallosEmail }, { count: fallosPar }] = await Promise.all([
     supabaseAdmin
       .from("login_intentos")
       .select("id", { count: "exact", head: true })
@@ -37,9 +43,20 @@ export async function estaBloqueado(
       .eq("email", email)
       .eq("exito", false)
       .gt("ts", desde),
+    supabaseAdmin
+      .from("login_intentos")
+      .select("id", { count: "exact", head: true })
+      .eq("ip", ip)
+      .eq("email", email)
+      .eq("exito", false)
+      .gt("ts", desde),
   ]);
 
-  return (fallosIp ?? 0) >= MAX_FALLOS || (fallosEmail ?? 0) >= MAX_FALLOS;
+  return (
+    (fallosPar ?? 0) >= MAX_FALLOS ||
+    (fallosEmail ?? 0) >= MAX_FALLOS_CORREO ||
+    (fallosIp ?? 0) >= MAX_FALLOS_IP
+  );
 }
 
 export async function registrarFallo(ip: string, email: string) {
