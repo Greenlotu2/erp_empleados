@@ -10,9 +10,10 @@ export const ROL_JCF = "Jóvenes Construyendo el Futuro";
 export const ROLES_CON_HORAS = ["Practicante", "Servicio Social"];
 export const ROLES_CONVENIO = [...ROLES_CON_HORAS, ROL_JCF];
 
-// Escuelas con convenio para Prácticas y Servicio Social (se pueden agregar
-// más al vuelo desde el formulario, igual que las áreas).
-export const ESCUELAS_BASE = ["BUAP", "COBAT", "ITP"];
+// Convenio de cada integrante (institución o programa). Se guarda en la
+// columna `empleados.escuela` (se llamó así al principio). Se pueden agregar
+// más al vuelo desde el formulario, igual que las áreas.
+export const CONVENIOS_BASE = ["BUAP", "COBAT", "ITP", ROL_JCF];
 
 export const esConvenio = (rol?: string | null) => ROLES_CONVENIO.includes(rol || "");
 export const llevaHoras = (rol?: string | null) => ROLES_CON_HORAS.includes(rol || "");

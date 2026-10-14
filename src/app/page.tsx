@@ -12,7 +12,7 @@ import { ModalOverlay } from "../components/ModalOverlay";
 import { abrirArchivo } from "../lib/storageUrls";
 import { RestablecerContrasena } from "../components/RestablecerContrasena";
 import {
-  ESCUELAS_BASE,
+  CONVENIOS_BASE,
   ROL_JCF,
   esConvenio,
   llevaHoras,
@@ -165,7 +165,7 @@ interface Employee {
   completedTasksCount: number;
   horasAcumuladas?: number;
   horasTotalesObjetivo?: number;
-  // Escuela del convenio (Prácticas / Servicio Social), p. ej. BUAP.
+  // Convenio (BUAP, ITP, COBAT, JCF…). Columna `escuela` en la base.
   escuela?: string | null;
   // Líneas de negocio (proyectos) a las que está asignado (proyecto_empleados).
   lineas?: string[];
@@ -485,8 +485,8 @@ export default function AdminDashboard() {
     "todos" | "trabajadores" | "estudiantes"
   >("todos");
   const [teamAreaFilter, setTeamAreaFilter] = useState<string>("all");
-  // Filtro por escuela del convenio ("all" = todas).
-  const [teamEscuelaFilter, setTeamEscuelaFilter] = useState<string>("all");
+  // Filtro por convenio ("all" = todos).
+  const [teamConvenioFilter, setTeamConvenioFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<
     "actividad" | "documentos" | "contrato" | "recompensas"
   >("actividad");
@@ -1146,9 +1146,9 @@ export default function AdminDashboard() {
     return Array.from(vistos).sort((a, b) => a.localeCompare(b, "es"));
   }, [employees]);
 
-  // Escuelas con convenio: las de siempre + cualquiera ya capturada.
-  const escuelasConocidas = useMemo(() => {
-    const vistas = new Set<string>(ESCUELAS_BASE);
+  // Convenios: los de siempre + cualquiera ya capturado.
+  const conveniosConocidos = useMemo(() => {
+    const vistas = new Set<string>(CONVENIOS_BASE);
     employees.forEach((e) => {
       if (e.escuela) vistas.add(e.escuela);
     });
@@ -1160,7 +1160,7 @@ export default function AdminDashboard() {
       const convenio = esConvenio(emp.role);
       if (teamFilter === "trabajadores" && convenio) return false;
       if (teamFilter === "estudiantes" && !convenio) return false;
-      if (teamEscuelaFilter !== "all" && emp.escuela !== teamEscuelaFilter) {
+      if (teamConvenioFilter !== "all" && emp.escuela !== teamConvenioFilter) {
         return false;
       }
       if (teamAreaFilter !== "all") {
@@ -1170,7 +1170,7 @@ export default function AdminDashboard() {
       }
       return true;
     });
-  }, [employees, teamFilter, teamAreaFilter, teamEscuelaFilter]);
+  }, [employees, teamFilter, teamAreaFilter, teamConvenioFilter]);
 
   // Agrupa el Equipo por área organizacional (Dirección/Gerencia sin área va al
   // final). Cada persona aparece UNA sola vez: en su primera área (o en la del
@@ -1478,7 +1478,7 @@ export default function AdminDashboard() {
           horasTotalesObjetivo: llevaHoras(finalRol)
             ? newEmployeeData.horasTotalesObjetivo
             : null,
-          escuela: llevaHoras(finalRol)
+          escuela: esConvenio(finalRol)
             ? newEmployeeData.escuela.trim() || null
             : null,
           color: newEmployeeData.color || "#2563eb",
@@ -1702,7 +1702,9 @@ export default function AdminDashboard() {
           horas_totales_objetivo: esEstudiante
             ? parseInt(editFormData.horasTotalesObjetivo) || 480
             : null,
-          escuela: esEstudiante ? editFormData.escuela.trim() || null : null,
+          escuela: esConvenio(editFormData.rol)
+            ? editFormData.escuela.trim() || null
+            : null,
         })
         .eq("id", selectedEmployee.id);
 
@@ -2127,13 +2129,13 @@ export default function AdminDashboard() {
                     className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
                   />
                   <select
-                    value={teamEscuelaFilter}
-                    onChange={(e) => setTeamEscuelaFilter(e.target.value)}
-                    aria-label="Filtrar por escuela"
+                    value={teamConvenioFilter}
+                    onChange={(e) => setTeamConvenioFilter(e.target.value)}
+                    aria-label="Filtrar por convenio"
                     className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
                   >
-                    <option value="all">Todas las escuelas</option>
-                    {escuelasConocidas.map((e) => (
+                    <option value="all">Todos los convenios</option>
+                    {conveniosConocidos.map((e) => (
                       <option key={e} value={e}>
                         {e} ({employees.filter((x) => x.escuela === e).length})
                       </option>
@@ -2916,18 +2918,18 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              {/* Escuela del convenio: solo Prácticas y Servicio Social. */}
-              {llevaHoras(newEmployeeData.rol) && (
+              {/* Convenio: Prácticas, Servicio Social y JCF. */}
+              {esConvenio(newEmployeeData.rol) && (
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Escuela
+                    Convenio
                   </label>
                   <ComboConAlta
                     value={newEmployeeData.escuela}
                     onChange={(v) => setNewEmployeeData({ ...newEmployeeData, escuela: v })}
-                    opciones={escuelasConocidas}
-                    textoAgregar="+ Agregar otra escuela…"
-                    placeholderNuevo="Nombre de la escuela"
+                    opciones={conveniosConocidos}
+                    textoAgregar="+ Agregar otro convenio…"
+                    placeholderNuevo="Nombre del convenio"
                   />
                 </div>
               )}
@@ -3258,18 +3260,18 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              {/* Escuela del convenio: solo Prácticas y Servicio Social. */}
-              {llevaHoras(editFormData.rol) && (
+              {/* Convenio: Prácticas, Servicio Social y JCF. */}
+              {esConvenio(editFormData.rol) && (
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Escuela
+                    Convenio
                   </label>
                   <ComboConAlta
                     value={editFormData.escuela}
                     onChange={(v) => setEditFormData({ ...editFormData, escuela: v })}
-                    opciones={escuelasConocidas}
-                    textoAgregar="+ Agregar otra escuela…"
-                    placeholderNuevo="Nombre de la escuela"
+                    opciones={conveniosConocidos}
+                    textoAgregar="+ Agregar otro convenio…"
+                    placeholderNuevo="Nombre del convenio"
                   />
                 </div>
               )}
