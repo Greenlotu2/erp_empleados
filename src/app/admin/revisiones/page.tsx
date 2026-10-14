@@ -48,6 +48,8 @@ export default function RevisionesPage() {
     "calendario",
   );
   const [searchTerm, setSearchTerm] = useState("");
+  // Filtro del Historial por línea de negocio ("" = todas).
+  const [lineaFiltro, setLineaFiltro] = useState("");
   const [loading, setLoading] = useState(true);
 
   // 📜 HISTORIAL POR TAREA
@@ -814,7 +816,13 @@ export default function RevisionesPage() {
     }));
   };
 
+  // Líneas presentes en el historial (el nombre llega con un espacio inicial).
+  const lineasHistorial = Array.from(
+    new Set(tareasHist.map((t) => t.proyecto.trim())),
+  ).sort((a, b) => a.localeCompare(b, "es"));
+
   const filteredTareas = tareasHist.filter((t) => {
+    if (lineaFiltro && t.proyecto.trim() !== lineaFiltro) return false;
     const q = searchTerm.toLowerCase();
     return (
       t.titulo.toLowerCase().includes(q) ||
@@ -1001,8 +1009,28 @@ export default function RevisionesPage() {
                 placeholder="Buscar tarea, proyecto o empleado..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-1.5 py-1 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-full mb-2 shrink-0"
+                className="bg-slate-50 border border-slate-200 rounded-xl px-1.5 py-1 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-full mb-1 shrink-0"
               />
+              <div className="relative mb-2 shrink-0">
+                <Icon
+                  name="folder"
+                  size={12}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                />
+                <select
+                  value={lineaFiltro}
+                  onChange={(e) => setLineaFiltro(e.target.value)}
+                  aria-label="Filtrar por línea de negocio"
+                  className="w-full bg-white border border-slate-200 rounded-xl pl-6 pr-1.5 py-1 text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="">Todas las líneas</option>
+                  {lineasHistorial.map((l) => (
+                    <option key={l} value={l}>
+                      {l} ({tareasHist.filter((t) => t.proyecto.trim() === l).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div className="flex-1 overflow-y-auto min-h-0 pr-0.5 space-y-1">
                 {loading ? (

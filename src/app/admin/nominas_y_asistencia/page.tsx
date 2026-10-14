@@ -6,6 +6,7 @@ import { Icon } from "../../../components/icons";
 import { ModalOverlay } from "../../../components/ModalOverlay";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
+import { ROLES_CONVENIO } from "../../../lib/convenios";
 
 interface Empleado {
   id: string;
@@ -16,8 +17,8 @@ interface Empleado {
   rol?: string | null;
 }
 
-// "Convenio" = practicante / servicio social: llevan horas, no reciben raya semanal.
-const ROLES_CONVENIO = ["Practicante", "Servicio Social"];
+// Los de convenio (Prácticas, SS y Jóvenes Construyendo el Futuro) no reciben
+// raya semanal. Lista única en src/lib/convenios.ts.
 const esConvenio = (e?: Empleado | null) =>
   !!e && ROLES_CONVENIO.includes(e.rol || "");
 

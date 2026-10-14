@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
       color,
       nivel,
       area,
+      escuela,
     } = body;
 
     if (!email || !password) {
@@ -121,6 +122,8 @@ export async function POST(request: NextRequest) {
         color: color || "#2563eb",
         nivel: nivel || "Trabajador",
         area: area || null,
+        // Escuela del convenio (solo Prácticas / Servicio Social).
+        escuela: typeof escuela === "string" && escuela.trim() ? escuela.trim() : null,
         horas_acumuladas: 0,
         horas_totales_objetivo: horasTotalesObjetivo
           ? parseInt(horasTotalesObjetivo)

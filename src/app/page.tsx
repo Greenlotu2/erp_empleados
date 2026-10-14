@@ -11,6 +11,12 @@ import { PALETA_EMPLEADOS, colorLibreEmpleado } from "../lib/coloresEmpleados";
 import { ModalOverlay } from "../components/ModalOverlay";
 import { abrirArchivo } from "../lib/storageUrls";
 import { RestablecerContrasena } from "../components/RestablecerContrasena";
+import {
+  ESCUELAS_BASE,
+  ROL_JCF,
+  esConvenio,
+  llevaHoras,
+} from "../lib/convenios";
 
 // Áreas del organigrama (bajo cada Coordinador) — usadas para agrupar a los
 // Trabajadores en el panel "Equipo" del calendario de revisiones y del Panel
@@ -26,14 +32,15 @@ const AREAS = [
 // a cualquier otro nivel sin área le falta un dato, no es un caso normal.
 const SIN_AREA = "Sin área asignada";
 
-// Roles de siempre — "Practicante"/"Servicio Social" son los únicos con trato
-// especial en el código (sin raya, por horas); cualquier otro rol (de esta
-// lista o escrito a mano) se comporta como uno general.
+// Roles de siempre. Los de convenio (Prácticas, Servicio Social y Jóvenes
+// Construyendo el Futuro) tienen trato especial: ver src/lib/convenios.ts.
+// Cualquier otro rol (de esta lista o escrito a mano) es personal general.
 const ROLES_BASE = [
   "Administrador",
   "Trabajador",
   "Practicante",
   "Servicio Social",
+  ROL_JCF,
 ];
 
 // 🛠️ Funciones para dar formato a fecha y hora
@@ -158,6 +165,10 @@ interface Employee {
   completedTasksCount: number;
   horasAcumuladas?: number;
   horasTotalesObjetivo?: number;
+  // Escuela del convenio (Prácticas / Servicio Social), p. ej. BUAP.
+  escuela?: string | null;
+  // Líneas de negocio (proyectos) a las que está asignado (proyecto_empleados).
+  lineas?: string[];
   puntosRecompensa: number;
   taskHistory: Task[];
   documents: LegalDocument[];
@@ -272,6 +283,61 @@ function ComboConAlta({
 // Área puede ser más de una (ej. alguien en Ventas y en Proyectos y Obra a la
 // vez) — chips con las ya elegidas + un selector para sumar otra, existente o
 // escrita a mano.
+// Líneas de negocio (proyectos) de un integrante: etiquetas + selector.
+// Solo las que existen; las líneas nuevas se dan de alta en Documentación Interna.
+function LineasMultiSelect({
+  value,
+  onChange,
+  opciones,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  opciones: { id: string; nombre: string }[];
+}) {
+  const nombre = (id: string) => opciones.find((o) => o.id === id)?.nombre || "—";
+  const disponibles = opciones.filter((o) => !value.includes(o.id));
+  return (
+    <div className="space-y-1.5">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {value.map((id) => (
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-md"
+            >
+              {nombre(id)}
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((v) => v !== id))}
+                title="Quitar línea"
+                className="hover:text-indigo-900 cursor-pointer"
+              >
+                <Icon name="x" size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {disponibles.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => e.target.value && onChange([...value, e.target.value])}
+          className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+        >
+          <option value="">
+            {value.length === 0 ? "— Sin línea —" : "+ Agregar otra línea…"}
+          </option>
+          {disponibles.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.nombre}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 function AreasMultiSelect({
   value,
   onChange,
@@ -418,7 +484,6 @@ export default function AdminDashboard() {
   const [teamFilter, setTeamFilter] = useState<
     "todos" | "trabajadores" | "estudiantes"
   >("todos");
-  const [teamProjectFilter, setTeamProjectFilter] = useState<string>("all");
   const [teamAreaFilter, setTeamAreaFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<
     "actividad" | "documentos" | "contrato" | "recompensas"
@@ -475,6 +540,8 @@ export default function AdminDashboard() {
     horasTotalesObjetivo: string;
     remuneracion: string;
     color: string;
+    escuela: string;
+    lineas: string[];
     documentos: DocumentRequirement[];
   }>({
     nombre: "",
@@ -488,6 +555,8 @@ export default function AdminDashboard() {
     horasTotalesObjetivo: "480",
     remuneracion: "3000",
     color: "#2563eb",
+    escuela: "",
+    lineas: [],
     documentos: [
       {
         idTemp: "1",
@@ -536,6 +605,8 @@ export default function AdminDashboard() {
     horasTotalesObjetivo: "480",
     remuneracion: "15000",
     color: "#2563eb",
+    escuela: "",
+    lineas: [] as string[],
   });
 
   const getDocFolder = (docName: string): string => {
@@ -585,6 +656,15 @@ export default function AdminDashboard() {
       if (proyectosSafe.length > 0 && !selectedProjectId) {
         setSelectedProjectId(proyectosSafe[0].id);
       }
+
+      // A.1) Asignación a líneas de negocio (proyecto_empleados)
+      const { data: asignacionesData } = await supabase
+        .from("proyecto_empleados")
+        .select("proyecto_id, empleado_id");
+      const lineasPorEmpleado: Record<string, string[]> = {};
+      (asignacionesData || []).forEach((a: any) => {
+        (lineasPorEmpleado[a.empleado_id] ||= []).push(a.proyecto_id);
+      });
 
       // B) Empleados
       const { data: empleadosData, error: empError } = await supabase.from(
@@ -699,6 +779,8 @@ export default function AdminDashboard() {
             ).length,
             horasAcumuladas: emp.horas_acumuladas || 0,
             horasTotalesObjetivo: emp.horas_totales_objetivo,
+            escuela: emp.escuela || null,
+            lineas: lineasPorEmpleado[emp.id] || [],
             puntosRecompensa: emp.puntos_recompensa || 0,
             taskHistory: mappedHistory,
             documents: (emp.documentos_legales || []).map((d: any) => ({
@@ -1062,18 +1144,20 @@ export default function AdminDashboard() {
     return Array.from(vistos).sort((a, b) => a.localeCompare(b, "es"));
   }, [employees]);
 
-  const filteredEmployees = useMemo(() => {
-    const proyectoNombre =
-      teamProjectFilter === "all"
-        ? null
-        : dbProjects.find((p) => p.id === teamProjectFilter)?.nombre;
+  // Escuelas con convenio: las de siempre + cualquiera ya capturada.
+  const escuelasConocidas = useMemo(() => {
+    const vistas = new Set<string>(ESCUELAS_BASE);
+    employees.forEach((e) => {
+      if (e.escuela) vistas.add(e.escuela);
+    });
+    return Array.from(vistas).sort((a, b) => a.localeCompare(b, "es"));
+  }, [employees]);
 
+  const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
-      const esEstudiante =
-        emp.role === "Practicante" || emp.role === "Servicio Social";
-      if (teamFilter === "trabajadores" && esEstudiante) return false;
-      if (teamFilter === "estudiantes" && !esEstudiante) return false;
-      if (proyectoNombre && emp.currentProject !== proyectoNombre) return false;
+      const convenio = esConvenio(emp.role);
+      if (teamFilter === "trabajadores" && convenio) return false;
+      if (teamFilter === "estudiantes" && !convenio) return false;
       if (teamAreaFilter !== "all") {
         const areasDelEmpleado =
           emp.area && emp.area.length > 0 ? emp.area : [SIN_AREA];
@@ -1081,25 +1165,27 @@ export default function AdminDashboard() {
       }
       return true;
     });
-  }, [employees, teamFilter, teamProjectFilter, teamAreaFilter, dbProjects]);
+  }, [employees, teamFilter, teamAreaFilter]);
 
   // Agrupa el Equipo por área organizacional (Dirección/Gerencia sin área va al
-  // final) — antes la lista salía plana, sin distinguir de qué área es cada
-  // quien. A alguien con varias áreas se le ve en cada grupo al que pertenece.
+  // final). Cada persona aparece UNA sola vez: en su primera área (o en la del
+  // filtro, si se filtró por una); sus otras áreas se ven como etiquetas.
   const equipoPorArea = useMemo(() => {
     const porArea = new Map<string, Employee[]>();
     filteredEmployees.forEach((emp) => {
       const areasDelEmpleado =
         emp.area && emp.area.length > 0 ? emp.area : [SIN_AREA];
-      areasDelEmpleado.forEach((area) => {
-        if (!porArea.has(area)) porArea.set(area, []);
-        porArea.get(area)!.push(emp);
-      });
+      const area =
+        teamAreaFilter !== "all" && areasDelEmpleado.includes(teamAreaFilter)
+          ? teamAreaFilter
+          : areasDelEmpleado[0];
+      if (!porArea.has(area)) porArea.set(area, []);
+      porArea.get(area)!.push(emp);
     });
     return [...areasConocidas, SIN_AREA]
       .filter((area) => porArea.has(area))
       .map((area) => ({ area, integrantes: porArea.get(area)! }));
-  }, [filteredEmployees, areasConocidas]);
+  }, [filteredEmployees, areasConocidas, teamAreaFilter]);
 
   const totalEmployees = employees.length;
   const activeNow = employees.filter((e) => e.status === "Ocupado").length;
@@ -1384,7 +1470,12 @@ export default function AdminDashboard() {
           area: newEmployeeData.area.length > 0 ? newEmployeeData.area : null,
           especialidad: newEmployeeData.especialidad.trim(),
           disponibilidad: newEmployeeData.disponibilidad,
-          horasTotalesObjetivo: newEmployeeData.horasTotalesObjetivo,
+          horasTotalesObjetivo: llevaHoras(finalRol)
+            ? newEmployeeData.horasTotalesObjetivo
+            : null,
+          escuela: llevaHoras(finalRol)
+            ? newEmployeeData.escuela.trim() || null
+            : null,
           color: newEmployeeData.color || "#2563eb",
           avatarUrl: null,
         }),
@@ -1396,8 +1487,7 @@ export default function AdminDashboard() {
       const newEmp = responseData.employee;
 
       if (newEmp) {
-        const esEstudiante =
-          finalRol === "Practicante" || finalRol === "Servicio Social";
+        const esEstudiante = esConvenio(finalRol);
         const formattedSalary = newEmployeeData.remuneracion
           ? `$${newEmployeeData.remuneracion} MXN / mes`
           : "Sin Apoyo";
@@ -1443,6 +1533,16 @@ export default function AdminDashboard() {
 
           await supabase.from("documentos_legales").insert(docsToInsert);
         }
+
+        // Líneas de negocio a las que entra (Documentación Interna las usa).
+        if (newEmployeeData.lineas.length > 0) {
+          await supabase.from("proyecto_empleados").insert(
+            newEmployeeData.lineas.map((proyecto_id) => ({
+              proyecto_id,
+              empleado_id: newEmp.id,
+            })),
+          );
+        }
       }
 
       setNewEmployeeData({
@@ -1457,6 +1557,8 @@ export default function AdminDashboard() {
         horasTotalesObjetivo: "480",
         remuneracion: "3000",
         color: "#2563eb",
+        escuela: "",
+        lineas: [],
         documentos: [
           {
             idTemp: "1",
@@ -1498,8 +1600,7 @@ export default function AdminDashboard() {
 
     setTransformFormData({
       nuevoRol:
-        selectedEmployee.role === "Practicante" ||
-        selectedEmployee.role === "Servicio Social"
+        esConvenio(selectedEmployee.role)
           ? "Desarrollador Web"
           : selectedEmployee.role,
       tipoContrato: "Tiempo Indeterminado",
@@ -1566,6 +1667,8 @@ export default function AdminDashboard() {
       ),
       remuneracion: currentSalaryDigits,
       color: selectedEmployee.color || "#2563eb",
+      escuela: selectedEmployee.escuela || "",
+      lineas: selectedEmployee.lineas || [],
     });
     setIsEditModalOpen(true);
   };
@@ -1575,9 +1678,7 @@ export default function AdminDashboard() {
     if (!selectedEmployee) return;
 
     try {
-      const esEstudiante =
-        editFormData.rol === "Practicante" ||
-        editFormData.rol === "Servicio Social";
+      const esEstudiante = llevaHoras(editFormData.rol);
       const formattedSalary = editFormData.remuneracion
         ? `$${editFormData.remuneracion} MXN / mes`
         : "Sin Apoyo";
@@ -1596,8 +1697,29 @@ export default function AdminDashboard() {
           horas_totales_objetivo: esEstudiante
             ? parseInt(editFormData.horasTotalesObjetivo) || 480
             : null,
+          escuela: esEstudiante ? editFormData.escuela.trim() || null : null,
         })
         .eq("id", selectedEmployee.id);
+
+      // Sincronizar líneas de negocio: quitar las que ya no y agregar las nuevas.
+      const lineasAntes = selectedEmployee.lineas || [];
+      const quitar = lineasAntes.filter((l) => !editFormData.lineas.includes(l));
+      const agregar = editFormData.lineas.filter((l) => !lineasAntes.includes(l));
+      if (quitar.length > 0) {
+        await supabase
+          .from("proyecto_empleados")
+          .delete()
+          .eq("empleado_id", selectedEmployee.id)
+          .in("proyecto_id", quitar);
+      }
+      if (agregar.length > 0) {
+        await supabase.from("proyecto_empleados").insert(
+          agregar.map((proyecto_id) => ({
+            proyecto_id,
+            empleado_id: selectedEmployee.id,
+          })),
+        );
+      }
 
       await supabase.from("contratos").upsert(
         {
@@ -1688,8 +1810,7 @@ export default function AdminDashboard() {
   }
 
   const isEstudianteSelected = selectedEmployee
-    ? selectedEmployee.role === "Practicante" ||
-      selectedEmployee.role === "Servicio Social"
+    ? llevaHoras(selectedEmployee.role)
     : false;
   const porcentajeHoras =
     isEstudianteSelected && selectedEmployee?.horasTotalesObjetivo
@@ -1972,27 +2093,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-2 gap-1">
-                <div className="relative">
-                  <Icon
-                    name="folder"
-                    size={13}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                  />
-                  <select
-                    value={teamProjectFilter}
-                    onChange={(e) => setTeamProjectFilter(e.target.value)}
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-                  >
-                    <option value="all">Todos los proyectos</option>
-                    {dbProjects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
+              <div>
                 <div className="relative">
                   <Icon
                     name="users"
@@ -2031,9 +2132,11 @@ export default function AdminDashboard() {
                     {grupo.integrantes.map((emp) => {
                       const isSelected =
                         selectedEmployee && emp.id === selectedEmployee.id;
-                      const esEstudiante =
-                        emp.role === "Practicante" ||
-                        emp.role === "Servicio Social";
+                      const esEstudiante = llevaHoras(emp.role);
+                      // Otras áreas además de la del grupo (aparece una sola vez).
+                      const otrasAreas = (emp.area || []).filter(
+                        (a) => a !== grupo.area,
+                      );
                       const hasPendingDocs = emp.documents?.some(
                         (d) =>
                           d.status === "Pendiente" || d.status === "Por Vencer",
@@ -2079,10 +2182,24 @@ export default function AdminDashboard() {
                                 </div>
                                 <p className="text-xs text-slate-500">
                                   {emp.role}{" "}
+                                  {emp.escuela ? `· ${emp.escuela} ` : ""}
                                   {emp.especialidad
                                     ? `• ${emp.especialidad}`
                                     : ""}
                                 </p>
+                                {otrasAreas.length > 0 && (
+                                  <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                    {otrasAreas.map((a) => (
+                                      <span
+                                        key={a}
+                                        title="También pertenece a esta área"
+                                        className="text-[9px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1 rounded"
+                                      >
+                                        + {a}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -2773,6 +2890,33 @@ export default function AdminDashboard() {
                 />
               </div>
 
+              {/* Escuela del convenio: solo Prácticas y Servicio Social. */}
+              {llevaHoras(newEmployeeData.rol) && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Escuela
+                  </label>
+                  <ComboConAlta
+                    value={newEmployeeData.escuela}
+                    onChange={(v) => setNewEmployeeData({ ...newEmployeeData, escuela: v })}
+                    opciones={escuelasConocidas}
+                    textoAgregar="+ Agregar otra escuela…"
+                    placeholderNuevo="Nombre de la escuela"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Líneas de negocio
+                </label>
+                <LineasMultiSelect
+                  value={newEmployeeData.lineas}
+                  onChange={(v) => setNewEmployeeData({ ...newEmployeeData, lineas: v })}
+                  opciones={dbProjects}
+                />
+              </div>
+
               {/* Área solo aplica a Coordinadores y Trabajadores; puede ser más de una. */}
               {newEmployeeData.nivel !== "Gerencia" && (
                 <div>
@@ -3085,6 +3229,33 @@ export default function AdminDashboard() {
                   }
                   placeholder="Ej. Arquitecto, Ingeniero civil, Contador…"
                   className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                />
+              </div>
+
+              {/* Escuela del convenio: solo Prácticas y Servicio Social. */}
+              {llevaHoras(editFormData.rol) && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Escuela
+                  </label>
+                  <ComboConAlta
+                    value={editFormData.escuela}
+                    onChange={(v) => setEditFormData({ ...editFormData, escuela: v })}
+                    opciones={escuelasConocidas}
+                    textoAgregar="+ Agregar otra escuela…"
+                    placeholderNuevo="Nombre de la escuela"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Líneas de negocio
+                </label>
+                <LineasMultiSelect
+                  value={editFormData.lineas}
+                  onChange={(v) => setEditFormData({ ...editFormData, lineas: v })}
+                  opciones={dbProjects}
                 />
               </div>
 
