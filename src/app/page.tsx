@@ -485,6 +485,8 @@ export default function AdminDashboard() {
     "todos" | "trabajadores" | "estudiantes"
   >("todos");
   const [teamAreaFilter, setTeamAreaFilter] = useState<string>("all");
+  // Filtro por escuela del convenio ("all" = todas).
+  const [teamEscuelaFilter, setTeamEscuelaFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<
     "actividad" | "documentos" | "contrato" | "recompensas"
   >("actividad");
@@ -1158,6 +1160,9 @@ export default function AdminDashboard() {
       const convenio = esConvenio(emp.role);
       if (teamFilter === "trabajadores" && convenio) return false;
       if (teamFilter === "estudiantes" && !convenio) return false;
+      if (teamEscuelaFilter !== "all" && emp.escuela !== teamEscuelaFilter) {
+        return false;
+      }
       if (teamAreaFilter !== "all") {
         const areasDelEmpleado =
           emp.area && emp.area.length > 0 ? emp.area : [SIN_AREA];
@@ -1165,7 +1170,7 @@ export default function AdminDashboard() {
       }
       return true;
     });
-  }, [employees, teamFilter, teamAreaFilter]);
+  }, [employees, teamFilter, teamAreaFilter, teamEscuelaFilter]);
 
   // Agrupa el Equipo por área organizacional (Dirección/Gerencia sin área va al
   // final). Cada persona aparece UNA sola vez: en su primera área (o en la del
@@ -2093,7 +2098,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
 
-              <div>
+              <div className="grid grid-cols-2 gap-1">
                 <div className="relative">
                   <Icon
                     name="users"
@@ -2112,6 +2117,27 @@ export default function AdminDashboard() {
                       </option>
                     ))}
                     <option value={SIN_AREA}>{SIN_AREA}</option>
+                  </select>
+                </div>
+
+                <div className="relative">
+                  <Icon
+                    name="building"
+                    size={13}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <select
+                    value={teamEscuelaFilter}
+                    onChange={(e) => setTeamEscuelaFilter(e.target.value)}
+                    aria-label="Filtrar por escuela"
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="all">Todas las escuelas</option>
+                    {escuelasConocidas.map((e) => (
+                      <option key={e} value={e}>
+                        {e} ({employees.filter((x) => x.escuela === e).length})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
