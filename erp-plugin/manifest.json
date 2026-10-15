@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "ERP - Panel del Empleado",
-  "version": "1.4",
-  "description": "Extensión para gestión de tareas, temporizador de servicio y notificaciones de reuniones",
+  "version": "1.5",
+  "description": "Extensión para gestión de tareas, temporizador de servicio y notificaciones de tareas y reuniones",
   "permissions": [
     "sidePanel",
     "storage",
     "windows",
-    "alarms"
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "https://erp-empleados-rocal.vercel.app/*",
@@ -21,5 +22,8 @@
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "icons": {
+    "128": "icono.png"
   }
 }

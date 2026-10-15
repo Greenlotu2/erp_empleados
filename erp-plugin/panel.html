@@ -734,6 +734,36 @@
 #btn-refresh.spinning svg {
   animation: spin-refresh 0.6s linear;
 }
+
+/* Avisos (historial de notificaciones) */
+.tab-contador { display: inline-block; min-width: 14px; padding: 0 4px; margin-left: 3px; border-radius: 7px; background: #dc2626; color: #fff; font-size: 9px; line-height: 14px; font-weight: 700; }
+.avisos-acciones { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.avisos-limpiar { background: transparent; border: none; color: #64748b; font-size: 10px; cursor: pointer; padding: 2px 4px; }
+.avisos-limpiar:hover { color: #f87171; }
+.aviso-nuevo { border-color: rgba(37, 99, 235, 0.6) !important; background-color: rgba(37, 99, 235, 0.08) !important; }
+.aviso-punto { width: 7px; height: 7px; border-radius: 50%; background: #3b82f6; flex-shrink: 0; }
+
+/* Llegada de avisos: banner, campana que se mueve y tarjetas que brillan */
+.toast-aviso { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 9999; display: flex; gap: 8px; align-items: flex-start; padding: 9px 10px 11px; border-radius: 10px; background: linear-gradient(135deg, #1e3a8a, #1d4ed8); border: 1px solid #60a5fa; box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45); color: #fff; cursor: pointer; overflow: hidden; animation: toast-entra 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.toast-aviso.saliendo { animation: toast-sale 0.25s ease-in forwards; }
+.toast-campana { font-size: 18px; line-height: 1; animation: campana 0.9s ease-in-out 2; transform-origin: 50% 0; }
+.toast-cuerpo { flex: 1; min-width: 0; }
+.toast-etiqueta { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #bfdbfe; }
+.toast-titulo { font-size: 12px; font-weight: 700; margin-top: 1px; }
+.toast-mensaje { font-size: 11px; color: #dbeafe; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast-cerrar { background: transparent; border: none; color: #bfdbfe; font-size: 11px; cursor: pointer; padding: 0 2px; }
+.toast-cerrar:hover { color: #fff; }
+.toast-progreso { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: #93c5fd; transform-origin: left; animation: toast-progreso 8s linear forwards; }
+.tab-btn.tiene-avisos:not(.active) { color: #fbbf24; }
+.tab-btn.tiene-avisos .tab-campana { display: inline-block; animation: campana 0.9s ease-in-out infinite; animation-delay: 0.3s; transform-origin: 50% 0; }
+.tab-btn.tiene-avisos .tab-contador { animation: pulso 1.6s ease-out infinite; }
+.aviso-nuevo { border-left: 3px solid #3b82f6 !important; animation: brillo 1.8s ease-in-out 3; }
+@keyframes toast-entra { from { transform: translateY(-120%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes toast-sale { to { transform: translateY(-120%); opacity: 0; } }
+@keyframes toast-progreso { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes campana { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-12deg); } 45% { transform: rotate(8deg); } 60% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); } }
+@keyframes pulso { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); } 100% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); } }
+@keyframes brillo { 0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } 50% { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35); } }
   </style>
 </head>
 <body>

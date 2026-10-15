@@ -210,3 +210,228 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
   }
 });
+// ==========================================
+// 8. NOTIFICACIONES DE TAREAS Y REUNIONES
+// ==========================================
+// Cada 30 segundos (aunque el panel esté cerrado) se consultan las tareas y
+// reuniones del empleado y se avisa con una notificación del sistema:
+//  - tarea nueva asignada
+//  - tarea revisada (aprobada / a corregir)
+//  - reunión nueva programada
+//  - recordatorio 10 minutos antes de que empiece una reunión
+// La primera consulta solo memoriza lo que ya existe, para no avisar de golpe
+// de todo lo viejo al instalar o iniciar sesión.
+const ALARMA_AVISOS = 'REVISAR_AVISOS';
+const MIN_RECORDATORIO = 10;
+const ESTADOS_REUNION_ACTIVA = ['Programada', 'Ajuste por tiempo'];
+
+function programarAlarmaAvisos() {
+  if (!chrome.alarms) return;
+  chrome.alarms.get(ALARMA_AVISOS, (alarma) => {
+    // 30 s es el mínimo que permite Chrome. Si quedó una alarma con otro
+    // periodo (versión anterior), se reemplaza.
+    if (!alarma || alarma.periodInMinutes !== 0.5) {
+      chrome.alarms.create(ALARMA_AVISOS, { delayInMinutes: 0.1, periodInMinutes: 0.5 });
+    }
+  });
+}
+
+chrome.runtime.onStartup.addListener(programarAlarmaAvisos);
+chrome.runtime.onInstalled.addListener(programarAlarmaAvisos);
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace !== 'local' || !changes.session_user) return;
+  if (changes.session_user.newValue) {
+    programarAlarmaAvisos();
+  } else {
+    if (chrome.alarms) chrome.alarms.clear(ALARMA_AVISOS);
+    chrome.storage.local.remove(['avisos_estado', 'avisos_historial']);
+  }
+});
+
+if (chrome.alarms) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === ALARMA_AVISOS) revisarAvisos();
+  });
+}
+
+// Con el panel abierto, él pide revisar al cargar datos y cada 15 s, así el
+// aviso no espera a la alarma.
+chrome.runtime.onMessage.addListener((request) => {
+  if (request.type === 'REVISAR_AVISOS') revisarAvisos();
+});
+
+function leerStorage(claves) {
+  return new Promise((resolve) => chrome.storage.local.get(claves, resolve));
+}
+
+async function pedirJson(url, token) {
+  try {
+    const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+// Cada aviso se muestra como notificación del sistema y además se guarda en
+// `avisos_historial`, que es lo que lista la pestaña "Avisos" del panel.
+const MAX_HISTORIAL = 50;
+let avisosNuevos = [];
+
+function notificar(id, titulo, mensaje, link) {
+  avisosNuevos.push({ id, tipo: id.split(':')[0], titulo, mensaje: mensaje || '', link: link || null, fecha: Date.now(), leido: false });
+  if (!chrome.notifications) return;
+  chrome.notifications.create(id, {
+    type: 'basic',
+    iconUrl: 'icono.png',
+    title: titulo,
+    message: mensaje || '',
+    priority: 2,
+  });
+}
+
+async function guardarAvisosNuevos() {
+  if (avisosNuevos.length === 0) return;
+  const nuevos = avisosNuevos;
+  avisosNuevos = [];
+  const { avisos_historial } = await leerStorage(['avisos_historial']);
+  const previos = Array.isArray(avisos_historial) ? avisos_historial : [];
+  const ids = new Set(nuevos.map(a => a.id));
+  const historial = [...nuevos.reverse(), ...previos.filter(a => !ids.has(a.id))].slice(0, MAX_HISTORIAL);
+  await chrome.storage.local.set({ avisos_historial: historial });
+}
+
+// Número de avisos sin leer sobre el ícono de la extensión.
+function actualizarInsignia(historial) {
+  if (!chrome.action) return;
+  const sinLeer = (historial || []).filter(a => !a.leido).length;
+  chrome.action.setBadgeBackgroundColor({ color: '#dc2626' });
+  chrome.action.setBadgeText({ text: sinLeer ? String(Math.min(sinLeer, 99)) : '' });
+}
+
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && changes.avisos_historial) actualizarInsignia(changes.avisos_historial.newValue);
+});
+
+function inicioReunion(m) {
+  if (m.fecha_inicio) {
+    const d = new Date(m.fecha_inicio);
+    if (!isNaN(d)) return d.getTime();
+  }
+  return null;
+}
+
+let revisandoAvisos = false;
+async function revisarAvisos() {
+  if (revisandoAvisos) return;
+  revisandoAvisos = true;
+  try {
+    const res = await leerStorage(['session_user', 'jwt_token', 'avisos_estado']);
+    const empleadoId = res.session_user?.id;
+    if (!empleadoId || !res.jwt_token) return;
+    const { apiBase } = await getConfigExtension();
+
+    const [dataT, dataR] = await Promise.all([
+      pedirJson(`${apiBase}/tareas?employeeId=${empleadoId}`, res.jwt_token),
+      pedirJson(`${apiBase}/reuniones?employeeId=${empleadoId}`, res.jwt_token),
+    ]);
+    // Si algo falló (red, sesión vencida) no se toca el estado guardado.
+    if (!dataT || !dataR) return;
+
+    const tareas = Array.isArray(dataT) ? dataT : (dataT.tareas || []);
+    const reuniones = Array.isArray(dataR) ? dataR : (dataR.reuniones || []);
+
+    const previo = res.avisos_estado;
+    const primeraVez = !previo || previo.empleadoId !== empleadoId;
+    const tareasVistas = new Set(primeraVez ? [] : previo.tareas);
+    const revisionesVistas = new Set(primeraVez ? [] : previo.revisiones);
+    const reunionesVistas = new Set(primeraVez ? [] : previo.reuniones);
+    const recordadas = new Set(primeraVez ? [] : previo.recordadas);
+
+    const ahora = Date.now();
+
+    for (const t of tareas) {
+      const clave = String(t.id);
+      if (!primeraVez && !tareasVistas.has(clave)) {
+        const limite = t.fecha_limite ? ` · Entrega: ${t.fecha_limite}` : '';
+        notificar(`tarea:${clave}`, 'Nueva tarea asignada', `${t.titulo || 'Tarea'}${limite}`);
+      }
+      tareasVistas.add(clave);
+
+      if (t.revision_fecha && t.revision_resultado) {
+        const claveRev = `${clave}|${t.revision_fecha}`;
+        if (!primeraVez && !revisionesVistas.has(claveRev)) {
+          const aprobada = t.revision_resultado === 'Aprobado';
+          const comentario = t.revision_comentario ? ` — “${t.revision_comentario}”` : '';
+          notificar(
+            `revision:${claveRev}`,
+            aprobada ? 'Tarea aprobada' : 'Tarea por corregir',
+            `${t.titulo || 'Tarea'}${comentario}`
+          );
+        }
+        revisionesVistas.add(claveRev);
+      }
+    }
+
+    for (const m of reuniones) {
+      if (m.estado && !ESTADOS_REUNION_ACTIVA.includes(m.estado)) continue;
+      const clave = String(m.id);
+      const inicio = inicioReunion(m);
+      const cuando = inicio
+        ? new Date(inicio).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+        : 'Fecha por definir';
+
+      if (!primeraVez && !reunionesVistas.has(clave) && (!inicio || inicio > ahora)) {
+        notificar(`reunion:${clave}`, 'Nueva reunión programada', `${m.titulo || 'Reunión'} · ${cuando}`, m.link);
+      }
+      reunionesVistas.add(clave);
+
+      // Recordatorio: faltan 10 minutos o menos y todavía no empieza.
+      const claveRec = `${clave}|${m.fecha_inicio}`;
+      if (inicio && inicio > ahora && inicio - ahora <= MIN_RECORDATORIO * 60000 && !recordadas.has(claveRec)) {
+        const minutos = Math.max(1, Math.round((inicio - ahora) / 60000));
+        notificar(`recordatorio:${claveRec}`, `Reunión en ${minutos} min`, `${m.titulo || 'Reunión'}${m.link ? ' · Clic para unirte' : ''}`, m.link);
+        recordadas.add(claveRec);
+      }
+    }
+
+    await guardarAvisosNuevos();
+
+    // Se recorta para que el storage no crezca sin límite.
+    chrome.storage.local.set({
+      avisos_estado: {
+        empleadoId,
+        tareas: Array.from(tareasVistas).slice(-500),
+        revisiones: Array.from(revisionesVistas).slice(-500),
+        reuniones: Array.from(reunionesVistas).slice(-500),
+        recordadas: Array.from(recordadas).slice(-200),
+      },
+    });
+  } finally {
+    avisosNuevos = [];
+    revisandoAvisos = false;
+  }
+}
+
+// Clic en la notificación: si es una reunión con enlace, se abre el enlace;
+// en cualquier otro caso se abre el panel en ventana flotante.
+if (chrome.notifications) {
+  chrome.notifications.onClicked.addListener(async (idNotif) => {
+    chrome.notifications.clear(idNotif);
+    const tipo = idNotif.split(':')[0];
+    if (tipo === 'reunion' || tipo === 'recordatorio') {
+      const { avisos_historial } = await leerStorage(['avisos_historial']);
+      const link = (avisos_historial || []).find(a => a.id === idNotif)?.link;
+      if (link && /^https:\/\//i.test(link)) {
+        chrome.tabs.create({ url: link });
+        return;
+      }
+    }
+    chrome.windows.create({ url: 'panel.html', type: 'popup', width: 380, height: 620, focused: true });
+  });
+}
+
+// Al despertar el service worker se asegura que la alarma exista.
+programarAlarmaAvisos();
+leerStorage(['avisos_historial']).then(r => actualizarInsignia(r.avisos_historial));

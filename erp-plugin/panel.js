@@ -202,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <button id="tab-tareas" class="tab-btn">📋 Tareas</button>
         <button id="tab-reuniones" class="tab-btn">📅 Reuniones</button>
         <button id="tab-recompensas" class="tab-btn">🏆 Puntos</button>
+        <button id="tab-avisos" class="tab-btn"><span class="tab-campana">🔔</span> Avisos<span id="avisos-contador" class="tab-contador" style="display:none;"></span></button>
       </div>
 
       <!-- Sub-filtros de Tareas -->
@@ -297,6 +298,135 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
+  // AVISOS (historial de notificaciones)
+  // ==========================================
+  // background.js guarda cada notificación en `avisos_historial`. Aquí se
+  // listan; al abrir la pestaña se marcan como leídas (las nuevas se resaltan
+  // mientras sigas en la pestaña).
+  const ICONO_AVISO = { tarea: '📋', revision: '✅', reunion: '📅', recordatorio: '⏰' };
+
+  function haceCuanto(ms) {
+    const min = Math.round((Date.now() - ms) / 60000);
+    if (min < 1) return 'Justo ahora';
+    if (min < 60) return `Hace ${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `Hace ${h} h`;
+    return new Date(ms).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function actualizarContadorAvisos() {
+    chrome.storage.local.get(['avisos_historial'], (res) => {
+      const el = document.getElementById('avisos-contador');
+      if (!el) return;
+      const sinLeer = (res?.avisos_historial || []).filter(a => !a.leido).length;
+      el.textContent = sinLeer > 99 ? '99+' : String(sinLeer);
+      el.style.display = sinLeer ? 'inline-block' : 'none';
+      document.getElementById('tab-avisos')?.classList.toggle('tiene-avisos', sinLeer > 0);
+    });
+  }
+
+  function renderAvisos(list) {
+    chrome.storage.local.get(['avisos_historial'], (res) => {
+      const avisos = res?.avisos_historial || [];
+      if (avisos.length === 0) {
+        list.innerHTML = `<p style="text-align:center; font-size:11px; color:#64748b; margin-top: 12px;">Sin avisos todavía. Aquí aparecerán tus tareas nuevas, revisiones y reuniones.</p>`;
+        return;
+      }
+
+      list.innerHTML = `
+        <div class="avisos-acciones">
+          <button id="avisos-limpiar" class="avisos-limpiar">Borrar todos</button>
+        </div>
+        ${avisos.map((a, i) => {
+          const esRevision = a.tipo === 'revision';
+          const icono = esRevision && /corregir/i.test(a.titulo) ? '✏️' : (ICONO_AVISO[a.tipo] || '🔔');
+          const link = enlaceSeguro(a.link);
+          return `
+          <div class="card-item aviso-item${a.leido ? '' : ' aviso-nuevo'}" data-i="${i}">
+            <div class="card-header">
+              <span class="card-title">${icono} ${escapeHtml(a.titulo)}</span>
+              ${a.leido ? '' : '<span class="aviso-punto" title="Nuevo"></span>'}
+            </div>
+            ${a.mensaje ? `<div class="card-desc">${escapeHtml(a.mensaje)}</div>` : ''}
+            <div class="card-footer">
+              <div class="card-meta"><span>${escapeHtml(haceCuanto(a.fecha))}</span></div>
+              ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" class="btn-meeting-link">🔗 Unirme</a>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      `;
+
+      document.getElementById('avisos-limpiar').onclick = () => {
+        chrome.storage.local.set({ avisos_historial: [] }, () => renderAvisos(list));
+      };
+
+      // Clic en un aviso de tarea → lleva a la pestaña de Tareas.
+      list.querySelectorAll('.aviso-item').forEach(card => {
+        const a = avisos[Number(card.dataset.i)];
+        if (a.tipo !== 'tarea' && a.tipo !== 'revision') return;
+        card.style.cursor = 'pointer';
+        card.onclick = () => { activeMainTab = 'tareas'; activeSubFilter = 'por_hacer'; updateStyles(); loadData(); };
+      });
+
+      if (avisos.some(a => !a.leido)) {
+        chrome.storage.local.set({ avisos_historial: avisos.map(a => ({ ...a, leido: true })) });
+      }
+    });
+  }
+
+  // Si llega un aviso con el panel abierto se actualiza el contador (y la
+  // lista si estás viendo la pestaña).
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace !== 'local' || !changes.avisos_historial) return;
+    actualizarContadorAvisos();
+    const idsAntes = new Set((changes.avisos_historial.oldValue || []).map(a => a.id));
+    const recien = (changes.avisos_historial.newValue || []).filter(a => !a.leido && !idsAntes.has(a.id));
+    if (recien.length === 0) return;
+    mostrarToastAviso(recien[0], recien.length);
+    const list = document.getElementById('c-contentList');
+    if (activeMainTab === 'avisos' && list) renderAvisos(list);
+  });
+
+  // Mientras el panel está abierto se revisan avisos cada 15 s.
+  setInterval(() => {
+    if (usuarioAutenticado) chrome.runtime.sendMessage({ type: 'REVISAR_AVISOS' });
+  }, 15000);
+
+  // Banner que baja desde arriba cuando llega un aviso con el panel abierto.
+  let toastTimer = null;
+  function mostrarToastAviso(aviso, total) {
+    if (!usuarioAutenticado) return;
+    document.getElementById('toast-aviso')?.remove();
+    clearTimeout(toastTimer);
+    const icono = aviso.tipo === 'revision' && /corregir/i.test(aviso.titulo) ? '✏️' : (ICONO_AVISO[aviso.tipo] || '🔔');
+    const toast = document.createElement('div');
+    toast.id = 'toast-aviso';
+    toast.className = 'toast-aviso';
+    toast.innerHTML = `
+      <div class="toast-campana">🔔</div>
+      <div class="toast-cuerpo">
+        <div class="toast-etiqueta">${total > 1 ? `${total} avisos nuevos` : 'Nuevo aviso'}</div>
+        <div class="toast-titulo">${icono} ${escapeHtml(aviso.titulo)}</div>
+        ${aviso.mensaje ? `<div class="toast-mensaje">${escapeHtml(aviso.mensaje)}</div>` : ''}
+      </div>
+      <button class="toast-cerrar" title="Cerrar">✕</button>
+      <div class="toast-progreso"></div>`;
+    document.body.appendChild(toast);
+    const cerrar = () => {
+      toast.classList.add('saliendo');
+      setTimeout(() => toast.remove(), 250);
+    };
+    toast.querySelector('.toast-cerrar').onclick = (e) => { e.stopPropagation(); cerrar(); };
+    toast.onclick = () => {
+      activeMainTab = 'avisos';
+      updateStyles();
+      loadData();
+      cerrar();
+    };
+    toastTimer = setTimeout(cerrar, 8000);
+  }
+
+  // ==========================================
   // 3. SELECCIÓN Y ESTILOS DE PESTAÑAS
   // ==========================================
   function setupEvents() {
@@ -306,6 +436,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnT) btnT.onclick = () => { activeMainTab = 'tareas'; updateStyles(); loadData(); };
     if (btnR) btnR.onclick = () => { activeMainTab = 'reuniones'; updateStyles(); loadData(); };
     if (btnP) btnP.onclick = () => { activeMainTab = 'recompensas'; updateStyles(); loadData(); };
+    const btnA = document.getElementById('tab-avisos');
+    if (btnA) btnA.onclick = () => { activeMainTab = 'avisos'; updateStyles(); loadData(); };
+    actualizarContadorAvisos();
 
     ['por_hacer', 'pendientes', 'completadas'].forEach(filter => {
       const btn = document.getElementById(`sub-${filter}`);
@@ -319,13 +452,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnP = document.getElementById('tab-recompensas');
     const subContainer = document.getElementById('subfilters-container');
 
-    if (btnT && btnR && btnP) {
-      [btnT, btnR, btnP].forEach(b => b.classList.remove('active'));
+    const btnA = document.getElementById('tab-avisos');
+
+    if (btnT && btnR && btnP && btnA) {
+      [btnT, btnR, btnP, btnA].forEach(b => b.classList.remove('active'));
       if (activeMainTab === 'tareas') {
         btnT.classList.add('active');
         if (subContainer) subContainer.style.display = 'grid';
       } else {
-        (activeMainTab === 'reuniones' ? btnR : btnP).classList.add('active');
+        ({ reuniones: btnR, recompensas: btnP, avisos: btnA })[activeMainTab]?.classList.add('active');
         if (subContainer) subContainer.style.display = 'none';
       }
     }
@@ -591,9 +726,15 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadData() {
     const list = document.getElementById('c-contentList');
     if (!list) return;
+    chrome.runtime.sendMessage({ type: 'REVISAR_AVISOS' });
 
     if (activeMainTab === 'recompensas') {
       await renderRecompensas(list);
+      return;
+    }
+
+    if (activeMainTab === 'avisos') {
+      renderAvisos(list);
       return;
     }
 
