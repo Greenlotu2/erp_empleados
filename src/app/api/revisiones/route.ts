@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/api-auth";
 import { enviarPush, revisoresDe } from "../../../lib/push";
-import { verifyAuthToken } from "../../../lib/auth";
+import { verificarTokenVigente } from "../../../lib/tokenVigente";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,7 +30,7 @@ const TIPOS_EVIDENCIA = new Set([
 
 // 1. OBTENER HISTORIAL DE REVISIONES (GET)
 export async function GET(request: NextRequest) {
-  const user = verifyAuthToken(request);
+  const user = await verificarTokenVigente(request);
   if (!user) {
     return NextResponse.json(
       { error: "No autorizado / Token inválido" },
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
 
 // 2. REGISTRAR REVISIÓN DESDE EXTENSIÓN O WEB (POST)
 export async function POST(request: NextRequest) {
-  const user = verifyAuthToken(request);
+  const user = await verificarTokenVigente(request);
   if (!user) {
     return NextResponse.json(
       { error: "No autorizado / Token inválido" },

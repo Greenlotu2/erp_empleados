@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
-import { verifyAuthToken } from "../../../lib/auth";
+import { verificarTokenVigente } from "../../../lib/tokenVigente";
 import { empleadoDeSesion, esAdminWeb } from "../../../lib/adminWeb";
 import { limpiarCredencial } from "../../../lib/credenciales";
 
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     let isAuthorized = false;
 
     // 1. Intento A: Verificar Token JWT en el encabezado Authorization (Bearer)
-    const jwtCaller = verifyAuthToken(request);
+    const jwtCaller = await verificarTokenVigente(request);
     if (
       jwtCaller &&
       (jwtCaller.rol.toLowerCase() === "administrador" ||

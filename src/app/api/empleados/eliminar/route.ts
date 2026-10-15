@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyAuthToken } from "../../../../lib/auth";
+import { verificarTokenVigente } from "../../../../lib/tokenVigente";
 import { empleadoDeSesion, esAdminWeb } from "../../../../lib/adminWeb";
 import { DOC_BUCKET, rutaEnBucket } from "../../../../lib/rutaBucket";
 
@@ -77,7 +77,7 @@ async function quitarDeColaboradores(empleadoId: string) {
 
 // Comprueba que quien llama sea administrador (por JWT propio o por sesión SSR).
 async function esAdmin(request: NextRequest): Promise<boolean> {
-  const jwtCaller = verifyAuthToken(request);
+  const jwtCaller = await verificarTokenVigente(request);
   const rolJwt = jwtCaller?.rol?.toLowerCase();
   if (rolJwt === "administrador" || rolJwt === "admin") return true;
 

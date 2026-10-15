@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/api-auth'; // Ajusta la ruta relativa si es necesario
-import { verifyAuthToken } from '../../../lib/auth';
+import { verificarTokenVigente } from '../../../lib/tokenVigente';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,7 +11,7 @@ const corsHeaders = {
 export async function GET(req: NextRequest) {
   // 🔒 Verificación de Token JWT — antes este endpoint no verificaba nada, así que
   // cualquiera podía leer las reuniones de cualquier empleado con solo saber su id.
-  const user = verifyAuthToken(req);
+  const user = await verificarTokenVigente(req);
   if (!user) {
     return NextResponse.json({ error: 'No autorizado / Token inválido' }, { status: 401, headers: corsHeaders });
   }

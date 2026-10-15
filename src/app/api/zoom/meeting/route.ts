@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '../../../../lib/auth';
+import { verificarTokenVigente } from '../../../../lib/tokenVigente';
 import { supabaseAdmin } from '../../../../lib/api-auth';
 import { empleadoDeSesion, esAdminWeb } from '../../../../lib/adminWeb';
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
   // Con token (extensión/app) solo Gerencia o Coordinación: un trabajador no
   // crea reuniones con la cuenta de Zoom de la empresa.
-  const jwtCaller = verifyAuthToken(req);
+  const jwtCaller = await verificarTokenVigente(req);
   if (jwtCaller) {
     const { data: emp } = await supabaseAdmin
       .from('empleados')

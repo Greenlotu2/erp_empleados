@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '../../../../lib/auth';
+import { verificarTokenVigente } from '../../../../lib/tokenVigente';
 import { empleadoDeSesion, esAdminWeb } from '../../../../lib/adminWeb';
 import { supabaseAdmin } from '../../../../lib/api-auth';
 
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
     // 🔒 1. Intento A: Verificar Token JWT en encabezado Authorization (Bearer)
     // Con token: solo Gerencia/Coordinación (la IA cuesta en cada llamada).
-    const jwtCaller = verifyAuthToken(req);
+    const jwtCaller = await verificarTokenVigente(req);
     if (jwtCaller) {
       const emp = await empleadoPorId(jwtCaller.id);
       if (emp?.nivel === 'Gerencia' || emp?.nivel === 'Coordinador') isAuthorized = true;

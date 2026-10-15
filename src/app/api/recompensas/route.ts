@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/api-auth';
-import { verifyAuthToken } from '../../../lib/auth';
+import { verificarTokenVigente } from '../../../lib/tokenVigente';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,7 +13,7 @@ const corsHeaders = {
 // Supabase (fn_otorgar_puntos_tarea_completada) cuando una tarea pasa a
 // "Completada"; este endpoint solo lee el total y el historial.
 export async function GET(req: NextRequest) {
-  const user = verifyAuthToken(req);
+  const user = await verificarTokenVigente(req);
   if (!user) {
     return NextResponse.json({ error: 'No autorizado / Token inválido' }, { status: 401, headers: corsHeaders });
   }

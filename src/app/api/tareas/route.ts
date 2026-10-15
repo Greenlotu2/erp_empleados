@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/api-auth';
-import { verifyAuthToken } from '../../../lib/auth';
+import { verificarTokenVigente } from '../../../lib/tokenVigente';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,24 +11,12 @@ const corsHeaders = {
 // 1. OBTENER TAREAS (GET)
 export async function GET(req: NextRequest) {
   // 🔒 Verificación de Token JWT
-  const user = verifyAuthToken(req);
+  const user = await verificarTokenVigente(req);
   if (!user) {
     return NextResponse.json({ error: 'No autorizado / Token inválido' }, { status: 401, headers: corsHeaders });
   }
 
   try {
-    // El JWT dura 8 h: si al empleado lo eliminaron, su token sigue siendo
-    // válido. La extensión consulta esta ruta cada pocos segundos, así que aquí
-    // se corta la sesión (con 401 la extensión cierra sesión sola).
-    const { data: sigueActivo } = await supabaseAdmin
-      .from('empleados')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
-    if (!sigueActivo) {
-      return NextResponse.json({ error: 'Tu cuenta ya no existe' }, { status: 401, headers: corsHeaders });
-    }
-
     const { searchParams } = new URL(req.url);
     const requestedEmpId = searchParams.get('employeeId') || searchParams.get('empleadoId');
 
@@ -72,7 +60,7 @@ export async function GET(req: NextRequest) {
 // 2. ACTUALIZAR ESTADO DE TAREA (PATCH)
 export async function PATCH(req: NextRequest) {
   // 🔒 Verificación de Token JWT
-  const user = verifyAuthToken(req);
+  const user = await verificarTokenVigente(req);
   if (!user) {
     return NextResponse.json({ error: 'No autorizado / Token inválido' }, { status: 401, headers: corsHeaders });
   }

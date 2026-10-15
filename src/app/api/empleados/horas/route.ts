@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/api-auth";
-import { verifyAuthToken } from "../../../../lib/auth";
+import { verificarTokenVigente } from "../../../../lib/tokenVigente";
 
 // Mismo límite que la extensión (MAX_DAILY_SECONDS = 5 h), ahora en el servidor.
 const TOPE_DIARIO_HORAS = 5;
@@ -12,7 +12,7 @@ const corsHeaders = {
 };
 
 export async function GET(req: NextRequest) {
-  const user = verifyAuthToken(req);
+  const user = await verificarTokenVigente(req);
   if (!user) {
     return NextResponse.json(
       { error: "No autorizado / Token inválido" },
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   // 🔒 1. Verificar autenticación JWT
-  const user = verifyAuthToken(req);
+  const user = await verificarTokenVigente(req);
   if (!user) {
     return NextResponse.json(
       { error: "No autorizado / Token inválido" },
