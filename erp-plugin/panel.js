@@ -27,29 +27,70 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const screenContainer = document.getElementById('screen-container');
-  const logoutBtn = document.getElementById('btn-logout');
-  const popoutBtn = document.getElementById('btn-popout');
-  const refreshBtn = document.getElementById('btn-refresh');
 
-  // Abrir extensión en ventana flotante
-  if (popoutBtn) {
-    popoutBtn.onclick = () => {
-      chrome.runtime.sendMessage({ type: 'OPEN_POPUP_WINDOW' });
-    };
-  }
+  // Acciones de la tarjeta del usuario: 🔄 actualizar y menú ⋮ (ventana
+  // flotante y cerrar sesión). Chrome ya muestra el nombre de la extensión
+  // arriba del panel, así que no hay encabezado propio.
+  let menuListenersListos = false;
+  function setupAccionesUsuario() {
+    const refreshBtn = document.getElementById('btn-refresh');
+    if (refreshBtn) {
+      refreshBtn.onclick = async () => {
+        if (!usuarioAutenticado || refreshBtn.disabled) return;
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('spinning');
+        await loadData();
+        setTimeout(() => {
+          refreshBtn.classList.remove('spinning');
+          refreshBtn.disabled = false;
+        }, 400);
+      };
+    }
 
-  // 🔄 Actualizar manualmente (tareas/reuniones/puntos de la pestaña activa)
-  if (refreshBtn) {
-    refreshBtn.onclick = async () => {
-      if (!usuarioAutenticado || refreshBtn.disabled) return;
-      refreshBtn.disabled = true;
-      refreshBtn.classList.add('spinning');
-      await loadData();
-      setTimeout(() => {
-        refreshBtn.classList.remove('spinning');
-        refreshBtn.disabled = false;
-      }, 400);
+    const menuBtn = document.getElementById('btn-menu');
+    const menu = document.getElementById('menu-opciones');
+    if (!menuBtn || !menu) return;
+    const cerrarMenu = () => { menu.hidden = true; menuBtn.setAttribute('aria-expanded', 'false'); };
+    menuBtn.onclick = (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      menuBtn.setAttribute('aria-expanded', String(!menu.hidden));
     };
+    // Los listeners del documento se ponen una sola vez (el dashboard se
+    // vuelve a dibujar al iniciar sesión).
+    if (!menuListenersListos) {
+      menuListenersListos = true;
+      const cerrarSiAbierto = () => {
+        const m = document.getElementById('menu-opciones');
+        if (m && !m.hidden) { m.hidden = true; document.getElementById('btn-menu')?.setAttribute('aria-expanded', 'false'); }
+      };
+      document.addEventListener('click', (e) => { if (!e.target.closest('#menu-opciones')) cerrarSiAbierto(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarSiAbierto(); });
+    }
+
+    const popoutBtn = document.getElementById('btn-popout');
+    // Si ya estás en la ventana flotante, la opción sobra.
+    chrome.windows?.getCurrent((w) => { if (w?.type === 'popup' && popoutBtn) popoutBtn.style.display = 'none'; });
+    if (popoutBtn) popoutBtn.onclick = () => { cerrarMenu(); chrome.runtime.sendMessage({ type: 'OPEN_POPUP_WINDOW' }); };
+
+    // Interruptor "Abrir al iniciar Chrome" (activado si nunca se ha tocado).
+    const inicioBtn = document.getElementById('btn-abrir-inicio');
+    if (inicioBtn) {
+      const pintar = (activo) => {
+        inicioBtn.setAttribute('aria-checked', String(activo));
+        inicioBtn.classList.toggle('activo', activo);
+      };
+      chrome.storage.local.get(['abrir_al_iniciar'], (res) => pintar(res?.abrir_al_iniciar !== false));
+      inicioBtn.onclick = (e) => {
+        e.stopPropagation();
+        const activo = inicioBtn.getAttribute('aria-checked') !== 'true';
+        pintar(activo);
+        chrome.storage.local.set({ abrir_al_iniciar: activo });
+      };
+    }
+
+    const logoutBtn = document.getElementById('btn-logout');
+    if (logoutBtn) logoutBtn.onclick = () => { cerrarMenu(); handleLogout(); };
   }
 
   // 🔒 Cliente de red inyectando Token JWT
@@ -133,7 +174,6 @@ document.addEventListener('DOMContentLoaded', () => {
         jwtToken = token;
 
         chrome.storage.local.set({ session_user: usuarioAutenticado, jwt_token: jwtToken });
-        if (logoutBtn) logoutBtn.style.display = 'flex';
         renderDashboard();
       } else {
         alert(res?.data?.error || res?.data?.message || res?.error || 'Credenciales incorrectas.');
@@ -173,6 +213,18 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
         <span id="rewards-badge" class="rewards-badge" title="Puntos de recompensa">🏆 ${Number(usuarioAutenticado.puntos_recompensa) || 0} pts</span>
+        <div class="user-acciones">
+          <button id="btn-refresh" title="Actualizar" class="icon-btn"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
+          <div class="menu-wrap">
+            <button id="btn-menu" title="Más opciones" class="icon-btn" aria-haspopup="true" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg></button>
+            <div id="menu-opciones" class="menu-opciones" hidden>
+              <button id="btn-abrir-inicio" class="menu-item" role="menuitemcheckbox" aria-checked="true"><span class="menu-check"></span> Abrir al iniciar Chrome</button>
+              <button id="btn-popout" class="menu-item"><svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Abrir en ventana flotante</button>
+              <div class="menu-separador"></div>
+              <button id="btn-logout" class="menu-item peligro"><svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg> Cerrar sesión</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Widget de Timer Automático -->
@@ -217,6 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
     setupEvents();
+    setupAccionesUsuario();
     updateStyles();
 
     if (isEstudiante) {
@@ -975,7 +1028,6 @@ document.addEventListener('DOMContentLoaded', () => {
       todaySeconds = res.todaySeconds || 0;
       lastSyncedSeconds = todaySeconds;
 
-      if (logoutBtn) logoutBtn.style.display = 'flex';
       renderDashboard();
     } else {
       renderLogin();
@@ -995,14 +1047,10 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.remove(['session_user', 'jwt_token', 'todaySeconds', 'turnoActivo', 'inicioTurnoTimestamp'], () => {
       usuarioAutenticado = null;
       jwtToken = null;
-      if (logoutBtn) logoutBtn.style.display = 'none';
       renderLogin();
     });
   }
 
-  if (logoutBtn) {
-    logoutBtn.onclick = handleLogout;
-  }
 
   // 🛡️ Fix #4: Avisar a background.js que el panel se cerró para que retome el conteo
   window.addEventListener('beforeunload', () => {

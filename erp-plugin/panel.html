@@ -764,29 +764,25 @@
 @keyframes campana { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-12deg); } 45% { transform: rotate(8deg); } 60% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); } }
 @keyframes pulso { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); } 100% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); } }
 @keyframes brillo { 0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } 50% { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35); } }
+
+/* Acciones junto al usuario: actualizar + menú ⋮ */
+.user-acciones { display: flex; align-items: center; gap: 1px; margin-left: 2px; }
+.menu-wrap { position: relative; }
+.menu-opciones { position: absolute; top: calc(100% + 4px); right: 0; z-index: 50; min-width: 178px; padding: 4px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); }
+.menu-opciones[hidden] { display: none; }
+.menu-item { display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px 8px; border: none; border-radius: 6px; background: transparent; color: #cbd5e1; font-size: 11px; text-align: left; cursor: pointer; }
+.menu-item:hover { background: #1e293b; color: #fff; }
+.menu-item.peligro { color: #f87171; }
+.menu-item.peligro:hover { background: rgba(127, 29, 29, 0.4); }
+.menu-separador { height: 1px; margin: 3px 2px; background: #1e293b; }
+
+.menu-check { width: 13px; height: 13px; flex-shrink: 0; border-radius: 3px; border: 1px solid #475569; display: inline-flex; align-items: center; justify-content: center; }
+.menu-item.activo .menu-check { background: #2563eb; border-color: #2563eb; }
+.menu-item.activo .menu-check::after { content: ''; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translate(-0.5px, -0.5px); }
   </style>
 </head>
 <body>
 
-  <!-- Header Superior -->
-  <header>
-    <div class="brand">
-      <div class="logo-badge">R</div>
-      <span class="brand-title">ROCAL ERP</span>
-    </div>
-    
-    <div class="header-actions">
-      <button id="btn-refresh" title="Actualizar" class="icon-btn">
-        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-      </button>
-      <button id="btn-popout" title="Abrir en ventana flotante" class="icon-btn">
-        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-      </button>
-      <button id="btn-logout" title="Cerrar Sesión" style="display:none;" class="icon-btn logout">
-        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-      </button>
-    </div>
-  </header>
 
   <!-- Contenedor Dinámico -->
   <main id="screen-container"></main>

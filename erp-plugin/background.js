@@ -200,16 +200,68 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'OPEN_POPUP_WINDOW') {
-    chrome.windows.create({
-      url: 'panel.html',
-      type: 'popup',
-      width: 380,
-      height: 620,
-      focused: true
-    });
+    abrirVentanaPanel();
     return false;
   }
 });
+// ==========================================
+// 7.5 ABRIR EL PANEL AL INICIAR CHROME
+// ==========================================
+// Chrome no deja abrir el panel lateral sin un clic, así que al abrir el
+// navegador se abre la ventana flotante. Solo si hay sesión y la opción
+// "Abrir al iniciar Chrome" (menú ⋮) está activa; viene activada por defecto.
+//
+// No basta con runtime.onStartup: si Chrome se queda corriendo en segundo
+// plano al cerrar sus ventanas, al "volver a abrirlo" no hay inicio. Por eso
+// también se escucha cuando aparece la primera ventana normal. El id de la
+// ventana flotante se guarda en storage.session para no abrir dos.
+async function abrirVentanaPanel() {
+  const w = await chrome.windows.create({ url: 'panel.html', type: 'popup', width: 380, height: 620, focused: true });
+  if (w?.id != null) chrome.storage.session?.set({ ventanaPanelId: w.id });
+  return w;
+}
+
+async function ventanaPanelAbierta() {
+  const { ventanaPanelId } = (await chrome.storage.session?.get(['ventanaPanelId'])) || {};
+  if (ventanaPanelId == null) return false;
+  try {
+    await chrome.windows.get(ventanaPanelId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let abriendoAlIniciar = false;
+async function abrirAlIniciarSiCorresponde() {
+  if (abriendoAlIniciar) return;
+  abriendoAlIniciar = true;
+  try {
+    const res = await chrome.storage.local.get(['session_user', 'jwt_token', 'abrir_al_iniciar']);
+    if (!res.session_user?.id || !res.jwt_token || res.abrir_al_iniciar === false) return;
+    // Se espera a que Chrome termine de abrir y restaurar sus ventanas; si no,
+    // la ventana flotante queda detrás de la principal.
+    await new Promise(r => setTimeout(r, 1500));
+    const normales = await chrome.windows.getAll({ windowTypes: ['normal'] });
+    if (normales.length === 0) return;
+    if (await ventanaPanelAbierta()) return;
+    await abrirVentanaPanel();
+  } catch (e) {
+    console.error('No se pudo abrir el panel al iniciar:', e);
+  } finally {
+    abriendoAlIniciar = false;
+  }
+}
+
+chrome.runtime.onStartup.addListener(abrirAlIniciarSiCorresponde);
+
+chrome.windows.onCreated.addListener(async (win) => {
+  if (win.type !== 'normal') return;
+  // Solo cuando es la primera ventana (el navegador se acaba de "abrir").
+  const normales = await chrome.windows.getAll({ windowTypes: ['normal'] });
+  if (normales.length === 1) abrirAlIniciarSiCorresponde();
+});
+
 // ==========================================
 // 8. NOTIFICACIONES DE TAREAS Y REUNIONES
 // ==========================================
