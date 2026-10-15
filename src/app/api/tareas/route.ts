@@ -17,6 +17,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // El JWT dura 8 h: si al empleado lo eliminaron, su token sigue siendo
+    // válido. La extensión consulta esta ruta cada pocos segundos, así que aquí
+    // se corta la sesión (con 401 la extensión cierra sesión sola).
+    const { data: sigueActivo } = await supabaseAdmin
+      .from('empleados')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (!sigueActivo) {
+      return NextResponse.json({ error: 'Tu cuenta ya no existe' }, { status: 401, headers: corsHeaders });
+    }
+
     const { searchParams } = new URL(req.url);
     const requestedEmpId = searchParams.get('employeeId') || searchParams.get('empleadoId');
 

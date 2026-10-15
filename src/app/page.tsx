@@ -1764,6 +1764,7 @@ export default function AdminDashboard() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "No se pudo eliminar.");
+      if (data.aviso) alert(data.aviso);
 
       setIsDeleteModalOpen(false);
       setSelectedEmployee(null);

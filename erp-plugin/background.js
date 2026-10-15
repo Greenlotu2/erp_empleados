@@ -319,6 +319,11 @@ function leerStorage(claves) {
 async function pedirJson(url, token) {
   try {
     const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+    // Token vencido o cuenta eliminada: se cierra la sesión de la extensión.
+    if (r.status === 401) {
+      chrome.storage.local.remove(['session_user', 'jwt_token', 'todaySeconds', 'turnoActivo', 'inicioTurnoTimestamp']);
+      return null;
+    }
     if (!r.ok) return null;
     return await r.json();
   } catch {
