@@ -2320,18 +2320,10 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex items-center gap-1 mt-1 flex-wrap">
                       <p className="text-xs text-slate-500 font-medium">
-                        {selectedEmployee.role} • {selectedEmployee.email}
+                        {selectedEmployee.role}
+                        {selectedEmployee.especialidad &&
+                          ` • ${selectedEmployee.especialidad}`}
                       </p>
-                      {selectedEmployee.especialidad && (
-                        <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-1 py-0.5 rounded-md border border-slate-200 shrink-0">
-                          <Icon
-                            name="zap"
-                            size={12}
-                            className="inline -mt-0.5 mr-0.5"
-                          />
-                          {selectedEmployee.especialidad}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
