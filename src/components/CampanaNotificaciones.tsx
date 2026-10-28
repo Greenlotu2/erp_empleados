@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { abrirArchivo } from "../lib/storageUrls";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
+import { cargarAvisos, type Aviso, type TipoAviso } from "../lib/avisosAdmin";
 import { ModalOverlay } from "./ModalOverlay";
 
 // Avisa a las pantallas abiertas (Panel Principal, etc.) que una solicitud se
@@ -57,6 +58,25 @@ const SELECT_NOTIF = `
   evidencia_nombre
 `;
 
+const CLAVE_LEIDOS = "avisosLeidos";
+
+const leerLeidos = (): Set<string> => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(CLAVE_LEIDOS) || "[]"));
+  } catch {
+    return new Set();
+  }
+};
+
+const ICONO_AVISO: Record<TipoAviso, IconName> = {
+  tarea: "clipboard",
+  reunion: "calendar",
+  equipo: "users",
+  documento: "file-text",
+  horas: "clock",
+  raya: "banknote",
+};
+
 // Campana de solicitudes de revisión: vive en la barra lateral, así que está en
 // todas las pantallas de administración. Aprobar completa la tarea; rechazar pide
 // nueva fecha límite y el comentario para el trabajador.
@@ -71,6 +91,8 @@ export default function CampanaNotificaciones() {
   } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [revisor, setRevisor] = useState("Administración");
+  const [avisos, setAvisos] = useState<Aviso[]>([]);
+  const [leidos, setLeidos] = useState<Set<string>>(new Set());
 
   // `null` = aún no cargamos: así no se dispara una ráfaga de avisos del navegador.
   const vistasRef = useRef<Set<string> | null>(null);
@@ -133,6 +155,15 @@ export default function CampanaNotificaciones() {
     cargar();
     const intervalo = setInterval(cargar, 30000);
 
+    // Avisos informativos: se recalculan cada minuto.
+    setLeidos(leerLeidos());
+    const refrescarAvisos = () =>
+      cargarAvisos()
+        .then(setAvisos)
+        .catch((err) => console.error("Error cargando avisos:", err));
+    refrescarAvisos();
+    const intervaloAvisos = setInterval(refrescarAvisos, 60000);
+
     // Nombre de quien revisa, tal como lo verá el trabajador en la extensión.
     (async () => {
       const {
@@ -147,7 +178,10 @@ export default function CampanaNotificaciones() {
       if (data?.nombre) setRevisor(data.nombre);
     })();
 
-    return () => clearInterval(intervalo);
+    return () => {
+      clearInterval(intervalo);
+      clearInterval(intervaloAvisos);
+    };
   }, [cargar]);
 
   // Clic fuera cierra la lista.
@@ -159,6 +193,25 @@ export default function CampanaNotificaciones() {
     document.addEventListener("mousedown", alPresionar);
     return () => document.removeEventListener("mousedown", alPresionar);
   }, [abierta]);
+
+  const guardarLeidos = (ids: Set<string>) => {
+    setLeidos(ids);
+    try {
+      localStorage.setItem(CLAVE_LEIDOS, JSON.stringify(Array.from(ids)));
+    } catch {
+      // sin almacenamiento: queda leído solo mientras la página esté abierta
+    }
+  };
+
+  const marcarLeido = (id: string) => {
+    if (!leidos.has(id)) guardarLeidos(new Set(leidos).add(id));
+  };
+
+  const marcarTodoLeido = () =>
+    guardarLeidos(new Set([...leidos, ...avisos.map((a) => a.id)]));
+
+  const sinLeer = avisos.filter((a) => !leidos.has(a.id)).length;
+  const totalPendientes = solicitudes.length + sinLeer;
 
   const quitar = (id: string) => {
     setSolicitudes((prev) => prev.filter((s) => s.id !== id));
@@ -254,13 +307,13 @@ export default function CampanaNotificaciones() {
       <button
         type="button"
         onClick={() => setAbierta((v) => !v)}
-        title="Solicitudes y entregas"
+        title="Notificaciones"
         className="relative p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center"
       >
         <Icon name="bell" size={16} />
-        {solicitudes.length > 0 && (
+        {totalPendientes > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-semibold h-4 min-w-4 px-0.5 rounded-full flex items-center justify-center">
-            {solicitudes.length}
+            {totalPendientes}
           </span>
         )}
       </button>
@@ -269,99 +322,159 @@ export default function CampanaNotificaciones() {
         <div className="absolute left-full top-0 ml-3 w-80 bg-white text-slate-900 border border-slate-200 rounded-xl shadow-lg z-50 p-2 select-text">
           <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-slate-100">
             <h4 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-              Solicitudes y entregas ({solicitudes.length})
+              Notificaciones ({totalPendientes})
             </h4>
             <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
               En vivo
             </span>
           </div>
 
-          {solicitudes.length === 0 ? (
-            <p className="text-xs text-slate-400 py-2 text-center">
-              Sin solicitudes pendientes
-            </p>
-          ) : (
-            <div className="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
-              {solicitudes.map((s) => (
-                <div
-                  key={s.id}
-                  className="p-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs space-y-1"
-                >
-                  <div className="flex justify-between items-start">
-                    <span className="font-semibold text-slate-900 flex items-center gap-1">
-                      <Icon name="user" size={12} className="text-slate-400" />
-                      {s.employeeName}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {s.timestamp}
-                    </span>
-                  </div>
-
-                  <p className="text-slate-700 text-[11px] font-medium leading-snug">
-                    {s.taskTitle}
-                  </p>
-
-                  <div className="flex items-center gap-1 flex-wrap pt-1">
-                    <span className="text-[10px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 inline-flex items-center gap-1">
-                      <Icon name="folder" size={10} /> {s.projectName}
-                    </span>
-                    {s.taskDueDate && (
-                      <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 inline-flex items-center gap-1">
-                        <Icon name="hourglass" size={10} />{" "}
-                        {formatFecha(s.taskDueDate)}
+          <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-1.5">
+            {solicitudes.length > 0 && (
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                Por revisar
+              </p>
+            )}
+            {solicitudes.length === 0 ? null : (
+              <div className="space-y-1.5">
+                {solicitudes.map((s) => (
+                  <div
+                    key={s.id}
+                    className="p-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs space-y-1"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="font-semibold text-slate-900 flex items-center gap-1">
+                        <Icon
+                          name="user"
+                          size={12}
+                          className="text-slate-400"
+                        />
+                        {s.employeeName}
                       </span>
-                    )}
-                    {s.evidenceUrl && (
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {s.timestamp}
+                      </span>
+                    </div>
+
+                    <p className="text-slate-700 text-[11px] font-medium leading-snug">
+                      {s.taskTitle}
+                    </p>
+
+                    <div className="flex items-center gap-1 flex-wrap pt-1">
+                      <span className="text-[10px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 inline-flex items-center gap-1">
+                        <Icon name="folder" size={10} /> {s.projectName}
+                      </span>
+                      {s.taskDueDate && (
+                        <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 inline-flex items-center gap-1">
+                          <Icon name="hourglass" size={10} />{" "}
+                          {formatFecha(s.taskDueDate)}
+                        </span>
+                      )}
+                      {s.evidenceUrl && (
+                        <button
+                          type="button"
+                          onClick={() => abrirArchivo(s.evidenceUrl)}
+                          title={s.evidenceName || "Ver evidencia"}
+                          className="text-[10px] text-purple-700 font-medium bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 hover:bg-purple-100 inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Icon name="paperclip" size={10} /> Evidencia
+                        </button>
+                      )}
+                    </div>
+
+                    <textarea
+                      rows={2}
+                      value={comentarios[s.id] || ""}
+                      onChange={(e) =>
+                        setComentarios((prev) => ({
+                          ...prev,
+                          [s.id]: e.target.value,
+                        }))
+                      }
+                      placeholder="Comentario para el trabajador (obligatorio si rechazas)"
+                      className="w-full mt-1 border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] text-slate-800 bg-white outline-none focus:ring-1 focus:ring-blue-400 resize-none"
+                    />
+
+                    <div className="flex gap-1 w-full justify-end mt-1">
                       <button
                         type="button"
-                        onClick={() => abrirArchivo(s.evidenceUrl)}
-                        title={s.evidenceName || "Ver evidencia"}
-                        className="text-[10px] text-purple-700 font-medium bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 hover:bg-purple-100 inline-flex items-center gap-1 cursor-pointer"
+                        onClick={() => aprobar(s)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-1 py-1 rounded-md transition-colors cursor-pointer"
                       >
-                        <Icon name="paperclip" size={10} /> Evidencia
+                        Aprobar
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRechazo({
+                            solicitud: s,
+                            fecha: "",
+                            comentario: comentarios[s.id] || "",
+                          })
+                        }
+                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold px-1 py-1 rounded-md transition-colors cursor-pointer"
+                      >
+                        Rechazar
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
 
-                  <textarea
-                    rows={2}
-                    value={comentarios[s.id] || ""}
-                    onChange={(e) =>
-                      setComentarios((prev) => ({
-                        ...prev,
-                        [s.id]: e.target.value,
-                      }))
-                    }
-                    placeholder="Comentario para el trabajador (obligatorio si rechazas)"
-                    className="w-full mt-1 border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] text-slate-800 bg-white outline-none focus:ring-1 focus:ring-blue-400 resize-none"
-                  />
-
-                  <div className="flex gap-1 w-full justify-end mt-1">
-                    <button
-                      type="button"
-                      onClick={() => aprobar(s)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-1 py-1 rounded-md transition-colors cursor-pointer"
-                    >
-                      Aprobar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setRechazo({
-                          solicitud: s,
-                          fecha: "",
-                          comentario: comentarios[s.id] || "",
-                        })
-                      }
-                      className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold px-1 py-1 rounded-md transition-colors cursor-pointer"
-                    >
-                      Rechazar
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                Avisos
+              </p>
+              {sinLeer > 0 && (
+                <button
+                  type="button"
+                  onClick={marcarTodoLeido}
+                  className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+                >
+                  Marcar todo como leído
+                </button>
+              )}
             </div>
-          )}
+
+            {avisos.length === 0 ? (
+              <p className="text-xs text-slate-400 py-2 text-center">
+                Sin avisos
+              </p>
+            ) : (
+              avisos.map((a) => {
+                const leido = leidos.has(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => marcarLeido(a.id)}
+                    className={`w-full text-left flex gap-2 p-1.5 rounded-xl border text-xs cursor-pointer transition-colors ${
+                      leido
+                        ? "bg-white border-slate-100 opacity-60"
+                        : a.urgente
+                          ? "bg-red-50 border-red-100 hover:bg-red-100/60"
+                          : "bg-slate-50 border-slate-200/80 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Icon
+                      name={ICONO_AVISO[a.tipo]}
+                      size={14}
+                      className={`shrink-0 mt-0.5 ${a.urgente && !leido ? "text-red-500" : "text-slate-400"}`}
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-slate-900 text-[11px]">
+                        {a.titulo}
+                      </span>
+                      <span className="block text-slate-600 text-[11px] leading-snug break-words">
+                        {a.detalle}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
 
