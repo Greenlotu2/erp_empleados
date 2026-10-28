@@ -500,6 +500,12 @@ export default function AdminDashboard() {
   const [isTransformModalOpen, setIsTransformModalOpen] = useState(false);
   const [loadingUpload, setLoadingUpload] = useState(false);
   const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
+  const [nuevoDoc, setNuevoDoc] = useState({
+    nombre: "",
+    obligatorio: false,
+    archivo: null as File | null,
+  });
+  const [agregandoDoc, setAgregandoDoc] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [activeMetricModal, setActiveMetricModal] = useState<
     "totales" | "ocupados" | "disponibles" | "completadas" | null
@@ -1320,6 +1326,46 @@ export default function AdminDashboard() {
       alert(err.message || "Error al subir el documento");
     } finally {
       setUploadingDocId(null);
+    }
+  };
+
+  // Agrega un documento legal nuevo al expediente de alguien ya registrado.
+  const handleAgregarDocumento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const nombre = nuevoDoc.nombre.trim();
+    if (!selectedEmployee || !nombre) return;
+    setAgregandoDoc(true);
+
+    try {
+      let archivoPath: string | null = null;
+      if (nuevoDoc.archivo) {
+        const fileExt = nuevoDoc.archivo.name.split(".").pop();
+        const fileName = `${getDocFolder(nombre)}doc_${selectedEmployee.id}_${Date.now()}.${fileExt}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("documentacion")
+          .upload(fileName, nuevoDoc.archivo);
+        if (uploadErr) throw uploadErr;
+        archivoPath = fileName;
+      }
+
+      const { error: dbErr } = await supabase
+        .from("documentos_legales")
+        .insert({
+          empleado_id: selectedEmployee.id,
+          nombre_documento: nombre,
+          es_obligatorio: nuevoDoc.obligatorio,
+          archivo_path: archivoPath,
+          estado: archivoPath ? "Verificado" : "Pendiente",
+        });
+      if (dbErr) throw dbErr;
+
+      setNuevoDoc({ nombre: "", obligatorio: false, archivo: null });
+      await fetchDashboardData();
+    } catch (err: any) {
+      console.error("Error al agregar el documento:", err);
+      alert(err.message || "Error al agregar el documento");
+    } finally {
+      setAgregandoDoc(false);
     }
   };
 
@@ -2489,6 +2535,58 @@ export default function AdminDashboard() {
               {/* DOCUMENTOS */}
               {activeTab === "documentos" && (
                 <div className="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-1.5">
+                  <form
+                    onSubmit={handleAgregarDocumento}
+                    className="p-2 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1.5"
+                  >
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">
+                      Agregar documento
+                    </p>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={nuevoDoc.nombre}
+                        onChange={(e) =>
+                          setNuevoDoc({ ...nuevoDoc, nombre: e.target.value })
+                        }
+                        placeholder="Ej. INE, Acta de nacimiento, NDA…"
+                        className="flex-1 min-w-0 border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 bg-white outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={agregandoDoc || !nuevoDoc.nombre.trim()}
+                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold px-2 py-1 rounded-lg text-[11px] cursor-pointer transition-colors"
+                      >
+                        {agregandoDoc ? "Agregando..." : "Agregar"}
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                      <input
+                        type="file"
+                        accept=".pdf,image/*"
+                        onChange={(e) =>
+                          setNuevoDoc({
+                            ...nuevoDoc,
+                            archivo: e.target.files?.[0] || null,
+                          })
+                        }
+                        className="min-w-0 flex-1 text-[11px]"
+                      />
+                      <label className="flex items-center gap-1 shrink-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={nuevoDoc.obligatorio}
+                          onChange={(e) =>
+                            setNuevoDoc({
+                              ...nuevoDoc,
+                              obligatorio: e.target.checked,
+                            })
+                          }
+                        />
+                        Obligatorio
+                      </label>
+                    </div>
+                  </form>
                   <div className="space-y-1.5">
                     {(!selectedEmployee.documents ||
                       selectedEmployee.documents.length === 0) && (
@@ -2535,7 +2633,7 @@ export default function AdminDashboard() {
                             onClick={() => abrirArchivo(doc.fileUrl)}
                             className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold px-1.5 py-1 rounded-lg text-[11px] transition-colors cursor-pointer"
                           >
-                            Ver PDF
+                            Ver
                           </button>
                         ) : (
                           <div>
