@@ -11,6 +11,7 @@ import { REUNION_ACTIVA } from "../../../../lib/cronAuth";
 //  - porRevisar: tareas "En Revisión" (mismo criterio que la pantalla Tareas),
 //    con la fecha del envío más reciente.
 //  - porVencer: tareas sin completar vencidas o que vencen en ≤ 2 días.
+//  - nuevas: tareas asignadas en los últimos 3 días que siguen sin completarse.
 //  - reuniones: reuniones programadas de los próximos 7 días.
 //  - recientes: aprobaciones/correcciones de los últimos 3 días.
 // No hay estado de "leído": cada sección desaparece sola al atenderse.
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
 
   try {
     const ahora = new Date();
-    const [enRevision, tareas, reuniones, decididas, personas]: { data: any[] | null }[] = await Promise.all([
+    const [enRevision, tareas, reuniones, decididas, personas, nuevas]: { data: any[] | null }[] = await Promise.all([
       enEquipo(
         supabaseAdmin
           .from("tareas")
@@ -69,6 +70,15 @@ export async function GET(req: Request) {
       enEquipo(
         supabaseAdmin.from("empleados").select("id, nombre, color, avatar_url"),
         "id",
+      ),
+      enEquipo(
+        supabaseAdmin
+          .from("tareas")
+          .select("id, titulo, empleado_id, fecha_limite, created_at")
+          .gte("created_at", new Date(ahora.getTime() - 3 * DIA).toISOString())
+          .neq("estado", "Completada")
+          .order("created_at", { ascending: false }),
+        "empleado_id",
       ),
     ]);
 
@@ -115,6 +125,16 @@ export async function GET(req: Request) {
             titulo: t.titulo,
           }))
           .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")),
+        nuevas: (nuevas.data || [])
+          // Las que ya salen en "Por vencer" no se repiten.
+          .filter((t) => !(tareas.data || []).some((v) => v.id === t.id))
+          .map((t) => ({
+            tareaId: t.id,
+            empleadoId: t.empleado_id,
+            titulo: t.titulo,
+            fechaLimite: t.fecha_limite,
+            creada: t.created_at,
+          })),
         porVencer: (tareas.data || [])
           .sort((a, b) => a.fecha_limite.localeCompare(b.fecha_limite))
           .map((t) => ({

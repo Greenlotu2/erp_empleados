@@ -20,6 +20,7 @@ interface DatosAvisos {
   hoy: string;
   personas: PersonaAviso[];
   porRevisar: { tareaId: number; empleadoId: string; fecha: string | null; titulo: string }[];
+  nuevas?: { tareaId: number; empleadoId: string; titulo: string; fechaLimite: string | null; creada: string }[];
   porVencer: { tareaId: number; empleadoId: string; titulo: string; fechaLimite: string; avance: number }[];
   reuniones: { id: string; titulo: string; fecha: string; link: string | null; lugar: string | null; tareaId: number | null; participantes: string[] }[];
   recientes: { tareaId: number; empleadoId: string; titulo: string; aprobada: boolean; comentario: string | null; por: string | null; fecha: string }[];
@@ -62,7 +63,7 @@ export default function AvisosPage() {
   }, [datos]);
 
   const total = datos
-    ? datos.porRevisar.length + datos.porVencer.length + datos.reuniones.length
+    ? datos.porRevisar.length + datos.porVencer.length + datos.reuniones.length + (datos.nuevas?.length || 0)
     : 0;
 
   return (
@@ -113,6 +114,29 @@ export default function AvisosPage() {
                   {a.fecha && <span className="text-[11px] text-slate-400">{hace(a.fecha)}</span>}
                 </div>
               </Tarjeta>
+            );
+          })}
+
+          {/* Tareas asignadas hace poco */}
+          {(datos.nuevas?.length || 0) > 0 && <Titulo texto="Tareas nuevas" />}
+          {(datos.nuevas || []).map((a) => {
+            const p = persona(a.empleadoId);
+            return (
+              <Link key={`nue-${a.tareaId}`} href={`/movil/tarea/${a.tareaId}`}>
+                <Tarjeta tono="azul" icono="revision">
+                  <p className="text-sm font-semibold text-slate-900 leading-snug">
+                    Tarea nueva asignada
+                  </p>
+                  <p className="text-[13px] text-slate-500 mt-0.5 leading-snug">
+                    {p ? `${primerNombre(p.nombre)} · ` : ""}
+                    {a.titulo}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    {a.fechaLimite ? `Entrega ${fechaCorta(a.fechaLimite)} · ` : ""}
+                    {hace(a.creada)}
+                  </p>
+                </Tarjeta>
+              </Link>
             );
           })}
 
