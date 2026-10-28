@@ -41,6 +41,19 @@ export async function POST(req: Request) {
   );
   if (error) return responder({ error: error.message }, 500);
 
+  // Al activar de nuevo, las suscripciones anteriores de este mismo teléfono
+  // (mismo usuario y mismo user-agent, endpoint distinto) ya no sirven: Apple
+  // las sigue aceptando pero nadie las recibe, y estorban al mandar avisos.
+  if (b?.prueba) {
+    const agente = (req.headers.get("user-agent") || "").slice(0, 300);
+    await supabaseAdmin
+      .from("push_suscripciones")
+      .delete()
+      .eq("empleado_id", usuario.id)
+      .eq("user_agent", agente)
+      .neq("endpoint", endpoint);
+  }
+
   if (b?.prueba) {
     await enviarPush([usuario.id], {
       titulo: "Notificaciones activadas",
