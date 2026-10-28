@@ -60,6 +60,31 @@ const SELECT_NOTIF = `
 
 const CLAVE_LEIDOS = "avisosLeidos";
 
+// Aviso nativo del navegador (centro de notificaciones de Windows). Solo sale con
+// el permiso concedido; la pestaña puede estar en segundo plano.
+const mostrarAviso = (titulo: string, cuerpo: string, etiqueta: string) => {
+  if (
+    typeof window === "undefined" ||
+    !("Notification" in window) ||
+    Notification.permission !== "granted"
+  ) {
+    return;
+  }
+  try {
+    const aviso = new Notification(titulo, {
+      body: cuerpo,
+      icon: "/icono_rocal.png",
+      tag: etiqueta,
+    });
+    aviso.onclick = () => {
+      window.focus();
+      aviso.close();
+    };
+  } catch (err) {
+    console.error("No se pudo mostrar el aviso del navegador:", err);
+  }
+};
+
 const leerLeidos = (): Set<string> => {
   try {
     return new Set(JSON.parse(localStorage.getItem(CLAVE_LEIDOS) || "[]"));
@@ -93,6 +118,10 @@ export default function CampanaNotificaciones() {
   const [revisor, setRevisor] = useState("Administración");
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const [leidos, setLeidos] = useState<Set<string>>(new Set());
+  const [permiso, setPermiso] = useState<
+    NotificationPermission | "no-soportado"
+  >("no-soportado");
+  const avisosVistosRef = useRef<Set<string> | null>(null);
 
   // `null` = aún no cargamos: así no se dispara una ráfaga de avisos del navegador.
   const vistasRef = useRef<Set<string> | null>(null);
@@ -120,37 +149,20 @@ export default function CampanaNotificaciones() {
 
     if (vistasRef.current !== null) {
       const nuevas = lista.filter((s) => !vistasRef.current!.has(s.id));
-      if (
-        nuevas.length > 0 &&
-        typeof window !== "undefined" &&
-        "Notification" in window &&
-        Notification.permission === "granted"
-      ) {
-        nuevas.forEach((s) => {
-          const aviso = new Notification("Nueva solicitud de revisión", {
-            body: s.taskTitle,
-            icon: "/icono_rocal.png",
-            tag: s.id,
-          });
-          aviso.onclick = () => {
-            window.focus();
-            aviso.close();
-          };
-        });
-      }
+      nuevas.forEach((n) =>
+        mostrarAviso("Nueva solicitud de revisión", n.taskTitle, n.id),
+      );
     }
     vistasRef.current = new Set(lista.map((s) => s.id));
     setSolicitudes(lista);
   }, []);
 
   useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      "Notification" in window &&
-      Notification.permission === "default"
-    ) {
-      Notification.requestPermission();
-    }
+    // Chrome ignora el permiso pedido sin un clic del usuario: se pide con el
+    // botón de la campana.
+    setPermiso(
+      "Notification" in window ? Notification.permission : "no-soportado",
+    );
 
     cargar();
     const intervalo = setInterval(cargar, 30000);
@@ -159,7 +171,19 @@ export default function CampanaNotificaciones() {
     setLeidos(leerLeidos());
     const refrescarAvisos = () =>
       cargarAvisos()
-        .then(setAvisos)
+        .then((lista) => {
+          if (avisosVistosRef.current !== null) {
+            const leidosAhora = leerLeidos();
+            lista
+              .filter(
+                (a) =>
+                  !avisosVistosRef.current!.has(a.id) && !leidosAhora.has(a.id),
+              )
+              .forEach((a) => mostrarAviso(a.titulo, a.detalle, a.id));
+          }
+          avisosVistosRef.current = new Set(lista.map((a) => a.id));
+          setAvisos(lista);
+        })
         .catch((err) => console.error("Error cargando avisos:", err));
     refrescarAvisos();
     const intervaloAvisos = setInterval(refrescarAvisos, 60000);
@@ -329,6 +353,38 @@ export default function CampanaNotificaciones() {
             </span>
           </div>
 
+          {permiso === "default" && (
+            <button
+              type="button"
+              onClick={() => Notification.requestPermission().then(setPermiso)}
+              className="w-full mb-1.5 flex items-center gap-2 p-1.5 rounded-lg bg-blue-50 border border-blue-100 text-left text-[11px] text-blue-800 hover:bg-blue-100 cursor-pointer"
+            >
+              <Icon name="bell" size={13} className="shrink-0" />
+              Activar avisos del navegador (te llegan aunque estés en otra
+              pestaña)
+            </button>
+          )}
+          {permiso === "denied" && (
+            <p className="mb-1.5 p-1.5 rounded-lg bg-amber-50 border border-amber-100 text-[11px] text-amber-800">
+              Los avisos del navegador están bloqueados. Actívalos en el candado
+              de la barra de direcciones, en Notificaciones.
+            </p>
+          )}
+          {permiso === "granted" && (
+            <button
+              type="button"
+              onClick={() =>
+                mostrarAviso(
+                  "Prueba de aviso",
+                  "Si ves esto, los avisos del navegador funcionan.",
+                  "prueba",
+                )
+              }
+              className="mb-1.5 text-[10px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              Enviar aviso de prueba
+            </button>
+          )}
           <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-1.5">
             {solicitudes.length > 0 && (
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
