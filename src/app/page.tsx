@@ -3309,6 +3309,20 @@ export default function AdminDashboard() {
                             ? doc.archivo.name
                             : "Sin archivo seleccionado"}
                         </span>
+                        {doc.archivo && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              window.open(
+                                URL.createObjectURL(doc.archivo as File),
+                                "_blank",
+                              )
+                            }
+                            className="shrink-0 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold px-1.5 py-1 rounded-lg text-[10px] cursor-pointer"
+                          >
+                            Ver
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
