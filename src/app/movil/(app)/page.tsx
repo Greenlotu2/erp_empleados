@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../_componentes/comunes";
 import { EsqueletoTareas } from "../_componentes/esqueletos";
+import { ProximasReuniones } from "../_componentes/ProximasReuniones";
 import {
   esPorRevisar,
   fechaCorta,
@@ -141,6 +142,8 @@ export default function TareasEquipoPage() {
         <Resumen titulo="Vencidas" valor={vencidas} tono="rojo" />
         <Resumen titulo="Activas" valor={lista.length} tono="neutro" />
       </div>
+
+      <ProximasReuniones />
 
       {/* Agrupar */}
       <div className="flex gap-1.5 px-4 pt-3 pb-2 overflow-x-auto [scrollbar-width:none]">

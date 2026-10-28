@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../../_componentes/comunes";
 import { EsqueletoAvisos } from "../../_componentes/esqueletos";
 import { apiMovil, SesionExpirada } from "../../_lib/api";
-import { fechaCorta, primerNombre } from "../../_lib/equipo";
+import { fechaCorta, primerNombre, useRefrescoAlAvisar } from "../../_lib/equipo";
 import { fechaHora } from "../../_lib/tarea";
 
 interface PersonaAviso {
@@ -52,6 +52,8 @@ export default function AvisosPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cargar();
   }, [cargar]);
+
+  useRefrescoAlAvisar(cargar);
 
   const persona = useMemo(() => {
     const m: Record<string, PersonaAviso> = {};
