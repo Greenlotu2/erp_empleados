@@ -14,14 +14,21 @@ self.addEventListener("push", (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(aviso.titulo || "Rocal", {
-      body: aviso.cuerpo || "",
-      icon: "/icono_rocal.png",
-      badge: "/icono_rocal.png",
-      tag: aviso.etiqueta || undefined,
-      renotify: Boolean(aviso.etiqueta),
-      data: { url: aviso.url || "/movil" },
-    }),
+    Promise.all([
+      self.registration.showNotification(aviso.titulo || "Rocal", {
+        body: aviso.cuerpo || "",
+        icon: "/icono_rocal.png",
+        badge: "/icono_rocal.png",
+        tag: aviso.etiqueta || undefined,
+        renotify: Boolean(aviso.etiqueta),
+        data: { url: aviso.url || "/movil" },
+      }),
+      // Si la app está abierta, que vuelva a leer sus datos: así lo que avisa
+      // la notificación aparece sin tener que deslizar para actualizar.
+      self.clients
+        .matchAll({ type: "window", includeUncontrolled: true })
+        .then((ventanas) => ventanas.forEach((v) => v.postMessage({ tipo: "push" }))),
+    ]),
   );
 });
 

@@ -38,6 +38,25 @@ export interface DatosEquipo {
   proyectos: { id: string; nombre: string }[];
 }
 
+// Vuelve a cargar cuando llega un push con la app abierta y cuando la app
+// regresa al primer plano (el service worker avisa con { tipo: "push" }).
+export function useRefrescoAlAvisar(recargar: () => void) {
+  useEffect(() => {
+    const alVolver = () => {
+      if (document.visibilityState === "visible") recargar();
+    };
+    const alLlegarPush = (e: MessageEvent) => {
+      if (e.data?.tipo === "push") recargar();
+    };
+    document.addEventListener("visibilitychange", alVolver);
+    navigator.serviceWorker?.addEventListener("message", alLlegarPush);
+    return () => {
+      document.removeEventListener("visibilitychange", alVolver);
+      navigator.serviceWorker?.removeEventListener("message", alLlegarPush);
+    };
+  }, [recargar]);
+}
+
 // Carga /api/movil/equipo; si la sesión venció, manda al login.
 export function useDatosEquipo() {
   const router = useRouter();
@@ -58,6 +77,8 @@ export function useDatosEquipo() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     recargar();
   }, [recargar]);
+
+  useRefrescoAlAvisar(recargar);
 
   return { datos, error, recargar };
 }
