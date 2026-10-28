@@ -294,7 +294,8 @@ function LineasMultiSelect({
   onChange: (v: string[]) => void;
   opciones: { id: string; nombre: string }[];
 }) {
-  const nombre = (id: string) => opciones.find((o) => o.id === id)?.nombre || "—";
+  const nombre = (id: string) =>
+    opciones.find((o) => o.id === id)?.nombre || "—";
   const disponibles = opciones.filter((o) => !value.includes(o.id));
   return (
     <div className="space-y-1.5">
@@ -321,7 +322,9 @@ function LineasMultiSelect({
       {disponibles.length > 0 && (
         <select
           value=""
-          onChange={(e) => e.target.value && onChange([...value, e.target.value])}
+          onChange={(e) =>
+            e.target.value && onChange([...value, e.target.value])
+          }
           className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
         >
           <option value="">
@@ -481,9 +484,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [teamFilter, setTeamFilter] = useState<
-    "todos" | "trabajadores" | "estudiantes"
-  >("todos");
+  const [teamFilter, setTeamFilter] = useState<"trabajadores" | "estudiantes">(
+    "trabajadores",
+  );
   const [teamAreaFilter, setTeamAreaFilter] = useState<string>("all");
   // Filtro por convenio ("all" = todos).
   const [teamConvenioFilter, setTeamConvenioFilter] = useState<string>("all");
@@ -1604,10 +1607,9 @@ export default function AdminDashboard() {
       : "15000";
 
     setTransformFormData({
-      nuevoRol:
-        esConvenio(selectedEmployee.role)
-          ? "Desarrollador Web"
-          : selectedEmployee.role,
+      nuevoRol: esConvenio(selectedEmployee.role)
+        ? "Desarrollador Web"
+        : selectedEmployee.role,
       tipoContrato: "Tiempo Indeterminado",
       sueldo: currentSalaryDigits || "15000",
       supervisor:
@@ -1710,8 +1712,12 @@ export default function AdminDashboard() {
 
       // Sincronizar líneas de negocio: quitar las que ya no y agregar las nuevas.
       const lineasAntes = selectedEmployee.lineas || [];
-      const quitar = lineasAntes.filter((l) => !editFormData.lineas.includes(l));
-      const agregar = editFormData.lineas.filter((l) => !lineasAntes.includes(l));
+      const quitar = lineasAntes.filter(
+        (l) => !editFormData.lineas.includes(l),
+      );
+      const agregar = editFormData.lineas.filter(
+        (l) => !lineasAntes.includes(l),
+      );
       if (quitar.length > 0) {
         await supabase
           .from("proyecto_empleados")
@@ -2082,14 +2088,16 @@ export default function AdminDashboard() {
               <div className="flex bg-slate-100 p-0.5 rounded-lg text-[11px] font-medium text-slate-500">
                 {(
                   [
-                    { k: "todos", label: `Todos (${employees.length})` },
                     { k: "trabajadores", label: "Trabajadores" },
                     { k: "estudiantes", label: "Convenios" },
                   ] as const
                 ).map((t) => (
                   <button
                     key={t.k}
-                    onClick={() => setTeamFilter(t.k)}
+                    onClick={() => {
+                      setTeamFilter(t.k);
+                      setTeamConvenioFilter("all");
+                    }}
                     className={`flex-1 py-1 text-center rounded-md transition-colors cursor-pointer ${
                       teamFilter === t.k
                         ? "bg-white text-slate-900 shadow-2xs"
@@ -2101,7 +2109,9 @@ export default function AdminDashboard() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-2 gap-1">
+              <div
+                className={`grid gap-1 ${teamFilter === "estudiantes" ? "grid-cols-2" : "grid-cols-1"}`}
+              >
                 <div className="relative">
                   <Icon
                     name="users"
@@ -2123,26 +2133,29 @@ export default function AdminDashboard() {
                   </select>
                 </div>
 
-                <div className="relative">
-                  <Icon
-                    name="building"
-                    size={13}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                  />
-                  <select
-                    value={teamConvenioFilter}
-                    onChange={(e) => setTeamConvenioFilter(e.target.value)}
-                    aria-label="Filtrar por convenio"
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-                  >
-                    <option value="all">Todos los convenios</option>
-                    {conveniosConocidos.map((e) => (
-                      <option key={e} value={e}>
-                        {e} ({employees.filter((x) => x.escuela === e).length})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {teamFilter === "estudiantes" && (
+                  <div className="relative">
+                    <Icon
+                      name="building"
+                      size={13}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                    />
+                    <select
+                      value={teamConvenioFilter}
+                      onChange={(e) => setTeamConvenioFilter(e.target.value)}
+                      aria-label="Filtrar por convenio"
+                      className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-medium py-1.5 pl-6 pr-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                    >
+                      <option value="all">Todos los convenios</option>
+                      {conveniosConocidos.map((e) => (
+                        <option key={e} value={e}>
+                          {e} ({employees.filter((x) => x.escuela === e).length}
+                          )
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2927,7 +2940,9 @@ export default function AdminDashboard() {
                   </label>
                   <ComboConAlta
                     value={newEmployeeData.escuela}
-                    onChange={(v) => setNewEmployeeData({ ...newEmployeeData, escuela: v })}
+                    onChange={(v) =>
+                      setNewEmployeeData({ ...newEmployeeData, escuela: v })
+                    }
                     opciones={conveniosConocidos}
                     textoAgregar="+ Agregar otro convenio…"
                     placeholderNuevo="Nombre del convenio"
@@ -2941,7 +2956,9 @@ export default function AdminDashboard() {
                 </label>
                 <LineasMultiSelect
                   value={newEmployeeData.lineas}
-                  onChange={(v) => setNewEmployeeData({ ...newEmployeeData, lineas: v })}
+                  onChange={(v) =>
+                    setNewEmployeeData({ ...newEmployeeData, lineas: v })
+                  }
                   opciones={dbProjects}
                 />
               </div>
@@ -3269,7 +3286,9 @@ export default function AdminDashboard() {
                   </label>
                   <ComboConAlta
                     value={editFormData.escuela}
-                    onChange={(v) => setEditFormData({ ...editFormData, escuela: v })}
+                    onChange={(v) =>
+                      setEditFormData({ ...editFormData, escuela: v })
+                    }
                     opciones={conveniosConocidos}
                     textoAgregar="+ Agregar otro convenio…"
                     placeholderNuevo="Nombre del convenio"
@@ -3283,7 +3302,9 @@ export default function AdminDashboard() {
                 </label>
                 <LineasMultiSelect
                   value={editFormData.lineas}
-                  onChange={(v) => setEditFormData({ ...editFormData, lineas: v })}
+                  onChange={(v) =>
+                    setEditFormData({ ...editFormData, lineas: v })
+                  }
                   opciones={dbProjects}
                 />
               </div>
