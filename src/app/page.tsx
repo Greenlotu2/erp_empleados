@@ -209,6 +209,21 @@ interface DocumentRequirement {
 // libre en la base (sin catálogo propio ni constraint de valores), así que lo
 // recién escrito queda disponible de inmediato — no hace falta tocar código ni
 // SQL cada vez que se suma uno. Usado para Área y para Rol.
+// Documentos del expediente que se eligen de la lista; "Otro…" permite escribir uno.
+const DOCUMENTOS_CATALOGO = [
+  "Identificación Oficial (INE / Pasaporte)",
+  "Carta de Confidencialidad (NDA)",
+  "Contrato por tiempo definido",
+  "Contrato por tiempo indeterminado",
+  "Acta de nacimiento",
+  "CURP",
+  "Comprobante de domicilio",
+  "Constancia de situación fiscal (RFC)",
+  "Número de seguridad social (NSS)",
+  "Comprobante de estudios",
+  "Carta de presentación / aceptación",
+];
+
 function ComboConAlta({
   value,
   onChange,
@@ -1320,12 +1335,38 @@ export default function AdminDashboard() {
 
       if (dbErr) throw dbErr;
 
+      // Si reemplaza a un archivo anterior, se borra para no dejarlo huérfano.
+      const anterior = selectedEmployee.documents?.find(
+        (d) => d.id === docId,
+      )?.fileUrl;
+      if (anterior && anterior !== fileName) {
+        await supabase.storage.from("documentacion").remove([anterior]);
+      }
+
       await fetchDashboardData();
     } catch (err: any) {
       console.error("Error al subir el documento:", err);
       alert(err.message || "Error al subir el documento");
     } finally {
       setUploadingDocId(null);
+    }
+  };
+
+  const handleEliminarDocumento = async (doc: LegalDocument) => {
+    if (!window.confirm(`¿Eliminar "${doc.name}" del expediente?`)) return;
+    try {
+      const { error: dbErr } = await supabase
+        .from("documentos_legales")
+        .delete()
+        .eq("id", doc.id);
+      if (dbErr) throw dbErr;
+      if (doc.fileUrl) {
+        await supabase.storage.from("documentacion").remove([doc.fileUrl]);
+      }
+      await fetchDashboardData();
+    } catch (err: any) {
+      console.error("Error al eliminar el documento:", err);
+      alert(err.message || "Error al eliminar el documento");
     }
   };
 
@@ -2543,15 +2584,24 @@ export default function AdminDashboard() {
                       Agregar documento
                     </p>
                     <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        value={nuevoDoc.nombre}
-                        onChange={(e) =>
-                          setNuevoDoc({ ...nuevoDoc, nombre: e.target.value })
-                        }
-                        placeholder="Ej. INE, Acta de nacimiento, NDA…"
-                        className="flex-1 min-w-0 border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 bg-white outline-none"
-                      />
+                      <div className="flex-1 min-w-0 text-xs">
+                        <ComboConAlta
+                          value={nuevoDoc.nombre}
+                          onChange={(v) =>
+                            setNuevoDoc({ ...nuevoDoc, nombre: v })
+                          }
+                          opciones={DOCUMENTOS_CATALOGO.filter(
+                            (d) =>
+                              !selectedEmployee.documents?.some(
+                                (x) => x.name === d,
+                              ),
+                          )}
+                          permitirVacio
+                          textoVacio="Elegir documento…"
+                          textoAgregar="Otro…"
+                          placeholderNuevo="Nombre del documento"
+                        />
+                      </div>
                       <button
                         type="submit"
                         disabled={agregandoDoc || !nuevoDoc.nombre.trim()}
@@ -2628,15 +2678,49 @@ export default function AdminDashboard() {
                         </div>
 
                         {doc.fileUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => abrirArchivo(doc.fileUrl)}
-                            className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold px-1.5 py-1 rounded-lg text-[11px] transition-colors cursor-pointer"
-                          >
-                            Ver
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => abrirArchivo(doc.fileUrl)}
+                              className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold px-1.5 py-1 rounded-lg text-[11px] transition-colors cursor-pointer"
+                            >
+                              Ver
+                            </button>
+                            <input
+                              type="file"
+                              accept=".pdf,image/*"
+                              id={`replace-doc-tab-${doc.id}`}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file)
+                                  handleUploadSingleDoc(doc.id, file, doc.name);
+                                e.target.value = "";
+                              }}
+                              className="hidden"
+                            />
+                            <label
+                              htmlFor={`replace-doc-tab-${doc.id}`}
+                              className={`bg-white text-slate-600 border border-slate-300 hover:bg-slate-100 font-bold px-1.5 py-1 rounded-lg text-[11px] cursor-pointer transition-colors ${
+                                uploadingDocId === doc.id
+                                  ? "opacity-50 pointer-events-none"
+                                  : ""
+                              }`}
+                            >
+                              {uploadingDocId === doc.id
+                                ? "Subiendo..."
+                                : "Reemplazar"}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarDocumento(doc)}
+                              title="Eliminar documento"
+                              className="text-slate-400 hover:text-red-600 px-1 cursor-pointer"
+                            >
+                              <Icon name="x" size={13} />
+                            </button>
+                          </div>
                         ) : (
-                          <div>
+                          <div className="flex items-center gap-1">
                             <input
                               type="file"
                               accept=".pdf,image/*"
@@ -2660,6 +2744,14 @@ export default function AdminDashboard() {
                                 ? "Subiendo..."
                                 : "Subir PDF"}
                             </label>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarDocumento(doc)}
+                              title="Eliminar documento"
+                              className="text-slate-400 hover:text-red-600 px-1 cursor-pointer"
+                            >
+                              <Icon name="x" size={13} />
+                            </button>
                           </div>
                         )}
                       </div>
@@ -3223,13 +3315,22 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex gap-1 pt-1">
-                  <input
-                    type="text"
-                    placeholder="Ej. Contrato de Tiempo Definido"
-                    value={nuevoDocNombre}
-                    onChange={(e) => setNuevoDocNombre(e.target.value)}
-                    className="flex-1 border border-slate-300 rounded-xl p-1 text-slate-900 font-medium bg-white outline-none text-[11px]"
-                  />
+                  <div className="flex-1 min-w-0 text-[11px]">
+                    <ComboConAlta
+                      value={nuevoDocNombre}
+                      onChange={setNuevoDocNombre}
+                      opciones={DOCUMENTOS_CATALOGO.filter(
+                        (d) =>
+                          !newEmployeeData.documentos.some(
+                            (x) => x.nombre === d,
+                          ),
+                      )}
+                      permitirVacio
+                      textoVacio="Elegir documento…"
+                      textoAgregar="Otro…"
+                      placeholderNuevo="Nombre del documento"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddDocumentRequirement}
