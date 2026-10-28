@@ -93,6 +93,48 @@ const leerLeidos = (): Set<string> => {
   }
 };
 
+const CLAVE_NOTIFICADOS = "avisosNotificados";
+
+// Manda aviso del navegador de lo que este navegador aún no ha notificado, aunque
+// haya llegado con la pestaña cerrada o antes de recargar. La primera vez solo
+// toma nota de lo que ya existe, para no soltar una ráfaga.
+const notificarNuevos = (
+  items: { id: string; titulo: string; cuerpo: string }[],
+) => {
+  let previos: Set<string> | null = null;
+  try {
+    const guardado = localStorage.getItem(CLAVE_NOTIFICADOS);
+    if (guardado !== null) previos = new Set(JSON.parse(guardado));
+  } catch {
+    // sin almacenamiento: se avisa solo de lo que llegue con la página abierta
+  }
+
+  const nuevos = previos ? items.filter((i) => !previos!.has(i.id)) : [];
+  if (nuevos.length <= 4) {
+    nuevos.forEach((i) => mostrarAviso(i.titulo, i.cuerpo, i.id));
+  } else {
+    mostrarAviso(
+      `${nuevos.length} notificaciones nuevas`,
+      nuevos
+        .slice(0, 3)
+        .map((i) => i.titulo)
+        .join(" · "),
+      "varias",
+    );
+  }
+
+  try {
+    localStorage.setItem(
+      CLAVE_NOTIFICADOS,
+      JSON.stringify(
+        [...(previos || []), ...items.map((i) => i.id)].slice(-500),
+      ),
+    );
+  } catch {
+    // ver arriba
+  }
+};
+
 const ICONO_AVISO: Record<TipoAviso, IconName> = {
   tarea: "clipboard",
   reunion: "calendar",
@@ -121,10 +163,8 @@ export default function CampanaNotificaciones() {
   const [permiso, setPermiso] = useState<
     NotificationPermission | "no-soportado"
   >("no-soportado");
-  const avisosVistosRef = useRef<Set<string> | null>(null);
 
   // `null` = aún no cargamos: así no se dispara una ráfaga de avisos del navegador.
-  const vistasRef = useRef<Set<string> | null>(null);
   const contenedorRef = useRef<HTMLDivElement | null>(null);
 
   const cargar = useCallback(async () => {
@@ -147,13 +187,13 @@ export default function CampanaNotificaciones() {
       timestamp: formatDateTime(n.created_at),
     }));
 
-    if (vistasRef.current !== null) {
-      const nuevas = lista.filter((s) => !vistasRef.current!.has(s.id));
-      nuevas.forEach((n) =>
-        mostrarAviso("Nueva solicitud de revisión", n.taskTitle, n.id),
-      );
-    }
-    vistasRef.current = new Set(lista.map((s) => s.id));
+    notificarNuevos(
+      lista.map((n) => ({
+        id: n.id,
+        titulo: "Nueva solicitud de revisión",
+        cuerpo: n.taskTitle,
+      })),
+    );
     setSolicitudes(lista);
   }, []);
 
@@ -172,16 +212,12 @@ export default function CampanaNotificaciones() {
     const refrescarAvisos = () =>
       cargarAvisos()
         .then((lista) => {
-          if (avisosVistosRef.current !== null) {
-            const leidosAhora = leerLeidos();
+          const leidosAhora = leerLeidos();
+          notificarNuevos(
             lista
-              .filter(
-                (a) =>
-                  !avisosVistosRef.current!.has(a.id) && !leidosAhora.has(a.id),
-              )
-              .forEach((a) => mostrarAviso(a.titulo, a.detalle, a.id));
-          }
-          avisosVistosRef.current = new Set(lista.map((a) => a.id));
+              .filter((a) => !leidosAhora.has(a.id))
+              .map((a) => ({ id: a.id, titulo: a.titulo, cuerpo: a.detalle })),
+          );
           setAvisos(lista);
         })
         .catch((err) => console.error("Error cargando avisos:", err));
