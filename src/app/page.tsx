@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Sidebar from "../components/Sidebar";
 import TaskCard from "../components/Taskcard";
 import { Icon } from "../components/icons";
@@ -10,6 +10,7 @@ import { getCurrentAdminId } from "../lib/currentAdmin";
 import { PALETA_EMPLEADOS, colorLibreEmpleado } from "../lib/coloresEmpleados";
 import { ModalOverlay } from "../components/ModalOverlay";
 import { abrirArchivo } from "../lib/storageUrls";
+import { EVENTO_NOTIF_RESUELTA } from "../components/CampanaNotificaciones";
 import { RestablecerContrasena } from "../components/RestablecerContrasena";
 import {
   CONVENIOS_BASE,
@@ -173,22 +174,6 @@ interface Employee {
   taskHistory: Task[];
   documents: LegalDocument[];
   contract: ContractDetails;
-}
-
-interface PluginNotification {
-  id: string;
-  employeeId?: string;
-  employeeName: string;
-  taskId?: string;
-  taskTitle: string;
-  taskDueDate?: string | null;
-  projectId?: string;
-  projectName: string;
-  duration?: string;
-  timestamp: string;
-  estado?: "Pendiente" | "Aprobado" | "Rechazado";
-  evidenceUrl?: string | null;
-  evidenceName?: string | null;
 }
 
 interface DbProject {
@@ -465,7 +450,6 @@ export default function AdminDashboard() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
     null,
   );
-  const [notifications, setNotifications] = useState<PluginNotification[]>([]);
   // Historial de puntos de recompensa (tabla real `recompensa_historial`, llenada
   // por el trigger de Supabase al completar tareas) — se filtra por empleado en el render.
   const [recompensaHistorial, setRecompensaHistorial] = useState<
@@ -482,19 +466,8 @@ export default function AdminDashboard() {
     id: string | number;
     title: string;
     currentDueDate?: string;
-    rejectNotif?: PluginNotification;
-    comentario?: string;
   } | null>(null);
   const [extendDeadlineValue, setExtendDeadlineValue] = useState("");
-  // Comentario del revisor por notificación pendiente (opcional al aprobar,
-  // obligatorio al rechazar). Lo ve el trabajador en la extensión.
-  const [notifComments, setNotifComments] = useState<Record<string, string>>(
-    {},
-  );
-  // IDs de notificaciones ya notificadas al navegador. `null` = todavía no cargamos
-  // por primera vez — así no se dispara una ráfaga de notificaciones del navegador
-  // por todo lo que ya estaba pendiente antes de abrir la pestaña.
-  const notifiedIdsRef = useRef<Set<string> | null>(null);
   const [dbProjects, setDbProjects] = useState<DbProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -509,7 +482,6 @@ export default function AdminDashboard() {
     "actividad" | "documentos" | "contrato" | "recompensas"
   >("actividad");
 
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isNewEmployeeModalOpen, setIsNewEmployeeModalOpen] = useState(false);
   const [isTransformModalOpen, setIsTransformModalOpen] = useState(false);
@@ -852,46 +824,6 @@ export default function AdminDashboard() {
         .order("created_at", { ascending: false });
       if (!recompensaErr && recompensaData)
         setRecompensaHistorial(recompensaData as any);
-
-      // C) Consultar Notificaciones (incluye la fecha límite de la tarea vinculada)
-      const { data: notifData, error: notifErr } = await supabase
-        .from("notificaciones")
-        .select(
-          `
-          id,
-          titulo_tarea,
-          estado,
-          created_at,
-          empleado_id,
-          proyecto_id,
-          tarea_id,
-          empleados (nombre),
-          proyectos (nombre),
-          tareas (fecha_limite),
-          evidencia_url,
-          evidencia_nombre
-        `,
-        )
-        .eq("estado", "Pendiente")
-        .order("created_at", { ascending: false });
-
-      if (!notifErr && notifData) {
-        const mappedNotifs: PluginNotification[] = notifData.map((n: any) => ({
-          id: n.id,
-          employeeId: n.empleado_id,
-          employeeName: n.empleados?.nombre || "Integrante",
-          taskId: n.tarea_id != null ? String(n.tarea_id) : undefined,
-          taskTitle: n.titulo_tarea || "Revisión de código",
-          taskDueDate: n.tareas?.fecha_limite || null,
-          evidenceUrl: n.evidencia_url || null,
-          evidenceName: n.evidencia_nombre || null,
-          projectId: n.proyecto_id,
-          projectName: n.proyectos?.nombre || "Proyecto General",
-          timestamp: formatDateTime(n.created_at),
-          estado: n.estado,
-        }));
-        syncNotifications(mappedNotifs);
-      }
     } catch (error: any) {
       console.error("Error al sincronizar datos con Supabase:", error);
       setErrorMessage(error?.message || "Error de conexión");
@@ -900,205 +832,32 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🔔 Compara contra lo ya visto y dispara una notificación nativa del navegador por
-  // cada solicitud nueva (Web Notifications API — solo funciona con la pestaña
-  // abierta/en background, no reemplaza push real). Pendiente para más adelante: llevar
-  // esto mismo a móvil requiere un canal aparte (service worker + push subscription,
-  // ej. FCM/APNs) porque esta API no llega a dispositivos sin la pestaña activa.
-  const syncNotifications = (mappedNotifs: PluginNotification[]) => {
-    const currentIds = new Set(mappedNotifs.map((n) => n.id));
-
-    if (notifiedIdsRef.current === null) {
-      notifiedIdsRef.current = currentIds;
-    } else {
-      const nuevas = mappedNotifs.filter(
-        (n) => !notifiedIdsRef.current!.has(n.id),
-      );
-      if (
-        nuevas.length > 0 &&
-        typeof window !== "undefined" &&
-        "Notification" in window &&
-        Notification.permission === "granted"
-      ) {
-        nuevas.forEach((n) => {
-          const notif = new Notification("Nueva solicitud de revisión", {
-            body: n.taskTitle,
-            icon: "/icono_rocal.png",
-            tag: n.id,
-          });
-          notif.onclick = () => {
-            window.focus();
-            notif.close();
-          };
-        });
-      }
-      notifiedIdsRef.current = currentIds;
-    }
-
-    setNotifications(mappedNotifs);
-  };
-
-  useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      "Notification" in window &&
-      Notification.permission === "default"
-    ) {
-      Notification.requestPermission();
-    }
-  }, []);
-
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
-  // Poll ligero (cada 30s) solo de la tabla 'notificaciones' — el resto del dashboard
-  // (empleados, proyectos) no cambia con esa frecuencia y no vale la pena refrescarlo
-  // completo solo para detectar solicitudes nuevas.
+  // La campana de la barra lateral avisa cuando se aprueba o rechaza una solicitud.
   useEffect(() => {
-    const pollNotifications = async () => {
-      const { data: notifData, error } = await supabase
-        .from("notificaciones")
-        .select(
-          `
-          id,
-          titulo_tarea,
-          estado,
-          created_at,
-          empleado_id,
-          proyecto_id,
-          tarea_id,
-          empleados (nombre),
-          proyectos (nombre),
-          tareas (fecha_limite),
-          evidencia_url,
-          evidencia_nombre
-        `,
-        )
-        .eq("estado", "Pendiente")
-        .order("created_at", { ascending: false });
-
-      if (!error && notifData) {
-        const mappedNotifs: PluginNotification[] = notifData.map((n: any) => ({
-          id: n.id,
-          employeeId: n.empleado_id,
-          employeeName: n.empleados?.nombre || "Integrante",
-          taskId: n.tarea_id != null ? String(n.tarea_id) : undefined,
-          taskTitle: n.titulo_tarea || "Revisión de código",
-          taskDueDate: n.tareas?.fecha_limite || null,
-          evidenceUrl: n.evidencia_url || null,
-          evidenceName: n.evidencia_nombre || null,
-          projectId: n.proyecto_id,
-          projectName: n.proyectos?.nombre || "Proyecto General",
-          timestamp: formatDateTime(n.created_at),
-          estado: n.estado,
-        }));
-        syncNotifications(mappedNotifs);
-      }
-    };
-
-    const intervalId = setInterval(pollNotifications, 30000);
-    return () => clearInterval(intervalId);
+    const recargar = () => fetchDashboardData();
+    window.addEventListener(EVENTO_NOTIF_RESUELTA, recargar);
+    return () => window.removeEventListener(EVENTO_NOTIF_RESUELTA, recargar);
   }, []);
-
-  // Aprobar/Rechazar una tarea que el empleado envió a revisión ('En Revisión').
-  // Aprobar la completa de verdad (tarea + calendario) de inmediato. Rechazar NO toca
-  // la base de datos todavía — abre el modal de nueva fecha límite y la notificación
-  // se resuelve solo hasta que se confirme ahí (handleConfirmExtendDeadline). Si el
-  // admin cierra/cancela el modal, la notificación sigue pendiente para reintentar.
-  // Quién revisó, tal como lo verá el trabajador en la extensión.
-  const nombreRevisor = () =>
-    employees.find((e) => e.id === currentAdminId)?.name || "Administración";
-
-  // Quita el borrador de comentario de una notificación ya resuelta.
-  const limpiarComentario = (notifId: string) =>
-    setNotifComments((prev) => {
-      const resto = { ...prev };
-      delete resto[notifId];
-      return resto;
-    });
-
-  const handleResolveNotification = async (
-    notif: PluginNotification,
-    nuevoEstado: "Aprobado" | "Rechazado",
-  ) => {
-    const taskIdNum = notif.taskId ? parseInt(notif.taskId, 10) : NaN;
-
-    if (nuevoEstado === "Rechazado") {
-      const { data: tareaRechazada } = await supabase
-        .from("tareas")
-        .select("titulo, fecha_limite")
-        .eq("id", taskIdNum)
-        .maybeSingle();
-
-      handleExtendDeadline(
-        taskIdNum,
-        (tareaRechazada as any)?.titulo || notif.taskTitle,
-        (tareaRechazada as any)?.fecha_limite || notif.taskDueDate || undefined,
-        notif,
-        notifComments[notif.id] || "",
-      );
-      return;
-    }
-
-    const comentario = (notifComments[notif.id] || "").trim() || null;
-
-    try {
-      const { error } = await supabase
-        .from("notificaciones")
-        .update({ estado: nuevoEstado, comentario })
-        .eq("id", notif.id);
-
-      if (error) throw error;
-
-      if (!isNaN(taskIdNum)) {
-        await (supabase.from("tareas") as any)
-          .update({
-            estado: "Completada",
-            porcentaje_avance: 100,
-            fecha_completado: new Date().toISOString(),
-            revision_resultado: "Aprobado",
-            revision_comentario: comentario,
-            revision_por: nombreRevisor(),
-            revision_fecha: new Date().toISOString(),
-          })
-          .eq("id", taskIdNum);
-
-        await (supabase.from("reuniones") as any)
-          .update({ estado: "Completada" })
-          .eq("tarea_id", taskIdNum)
-          .neq("estado", "Completada");
-      }
-
-      setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
-      limpiarComentario(notif.id);
-      await fetchDashboardData();
-    } catch (err: any) {
-      console.error("Error resolviendo notificación:", err);
-    }
-  };
 
   // ⏱️ EXTENDER FECHA LÍMITE. Esta plataforma web es exclusiva para Administradores
   // (ver login/page.tsx) — no hay un flujo de "empleado solicita, admin aprueba" aquí,
   // el admin tiene autoridad directa sobre la tarea que está viendo, así que el botón
   // actualiza la fecha límite de una vez en vez de generar una solicitud pendiente.
   // Solo abre el modal — la actualización real la hace handleConfirmExtendDeadline.
-  // `rejectNotif` solo se pasa cuando se abre desde "Rechazar": marca que al confirmar
-  // también hay que resolver esa notificación y regresar la tarea a 'En Proceso'.
   const handleExtendDeadline = (
     taskId: string | number,
     taskTitle: string,
     currentDueDate?: string,
-    rejectNotif?: PluginNotification,
-    comentario?: string,
   ) => {
     setExtendDeadlineValue("");
     setExtendDeadlineTarget({
       id: taskId,
       title: taskTitle,
       currentDueDate,
-      rejectNotif,
-      comentario,
     });
   };
 
@@ -1107,33 +866,12 @@ export default function AdminDashboard() {
     if (!extendDeadlineTarget || !extendDeadlineValue) return;
 
     try {
-      const updatePayload: any = { fecha_limite: extendDeadlineValue };
-      const comentario = (extendDeadlineTarget.comentario || "").trim();
-      if (extendDeadlineTarget.rejectNotif) {
-        updatePayload.estado = "En Proceso";
-        updatePayload.revision_resultado = "Rechazado";
-        updatePayload.revision_comentario = comentario;
-        updatePayload.revision_por = nombreRevisor();
-        updatePayload.revision_fecha = new Date().toISOString();
-      }
-
       const { error } = await supabase
         .from("tareas")
-        .update(updatePayload)
+        .update({ fecha_limite: extendDeadlineValue })
         .eq("id", extendDeadlineTarget.id);
 
       if (error) throw error;
-
-      if (extendDeadlineTarget.rejectNotif) {
-        const notif = extendDeadlineTarget.rejectNotif;
-        await supabase
-          .from("notificaciones")
-          .update({ estado: "Rechazado", comentario })
-          .eq("id", notif.id);
-
-        setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
-        limpiarComentario(notif.id);
-      }
 
       setExtendDeadlineTarget(null);
       await fetchDashboardData();
@@ -1944,129 +1682,6 @@ export default function AdminDashboard() {
               Gestión de equipo, expedientes contractuales y seguimiento de
               actividades
             </p>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {/* ÁREA DE NOTIFICACIONES INTERACTIVAS */}
-            <div className="relative">
-              <button
-                onClick={() => setIsNotifOpen(!isNotifOpen)}
-                className="relative p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer flex items-center justify-center"
-              >
-                <Icon name="bell" size={16} />
-                {notifications.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-semibold h-4 min-w-4 px-0.5 rounded-full flex items-center justify-center">
-                    {notifications.length}
-                  </span>
-                )}
-              </button>
-
-              {isNotifOpen && (
-                <div className="absolute right-0 mt-1 w-80 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2">
-                  <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-slate-100">
-                    <h4 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                      Solicitudes y entregas ({notifications.length})
-                    </h4>
-                    <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
-                      En vivo
-                    </span>
-                  </div>
-
-                  {notifications.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-2 text-center">
-                      Sin solicitudes pendientes
-                    </p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                      {notifications.map((notif) => (
-                        <div
-                          key={notif.id}
-                          className="p-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs space-y-1"
-                        >
-                          <div className="flex justify-between items-start">
-                            <span className="font-semibold text-slate-900 flex items-center gap-1">
-                              <Icon
-                                name="user"
-                                size={12}
-                                className="text-slate-400"
-                              />
-                              {notif.employeeName}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              {notif.timestamp}
-                            </span>
-                          </div>
-
-                          <p className="text-slate-700 text-[11px] font-medium leading-snug">
-                            {notif.taskTitle}
-                          </p>
-
-                          <div className="flex items-center justify-between pt-1 flex-wrap gap-1">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <span className="text-[10px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 inline-flex items-center gap-1">
-                                <Icon name="folder" size={10} />{" "}
-                                {notif.projectName}
-                              </span>
-                              {notif.taskDueDate && (
-                                <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 inline-flex items-center gap-1">
-                                  <Icon name="hourglass" size={10} />{" "}
-                                  {formatFechaLimite(notif.taskDueDate)}
-                                </span>
-                              )}
-                              {notif.evidenceUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    abrirArchivo(notif.evidenceUrl)
-                                  }
-                                  title={notif.evidenceName || "Ver evidencia"}
-                                  className="text-[10px] text-purple-700 font-medium bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 hover:bg-purple-100 inline-flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Icon name="paperclip" size={10} /> Evidencia
-                                </button>
-                              )}
-                            </div>
-
-                            <textarea
-                              rows={2}
-                              value={notifComments[notif.id] || ""}
-                              onChange={(e) =>
-                                setNotifComments((prev) => ({
-                                  ...prev,
-                                  [notif.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Comentario para el trabajador (obligatorio si rechazas)"
-                              className="w-full mt-1 border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] text-slate-800 bg-white outline-none focus:ring-1 focus:ring-blue-400 resize-none"
-                            />
-
-                            <div className="flex gap-1 w-full justify-end mt-1">
-                              <button
-                                onClick={() =>
-                                  handleResolveNotification(notif, "Aprobado")
-                                }
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-1 py-1 rounded-md transition-colors cursor-pointer"
-                              >
-                                Aprobar
-                              </button>
-
-                              <button
-                                onClick={() =>
-                                  handleResolveNotification(notif, "Rechazado")
-                                }
-                                className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold px-1 py-1 rounded-md transition-colors cursor-pointer"
-                              >
-                                Rechazar
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
         </header>
 
@@ -3705,11 +3320,7 @@ export default function AdminDashboard() {
         <ModalOverlay onClose={() => setExtendDeadlineTarget(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-              <h3 className="text-sm font-bold text-slate-900">
-                {extendDeadlineTarget.rejectNotif
-                  ? "Rechazar y dar más tiempo"
-                  : "Tiempo extra"}
-              </h3>
+              <h3 className="text-sm font-bold text-slate-900">Tiempo extra</h3>
               <button
                 onClick={() => setExtendDeadlineTarget(null)}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
@@ -3722,13 +3333,6 @@ export default function AdminDashboard() {
               onSubmit={handleConfirmExtendDeadline}
               className="space-y-2 text-xs"
             >
-              {extendDeadlineTarget.rejectNotif && (
-                <p className="text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-1.5 py-1">
-                  La tarea regresará a "En Proceso" con esta nueva fecha límite.
-                  Si cierras sin guardar, se cancela el rechazo y la
-                  notificación sigue pendiente.
-                </p>
-              )}
               <p className="text-slate-600">
                 Nueva fecha límite para{" "}
                 <strong className="text-slate-900">
@@ -3756,27 +3360,6 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              {extendDeadlineTarget.rejectNotif && (
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Qué hay que corregir
-                  </label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={extendDeadlineTarget.comentario || ""}
-                    onChange={(e) =>
-                      setExtendDeadlineTarget({
-                        ...extendDeadlineTarget,
-                        comentario: e.target.value,
-                      })
-                    }
-                    placeholder="El trabajador lo verá en su extensión junto a la tarea."
-                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 bg-white outline-none resize-none"
-                  />
-                </div>
-              )}
-
               <div className="flex gap-1 pt-1.5 border-t border-slate-100">
                 <button
                   type="button"
@@ -3789,9 +3372,7 @@ export default function AdminDashboard() {
                   type="submit"
                   className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-1.5 rounded-xl font-bold"
                 >
-                  {extendDeadlineTarget.rejectNotif
-                    ? "Rechazar tarea"
-                    : "Guardar"}
+                  Guardar
                 </button>
               </div>
             </form>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
 import { Icon, IconName } from './icons';
+import CampanaNotificaciones from './CampanaNotificaciones';
 
 const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: '/admin/revisiones', label: 'Calendario de Actividades', icon: 'calendar' },
@@ -54,13 +55,14 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-60 bg-slate-900 text-slate-300 flex flex-col shrink-0 hidden md:flex h-full select-none border-r border-slate-800">
+    <aside className="w-60 bg-slate-900 text-slate-300 flex flex-col shrink-0 hidden md:flex h-full select-none border-r border-slate-800 relative z-40">
       {/* Marca */}
       <div className="px-4 h-14 border-b border-slate-800 flex items-center gap-2.5 shrink-0">
         <span className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
           <Icon name="briefcase" size={15} />
         </span>
-        <span className="font-semibold text-white text-[13px] tracking-tight">ERP Admin</span>
+        <span className="font-semibold text-white text-[13px] tracking-tight flex-1">ERP Admin</span>
+        <CampanaNotificaciones />
       </div>
 
       {/* Navegación */}
