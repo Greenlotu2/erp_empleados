@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useConteoAvisos } from "../_lib/conteoAvisos";
 import { iniciales } from "../_lib/equipo";
 
 export function Avatar({
@@ -110,6 +111,7 @@ const PESTANAS = [
 
 export function NavInferior() {
   const ruta = usePathname();
+  const sinAtender = useConteoAvisos(ruta);
   return (
     <nav
       className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex px-2 pt-2.5 z-20"
@@ -123,7 +125,7 @@ export function NavInferior() {
           <Link
             key={p.href}
             href={p.href}
-            className="flex-1 flex flex-col items-center gap-1 min-h-11"
+            className="relative flex-1 flex flex-col items-center gap-1 min-h-11"
           >
             <svg
               width="22"
@@ -143,6 +145,11 @@ export function NavInferior() {
             >
               {p.texto}
             </span>
+            {p.clave === "avisos" && sinAtender > 0 && (
+              <span className="absolute top-[-4px] left-1/2 ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[11px] font-semibold flex items-center justify-center border-2 border-white">
+                {sinAtender > 99 ? "99+" : sinAtender}
+              </span>
+            )}
           </Link>
         );
       })}

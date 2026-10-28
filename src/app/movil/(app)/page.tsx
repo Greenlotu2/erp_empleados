@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../_componentes/comunes";
 import { EsqueletoTareas } from "../_componentes/esqueletos";
+import { useConteoLeer } from "../_lib/conteoAvisos";
 import { ProximasReuniones } from "../_componentes/ProximasReuniones";
 import {
   esPorRevisar,
@@ -28,6 +29,7 @@ function saludo() {
 
 export default function TareasEquipoPage() {
   const { datos, error, recargar } = useDatosEquipo();
+  const sinAtender = useConteoLeer();
   const [vista, setVista] = useState<Vista>("equipo");
   const [agrupar, setAgrupar] = useState<Agrupar>("urgentes");
 
@@ -102,9 +104,9 @@ export default function TareasEquipoPage() {
               <path d="M18 9a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Z" />
               <path d="M10.5 20a2 2 0 0 0 3 0" />
             </svg>
-            {porRevisar > 0 && (
-              <span className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center border-2 border-white">
-                {porRevisar}
+            {sinAtender > 0 && (
+              <span className="absolute top-1 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[11px] font-semibold flex items-center justify-center border-2 border-white">
+                {sinAtender > 99 ? "99+" : sinAtender}
               </span>
             )}
           </Link>
