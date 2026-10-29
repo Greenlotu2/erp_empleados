@@ -120,6 +120,16 @@ const sumaDias = (ymd: string, dias: number) => {
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
 };
 
+// "2026-10-31" → "sábado, 31 de octubre"
+const fechaLarga = (ymd: string) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-MX", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+};
+
 const iniciales = (nombre: string) =>
   nombre
     .split(/\s+/)
@@ -340,6 +350,31 @@ export default function NominasAsistenciaPage() {
     }),
   ];
   const pagos: Pago[] = [...pagosRaya, ...pagosBeca];
+
+  // --- Anuncio: a quién se le paga y qué día ---
+  // Trabajadores: todos los sábados (hoy mismo si es sábado).
+  const proximoSabado = (() => {
+    const [y, m, d] = hoyPagos.split("-").map(Number);
+    const dia = new Date(y, m - 1, d).getDay();
+    return sumaDias(hoyPagos, (6 - dia + 7) % 7);
+  })();
+  // Prácticas y convenios: el mismo día del mes en que empezaron su contrato.
+  const proximasBecas = personalConvenio.map((e) => {
+    const c = contratosPorEmp[e.id];
+    if (!c || c.monto <= 0 || !c.inicio) return { e, c, siguiente: null };
+    const pagados = new Set<string>(
+      pagosConvenio.filter((pc) => pc.empleado_id === e.id).map((pc) => pc.mes),
+    );
+    const siguiente =
+      ciclosBeca(c.inicio, sumaMeses(hoyPagos, 13))
+        .filter((ciclo) => !pagados.has(ciclo.inicio))
+        .map((ciclo) => ({
+          fecha: fechasPago[`beca:${e.id}:${ciclo.inicio}`] || ciclo.vence,
+        }))
+        .filter((x) => x.fecha >= hoyPagos)
+        .sort((a, b) => a.fecha.localeCompare(b.fecha))[0] || null;
+    return { e, c, siguiente };
+  });
   const pendientes = pagos.filter((p) => !p.pagado && !p.faltaCaptura);
   const porCapturar = pagos.filter((p) => p.faltaCaptura);
   const hechos = pagos.filter((p) => p.pagado);
@@ -790,6 +825,72 @@ export default function NominasAsistenciaPage() {
           </div>
         ) : (
           <>
+            {/* Anuncio de pagos */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 shrink-0 mb-2">
+              <div className="rounded-lg p-4 bg-blue-600 text-white">
+                <div className="text-[11px] uppercase tracking-wider font-semibold text-blue-100">
+                  Trabajadores · pago semanal
+                </div>
+                <div className="text-[26px] font-bold leading-tight mt-1 capitalize">
+                  {fechaLarga(proximoSabado)}
+                </div>
+                <div className="text-[12px] text-blue-100 mt-0.5">
+                  Se les paga todos los sábados · {plantilla.length}{" "}
+                  {plantilla.length === 1 ? "persona" : "personas"}
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2 max-h-16 overflow-y-auto">
+                  {plantilla.map((e) => (
+                    <span
+                      key={e.id}
+                      className="text-[11px] font-medium bg-white/15 rounded-full px-2 py-0.5"
+                    >
+                      {e.nombre.split(/\s+/).slice(0, 2).join(" ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg p-4 bg-violet-600 text-white">
+                <div className="text-[11px] uppercase tracking-wider font-semibold text-violet-100">
+                  Prácticas y convenios · pago mensual
+                </div>
+                {proximasBecas.length === 0 ? (
+                  <div className="text-[13px] text-violet-100 mt-2">
+                    No hay personal de convenio.
+                  </div>
+                ) : (
+                  <div className="mt-1.5 flex flex-col gap-1.5 max-h-28 overflow-y-auto">
+                    {proximasBecas.map(({ e, c, siguiente }) => (
+                      <div
+                        key={e.id}
+                        className="flex items-baseline justify-between gap-3"
+                      >
+                        <span className="text-[13px] font-semibold truncate">
+                          {e.nombre}
+                        </span>
+                        <span className="text-[12px] text-violet-100 text-right shrink-0">
+                          {siguiente ? (
+                            <>
+                              <strong className="text-white text-[15px] capitalize">
+                                {fechaLarga(siguiente.fecha)}
+                              </strong>
+                              {c ? ` · ${money(c.monto)}` : ""}
+                            </>
+                          ) : c && c.monto > 0 ? (
+                            "Sin fecha próxima"
+                          ) : (
+                            "Sin beca en su contrato"
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="text-[11px] text-violet-200">
+                      Se les paga cada mes, el día en que empezaron.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Fila 1: resumen */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 shrink-0 mb-2">
               <div className="bg-slate-900 text-white rounded-lg p-3">
