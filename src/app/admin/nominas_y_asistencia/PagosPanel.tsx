@@ -65,7 +65,6 @@ export function PagosPanel({
           a.empleadoNombre.localeCompare(b.empleadoNombre, "es")
         : (b.fechaPago || "").localeCompare(a.fechaPago || ""),
     );
-  const total = lista.reduce((s, p) => s + p.monto, 0);
 
   if (lista.length === 0) {
     return (
@@ -79,81 +78,103 @@ export function PagosPanel({
     );
   }
 
-  return (
-    <div className="flex flex-col gap-1">
-      {porPagar && lista.length > 1 && (
-        <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
-          <span className="text-[11px] text-slate-600">
-            {lista.length} pagos pendientes ·{" "}
-            <strong className="text-slate-900">{money(total)}</strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => onPagarTodo(lista)}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded-lg cursor-pointer"
-          >
-            <Icon name="check-circle" size={13} /> Pagar todo
-          </button>
-        </div>
-      )}
+  // Los trabajadores cobran por semana y las prácticas/convenios por mes.
+  const secciones = [
+    {
+      titulo: "Semanal · trabajadores",
+      vacio: porPagar
+        ? "Sin raya semanal pendiente."
+        : "Aún no hay rayas pagadas.",
+      lista: lista.filter((p) => p.tipo === "raya"),
+    },
+    {
+      titulo: "Mensual · prácticas y convenios",
+      vacio: porPagar ? "Sin becas pendientes." : "Aún no hay becas pagadas.",
+      lista: lista.filter((p) => p.tipo === "convenio"),
+    },
+  ];
 
-      {lista.map((p) => (
-        <div
-          key={p.clave}
-          className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1.5"
-        >
-          <span
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
-            style={{ backgroundColor: p.color || "#64748b" }}
-          >
-            {iniciales(p.empleadoNombre)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[12px] font-semibold text-slate-800 truncate">
-              {p.empleadoNombre}
-            </div>
-            <div className="text-[10.5px] text-slate-500 flex items-center gap-1 flex-wrap">
-              <span
-                className={`text-[9px] font-bold px-1 py-0.5 rounded-full border ${
-                  p.tipo === "raya"
-                    ? "bg-blue-50 text-blue-700 border-blue-200"
-                    : "bg-violet-50 text-violet-700 border-violet-200"
-                }`}
-              >
-                {p.tipo === "raya" ? "Raya" : "Beca mensual"}
-              </span>
-              {p.concepto}
-              {porPagar
-                ? ` · desde ${fechaCorta(p.fecha)}`
-                : p.fechaPago
-                  ? ` · pagado el ${fechaCorta(p.fechaPago)}`
-                  : ""}
-            </div>
-          </div>
-          <span className="shrink-0 text-[13px] font-extrabold text-slate-900 tabular-nums">
-            {money(p.monto)}
-          </span>
-          {porPagar ? (
-            <button
-              type="button"
-              disabled={ocupadoClave === p.clave}
-              onClick={() => onPagar(p)}
-              className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 px-2 py-1 rounded-lg cursor-pointer"
-            >
-              <Icon name="banknote" size={13} /> Pagar
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={ocupadoClave === p.clave}
-              onClick={() => onDeshacer(p)}
-              className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 px-2 py-1 rounded-lg cursor-pointer"
-            >
-              <Icon name="undo" size={13} /> Deshacer
-            </button>
-          )}
+  const renglon = (p: Pago) => (
+    <div
+      key={p.clave}
+      className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1.5"
+    >
+      <span
+        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+        style={{ backgroundColor: p.color || "#64748b" }}
+      >
+        {iniciales(p.empleadoNombre)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12px] font-semibold text-slate-800 truncate">
+          {p.empleadoNombre}
         </div>
-      ))}
+        <div className="text-[10.5px] text-slate-500">
+          {p.concepto}
+          {porPagar
+            ? ` · desde ${fechaCorta(p.fecha)}`
+            : p.fechaPago
+              ? ` · pagado el ${fechaCorta(p.fechaPago)}`
+              : ""}
+        </div>
+      </div>
+      <span className="shrink-0 text-[13px] font-extrabold text-slate-900 tabular-nums">
+        {money(p.monto)}
+      </span>
+      {porPagar ? (
+        <button
+          type="button"
+          disabled={ocupadoClave === p.clave}
+          onClick={() => onPagar(p)}
+          className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 px-2 py-1 rounded-lg cursor-pointer"
+        >
+          <Icon name="banknote" size={13} /> Pagar
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={ocupadoClave === p.clave}
+          onClick={() => onDeshacer(p)}
+          className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 px-2 py-1 rounded-lg cursor-pointer"
+        >
+          <Icon name="undo" size={13} /> Deshacer
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {secciones.map((sec) => {
+        const subtotal = sec.lista.reduce((t, p) => t + p.monto, 0);
+        return (
+          <section key={sec.titulo} className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+              <span className="text-[11px] text-slate-600 min-w-0">
+                <strong className="text-slate-900">{sec.titulo}</strong> ·{" "}
+                {sec.lista.length} {sec.lista.length === 1 ? "pago" : "pagos"} ·{" "}
+                <strong className="text-slate-900">{money(subtotal)}</strong>
+              </span>
+              {porPagar && sec.lista.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => onPagarTodo(sec.lista)}
+                  className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded-lg cursor-pointer"
+                >
+                  <Icon name="check-circle" size={13} /> Pagar todo
+                </button>
+              )}
+            </div>
+            {sec.lista.length === 0 ? (
+              <p className="text-[11px] text-slate-400 italic px-1">
+                {sec.vacio}
+              </p>
+            ) : (
+              sec.lista.map(renglon)
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }

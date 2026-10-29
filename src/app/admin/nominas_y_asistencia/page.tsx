@@ -346,6 +346,10 @@ export default function NominasAsistenciaPage() {
   const hechos = pagos.filter((p) => p.pagado);
   const totalPorPagar = pendientes.reduce((s, p) => s + p.monto, 0);
   const totalPagado = hechos.reduce((s, p) => s + p.monto, 0);
+  const porPagarSemanal = pendientes
+    .filter((p) => p.tipo === "raya")
+    .reduce((s, p) => s + p.monto, 0);
+  const porPagarMensual = totalPorPagar - porPagarSemanal;
   const personasPorPagar = new Set(pendientes.map((p) => p.empleadoId)).size;
 
   // --- Proyecciones ---
@@ -771,6 +775,10 @@ export default function NominasAsistenciaPage() {
                   {personasPorPagar}{" "}
                   {personasPorPagar === 1 ? "persona" : "personas"}
                 </span>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  Semanal {money(porPagarSemanal)} · Mensual{" "}
+                  {money(porPagarMensual)}
+                </div>
               </div>
               <div className="bg-slate-900 text-white rounded-lg p-3">
                 <span className="text-[10px] uppercase tracking-wider font-medium text-slate-400">
