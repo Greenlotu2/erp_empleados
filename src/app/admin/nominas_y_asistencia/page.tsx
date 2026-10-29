@@ -7,6 +7,14 @@ import { ModalOverlay } from "../../../components/ModalOverlay";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
 import { ROLES_CONVENIO } from "../../../lib/convenios";
+import {
+  INICIO_PAGOS_CONVENIO,
+  mesesAdeudados,
+  montoMensual,
+  nombreMes,
+  ultimoDiaDelMes,
+} from "../../../lib/pagos";
+import { PagosPanel, type Pago } from "./PagosPanel";
 
 interface Empleado {
   id: string;
@@ -41,6 +49,16 @@ interface RayaDetalle {
   asistencia: Record<string, boolean> | null;
   nota?: string | null;
   total: number;
+  pagado?: boolean;
+  fecha_pago?: string | null;
+}
+
+interface PagoConvenio {
+  id: string;
+  empleado_id: string;
+  mes: string;
+  monto: number;
+  fecha_pago: string;
 }
 
 const DIAS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"] as const;
@@ -128,6 +146,15 @@ export default function NominasAsistenciaPage() {
   >({});
   const [expandidaId, setExpandidaId] = useState<string | null>(null);
   const [verProyeccion, setVerProyeccion] = useState(false);
+  const [vista, setVista] = useState<"porPagar" | "pagados" | "listas">(
+    "porPagar",
+  );
+  const [ocupadoClave, setOcupadoClave] = useState<string | null>(null);
+  // Contrato vigente de cada persona: monto mensual de la beca y fecha de inicio.
+  const [contratosPorEmp, setContratosPorEmp] = useState<
+    Record<string, { monto: number; inicio: string }>
+  >({});
+  const [pagosConvenio, setPagosConvenio] = useState<PagoConvenio[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
 
@@ -145,6 +172,27 @@ export default function NominasAsistenciaPage() {
   useEffect(() => {
     getCurrentAdminId().then(setCurrentAdminId);
   }, []);
+
+  const cargarConvenios = async () => {
+    const [{ data: contData }, { data: pagData }] = await Promise.all([
+      (supabase.from("contratos") as any).select(
+        "empleado_id, remuneracion_o_beca, fecha_inicio",
+      ),
+      (supabase.from("pagos_convenio") as any).select("*"),
+    ]);
+    const mapa: Record<string, { monto: number; inicio: string }> = {};
+    (contData || []).forEach((c: any) => {
+      const previo = mapa[c.empleado_id];
+      if (!previo || (c.fecha_inicio || "") > previo.inicio) {
+        mapa[c.empleado_id] = {
+          monto: montoMensual(c.remuneracion_o_beca),
+          inicio: c.fecha_inicio || "",
+        };
+      }
+    });
+    setContratosPorEmp(mapa);
+    setPagosConvenio(pagData || []);
+  };
 
   const fetchAll = async () => {
     try {
@@ -172,6 +220,7 @@ export default function NominasAsistenciaPage() {
         (map[r.semana_id] ||= []).push(r);
       });
       setDetallePorSemana(map);
+      await cargarConvenios();
     } catch (err) {
       console.error("Error cargando Nóminas y Asistencia:", err);
     } finally {
@@ -195,21 +244,83 @@ export default function NominasAsistenciaPage() {
 
   const totalDeSemana = (semanaId: string) =>
     (detallePorSemana[semanaId] || []).reduce((s, d) => s + totalFila(d), 0);
-  // Una semana pasa Borrador → Emitida (lista cerrada, falta pagarla) → Pagada.
-  const semanasPorPagar = semanas.filter((s) => s.estado !== "Pagada");
-  const semanasPagadas = semanas.filter((s) => s.estado === "Pagada");
-  const totalPorPagar = semanasPorPagar.reduce(
-    (s, sem) => s + totalDeSemana(sem.id),
-    0,
+  // --- Pagos ---
+  // Cada pago es de una persona: una semana de raya o un mes de beca de
+  // convenio. La raya se paga por renglón; la beca sale del monto del contrato
+  // y vence el último día de cada mes.
+  const hoyPagos = (() => {
+    const h = new Date();
+    const d2 = (n: number) => String(n).padStart(2, "0");
+    return `${h.getFullYear()}-${d2(h.getMonth() + 1)}-${d2(h.getDate())}`;
+  })();
+  const pagosRaya: Pago[] = semanas.flatMap((sem) =>
+    (detallePorSemana[sem.id] || [])
+      .filter((d) => totalFila(d) > 0)
+      .map((d) => {
+        const e = empleados.find((x) => x.id === d.empleado_id);
+        return {
+          clave: `raya-${d.id}`,
+          tipo: "raya" as const,
+          empleadoId: d.empleado_id,
+          refId: d.id,
+          empleadoNombre: e?.nombre || "—",
+          color: e?.color,
+          concepto: `Semana ${fmtRango(sem.semana_inicio)}`,
+          monto: totalFila(d),
+          fecha: sumaDias(sem.semana_inicio, 6),
+          pagado: !!d.pagado,
+          fechaPago: d.fecha_pago || null,
+        };
+      }),
   );
-  const totalPagado = semanasPagadas.reduce(
-    (s, sem) => s + totalDeSemana(sem.id),
-    0,
-  );
-  const personasPorPagar = semanasPorPagar.reduce(
-    (s, sem) => s + (detallePorSemana[sem.id] || []).length,
-    0,
-  );
+  const pagosBeca: Pago[] = [
+    ...pagosConvenio.map((pc) => {
+      const e = empleados.find((x) => x.id === pc.empleado_id);
+      return {
+        clave: `beca-${pc.id}`,
+        tipo: "convenio" as const,
+        empleadoId: pc.empleado_id,
+        refId: pc.id,
+        mes: pc.mes,
+        empleadoNombre: e?.nombre || "—",
+        color: e?.color,
+        concepto: `Beca de ${nombreMes(pc.mes)}`,
+        monto: Number(pc.monto),
+        fecha: ultimoDiaDelMes(pc.mes),
+        pagado: true,
+        fechaPago: pc.fecha_pago,
+      };
+    }),
+    ...personalConvenio.flatMap((e) => {
+      const c = contratosPorEmp[e.id];
+      if (!c || c.monto <= 0) return [];
+      const yaPagados = new Set(
+        pagosConvenio
+          .filter((pc) => pc.empleado_id === e.id)
+          .map((pc) => pc.mes),
+      );
+      return mesesAdeudados(c.inicio, hoyPagos, yaPagados).map((mes) => ({
+        clave: `beca-${e.id}-${mes}`,
+        tipo: "convenio" as const,
+        empleadoId: e.id,
+        refId: "",
+        mes,
+        empleadoNombre: e.nombre,
+        color: e.color,
+        concepto: `Beca de ${nombreMes(mes)}`,
+        monto: c.monto,
+        fecha: ultimoDiaDelMes(mes),
+        pagado: false,
+        fechaPago: null,
+      }));
+    }),
+  ];
+  const pagos: Pago[] = [...pagosRaya, ...pagosBeca];
+  const pendientes = pagos.filter((p) => !p.pagado);
+  const hechos = pagos.filter((p) => p.pagado);
+  const totalPorPagar = pendientes.reduce((s, p) => s + p.monto, 0);
+  const totalPagado = hechos.reduce((s, p) => s + p.monto, 0);
+  const personasPorPagar = new Set(pendientes.map((p) => p.empleadoId)).size;
 
   // --- Proyecciones ---
   // Semanal: por cada persona de la plantilla, su último pago por día × el
@@ -266,7 +377,30 @@ export default function NominasAsistenciaPage() {
   ) {
     if (f.startsWith(String(anioActual))) semanasSinLista++;
   }
-  const proyeccionAnio = registradoAnio + proyeccionSemanal * semanasSinLista;
+  // Becas de convenio del año: las ya pagadas más las meses que faltan.
+  const becasPagadasAnio = pagosConvenio
+    .filter((pc) => pc.mes.startsWith(String(anioActual)))
+    .reduce((s, pc) => s + Number(pc.monto), 0);
+  const becasPorPagarAnio = personalConvenio.reduce((total, e) => {
+    const c = contratosPorEmp[e.id];
+    if (!c || c.monto <= 0) return total;
+    const desde = [INICIO_PAGOS_CONVENIO, c.inicio.slice(0, 7)]
+      .filter(Boolean)
+      .sort()
+      .pop()!;
+    const yaPagados = new Set(
+      pagosConvenio.filter((pc) => pc.empleado_id === e.id).map((pc) => pc.mes),
+    );
+    let meses = 0;
+    for (let m = 1; m <= 12; m++) {
+      const mes = `${anioActual}-${String(m).padStart(2, "0")}`;
+      if (mes >= desde && !yaPagados.has(`${mes}-01`)) meses++;
+    }
+    return total + meses * c.monto;
+  }, 0);
+  const becasAnio = becasPagadasAnio + becasPorPagarAnio;
+  const proyeccionAnio =
+    registradoAnio + proyeccionSemanal * semanasSinLista + becasAnio;
 
   // --- Handlers ---
   const handleAltaPlantilla = async () => {
@@ -408,20 +542,85 @@ export default function NominasAsistenciaPage() {
     }
   };
 
-  const cambiarEstadoSemana = async (sem: RayaSemana, estado: string) => {
-    setSemanas((prev) =>
-      prev.map((s) => (s.id === sem.id ? { ...s, estado } : s)),
-    );
+  // Marca un pago como hecho (o lo deshace). La raya guarda la marca en su
+  // renglón; la beca de convenio crea (o borra) un registro del mes.
+  const pagar = async (p: Pago) => {
+    setOcupadoClave(p.clave);
     try {
-      const { error } = await (supabase.from("raya_semanas") as any)
-        .update({ estado })
-        .eq("id", sem.id);
-      if (error) throw error;
+      if (p.tipo === "raya") {
+        const fecha = new Date().toISOString();
+        const { error } = await (supabase.from("raya_detalle") as any)
+          .update({ pagado: true, fecha_pago: fecha })
+          .eq("id", p.refId);
+        if (error) throw error;
+        setDetallePorSemana((prev) => {
+          const sig = { ...prev };
+          for (const k of Object.keys(sig)) {
+            sig[k] = sig[k].map((d) =>
+              d.id === p.refId ? { ...d, pagado: true, fecha_pago: fecha } : d,
+            );
+          }
+          return sig;
+        });
+      } else {
+        const { error } = await (supabase.from("pagos_convenio") as any).insert(
+          {
+            empleado_id: p.empleadoId,
+            mes: p.mes,
+            monto: p.monto,
+          },
+        );
+        if (error) throw error;
+        await cargarConvenios();
+      }
     } catch (err: any) {
-      alert("No se pudo cambiar el estado: " + (err.message || "Error"));
-      await fetchAll();
+      alert("No se pudo registrar el pago: " + (err.message || "Error"));
+    } finally {
+      setOcupadoClave(null);
     }
   };
+
+  const deshacerPago = async (p: Pago) => {
+    setOcupadoClave(p.clave);
+    try {
+      if (p.tipo === "raya") {
+        const { error } = await (supabase.from("raya_detalle") as any)
+          .update({ pagado: false, fecha_pago: null })
+          .eq("id", p.refId);
+        if (error) throw error;
+        setDetallePorSemana((prev) => {
+          const sig = { ...prev };
+          for (const k of Object.keys(sig)) {
+            sig[k] = sig[k].map((d) =>
+              d.id === p.refId ? { ...d, pagado: false, fecha_pago: null } : d,
+            );
+          }
+          return sig;
+        });
+      } else {
+        const { error } = await (supabase.from("pagos_convenio") as any)
+          .delete()
+          .eq("id", p.refId);
+        if (error) throw error;
+        await cargarConvenios();
+      }
+    } catch (err: any) {
+      alert("No se pudo deshacer el pago: " + (err.message || "Error"));
+    } finally {
+      setOcupadoClave(null);
+    }
+  };
+
+  const pagarTodo = (lista: Pago[]) =>
+    setConfirmDialog({
+      titulo: "Pagar todo",
+      mensaje: `¿Marcar como pagados ${lista.length} pagos por ${money(
+        lista.reduce((t, x) => t + x.monto, 0),
+      )}?`,
+      onConfirmar: async () => {
+        for (const p of lista) await pagar(p);
+      },
+    });
 
   const handleEliminarSemana = async (sem: RayaSemana) => {
     setSemanas((prev) => prev.filter((s) => s.id !== sem.id));
@@ -533,8 +732,8 @@ export default function NominasAsistenciaPage() {
                   {money(totalPorPagar)}
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  {semanasPorPagar.length}{" "}
-                  {semanasPorPagar.length === 1 ? "semana" : "semanas"} ·{" "}
+                  {pendientes.length}{" "}
+                  {pendientes.length === 1 ? "pago" : "pagos"} ·{" "}
                   {personasPorPagar}{" "}
                   {personasPorPagar === 1 ? "persona" : "personas"}
                 </span>
@@ -547,8 +746,8 @@ export default function NominasAsistenciaPage() {
                   {money(totalPagado)}
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  {semanasPagadas.length}{" "}
-                  {semanasPagadas.length === 1 ? "semana" : "semanas"} pagadas
+                  {hechos.length} {hechos.length === 1 ? "pago" : "pagos"}
+                  registrados
                 </span>
               </div>
               <div className="bg-slate-900 text-white rounded-lg p-3">
@@ -582,7 +781,7 @@ export default function NominasAsistenciaPage() {
                   {money(proyeccionAnio)}
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  {money(registradoAnio)} registrado + {semanasSinLista}{" "}
+                  {money(registradoAnio)} de raya + {semanasSinLista}{" "}
                   {semanasSinLista === 1 ? "semana" : "semanas"} ×{" "}
                   {money(proyeccionSemanal)}
                 </span>
@@ -656,15 +855,29 @@ export default function NominasAsistenciaPage() {
               {/* Historial */}
               <div className="lg:col-span-2 bg-white border border-slate-200 rounded-lg p-2 flex flex-col min-h-0 overflow-hidden">
                 <div className="flex items-center justify-between gap-1 shrink-0 pb-1.5 border-b border-slate-100">
-                  <div className="min-w-0">
-                    <div className="text-[12px] font-semibold text-slate-900">
-                      Historial Agrupado por Semanas
-                    </div>
-                    <p className="text-[10.5px] text-slate-400">
-                      Clic en una semana para ver el desglose.
-                    </p>
+                  <div className="flex items-center gap-1 min-w-0 flex-wrap">
+                    {(
+                      [
+                        ["porPagar", "Por pagar", pendientes.length],
+                        ["pagados", "Pagados", hechos.length],
+                        ["listas", "Listas de raya", semanas.length],
+                      ] as const
+                    ).map(([k, label, n]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setVista(k)}
+                        className={`text-[12px] font-semibold px-2 py-1 rounded-lg cursor-pointer transition-colors ${
+                          vista === k
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        {label} <span className="opacity-60">{n}</span>
+                      </button>
+                    ))}
                   </div>
-                  {expandidaId && (
+                  {expandidaId && vista === "listas" && (
                     <div className="flex items-center gap-1 shrink-0 no-print">
                       <button
                         type="button"
@@ -691,32 +904,41 @@ export default function NominasAsistenciaPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto min-h-0 pt-1.5 space-y-1">
-                  {semanas.length === 0 ? (
+                  {vista !== "listas" ? (
+                    <PagosPanel
+                      pagos={pagos}
+                      vista={vista}
+                      ocupadoClave={ocupadoClave}
+                      onPagar={pagar}
+                      onDeshacer={deshacerPago}
+                      onPagarTodo={pagarTodo}
+                    />
+                  ) : semanas.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-center px-4">
                       <span className="text-[12px] text-slate-400 italic">
                         No hay reportes de nómina o asistencia registrados.
                       </span>
                     </div>
                   ) : (
-                    [
-                      { titulo: "Por pagar", lista: semanasPorPagar },
-                      { titulo: "Pagadas", lista: semanasPagadas },
-                    ].map((grupo) => (
+                    [{ titulo: "Semanas", lista: semanas }].map((grupo) => (
                       <div key={grupo.titulo} className="space-y-1">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 pt-1">
-                          {grupo.titulo} · {grupo.lista.length}
-                        </div>
-                        {grupo.lista.length === 0 && (
-                          <p className="text-[11px] text-slate-400 italic pb-1">
-                            {grupo.titulo === "Por pagar"
-                              ? "No hay semanas pendientes de pago."
-                              : "Aún no hay semanas pagadas."}
-                          </p>
-                        )}
                         {grupo.lista.map((sem) => {
                           const abierta = expandidaId === sem.id;
                           const filas = detallePorSemana[sem.id] || [];
-                          const bloqueada = sem.estado !== "Borrador";
+                          const pagables = filas.filter(
+                            (d) => totalFila(d) > 0,
+                          );
+                          const pagadasN = pagables.filter(
+                            (d) => d.pagado,
+                          ).length;
+                          const estadoPago =
+                            pagables.length === 0
+                              ? "Sin datos"
+                              : pagadasN === pagables.length
+                                ? "Pagada"
+                                : pagadasN > 0
+                                  ? `Pagada ${pagadasN}/${pagables.length}`
+                                  : "Por pagar";
                           return (
                             <div
                               key={sem.id}
@@ -740,16 +962,14 @@ export default function NominasAsistenciaPage() {
                                   </span>
                                   <span
                                     className={`text-[9px] font-bold px-1 py-0.5 rounded-full border ${
-                                      sem.estado === "Pagada"
+                                      estadoPago === "Pagada"
                                         ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                        : sem.estado === "Emitida"
-                                          ? "bg-blue-50 text-blue-700 border-blue-200"
-                                          : "bg-amber-50 text-amber-700 border-amber-200"
+                                        : estadoPago === "Por pagar"
+                                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                                          : "bg-slate-50 text-slate-600 border-slate-200"
                                     }`}
                                   >
-                                    {sem.estado === "Emitida"
-                                      ? "Por pagar"
-                                      : sem.estado}
+                                    {estadoPago}
                                   </span>
                                 </span>
                                 <span className="shrink-0 text-[12px] font-extrabold text-slate-900">
@@ -803,6 +1023,7 @@ export default function NominasAsistenciaPage() {
                                             const emp = empleados.find(
                                               (e) => e.id === d.empleado_id,
                                             );
+                                            const bloqueada = !!d.pagado;
                                             return (
                                               <tr
                                                 key={d.id}
@@ -935,52 +1156,6 @@ export default function NominasAsistenciaPage() {
                                   )}
 
                                   <div className="flex items-center justify-end gap-1 pt-1.5 mt-1 border-t border-slate-100 no-print">
-                                    {sem.estado === "Borrador" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          cambiarEstadoSemana(sem, "Emitida")
-                                        }
-                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded-lg cursor-pointer"
-                                      >
-                                        <Icon name="check" size={13} /> Emitir
-                                      </button>
-                                    )}
-                                    {sem.estado === "Emitida" && (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            cambiarEstadoSemana(sem, "Borrador")
-                                          }
-                                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg cursor-pointer"
-                                        >
-                                          <Icon name="undo" size={13} /> Reabrir
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            cambiarEstadoSemana(sem, "Pagada")
-                                          }
-                                          className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded-lg cursor-pointer"
-                                        >
-                                          <Icon name="banknote" size={13} />{" "}
-                                          Marcar pagada
-                                        </button>
-                                      </>
-                                    )}
-                                    {sem.estado === "Pagada" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          cambiarEstadoSemana(sem, "Emitida")
-                                        }
-                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg cursor-pointer"
-                                      >
-                                        <Icon name="undo" size={13} /> Quitar
-                                        pago
-                                      </button>
-                                    )}
                                     <button
                                       type="button"
                                       onClick={() =>

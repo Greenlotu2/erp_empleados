@@ -1,4 +1,6 @@
 import { supabase } from "./supabaseClient";
+import { ROLES_CONVENIO } from "./convenios";
+import { mesesAdeudados, montoMensual, nombreMes } from "./pagos";
 
 // Avisos informativos de la campana. No hay tabla propia: se calculan al vuelo
 // con lo que ya existe (tareas, reuniones, equipo, documentos, horas y raya).
@@ -44,38 +46,42 @@ export async function cargarAvisos(): Promise<Aviso[]> {
   const en24h = new Date(ahora + DIA).toISOString();
   const en30d = sumaDias(hoy, 30);
 
-  const [emps, tareas, reuniones, docs, semanas] = await Promise.all([
-    supabase
-      .from("empleados")
-      .select(
-        "id, nombre, created_at, horas_acumuladas, horas_totales_objetivo",
-      ),
-    supabase
-      .from("tareas")
-      .select(
-        "id, titulo, empleado_id, estado, fecha_limite, created_at, fecha_completado",
-      )
-      .or(
-        `created_at.gte.${hace3d},fecha_completado.gte.${hace3d},and(estado.neq.Completada,fecha_limite.lte.${sumaDias(hoy, 2)})`,
-      ),
-    supabase
-      .from("reuniones")
-      .select("id, titulo, fecha_inicio, empleado_id, estado, created_at")
-      .or(
-        `created_at.gte.${hace3d},and(fecha_inicio.gte.${new Date(ahora).toISOString()},fecha_inicio.lte.${en24h})`,
-      ),
-    supabase
-      .from("documentos_legales")
-      .select(
-        "id, empleado_id, nombre_documento, es_obligatorio, estado, archivo_path, fecha_vencimiento",
-      ),
-    supabase
-      .from("raya_semanas")
-      .select(
-        "id, semana_inicio, estado, raya_detalle (empleado_id, dias_trabajados, total)",
-      )
-      .neq("estado", "Pagada"),
-  ]);
+  const [emps, tareas, reuniones, docs, semanas, contratos, pagosConv] =
+    await Promise.all([
+      supabase
+        .from("empleados")
+        .select(
+          "id, nombre, rol, created_at, horas_acumuladas, horas_totales_objetivo",
+        ),
+      supabase
+        .from("tareas")
+        .select(
+          "id, titulo, empleado_id, estado, fecha_limite, created_at, fecha_completado",
+        )
+        .or(
+          `created_at.gte.${hace3d},fecha_completado.gte.${hace3d},and(estado.neq.Completada,fecha_limite.lte.${sumaDias(hoy, 2)})`,
+        ),
+      supabase
+        .from("reuniones")
+        .select("id, titulo, fecha_inicio, empleado_id, estado, created_at")
+        .or(
+          `created_at.gte.${hace3d},and(fecha_inicio.gte.${new Date(ahora).toISOString()},fecha_inicio.lte.${en24h})`,
+        ),
+      supabase
+        .from("documentos_legales")
+        .select(
+          "id, empleado_id, nombre_documento, es_obligatorio, estado, archivo_path, fecha_vencimiento",
+        ),
+      supabase
+        .from("raya_semanas")
+        .select(
+          "id, semana_inicio, estado, raya_detalle (empleado_id, dias_trabajados, total, pagado)",
+        ),
+      supabase
+        .from("contratos")
+        .select("empleado_id, remuneracion_o_beca, fecha_inicio"),
+      supabase.from("pagos_convenio").select("empleado_id, mes"),
+    ]);
 
   const nombres = new Map<string, string>();
   (emps.data || []).forEach((e: any) => nombres.set(e.id, e.nombre));
@@ -238,12 +244,12 @@ export async function cargarAvisos(): Promise<Aviso[]> {
     });
   });
 
-  // --- Raya: la semana ya cerró (sábado) y sigue sin emitirse ------------------
+  // --- Pagos: raya de una semana que ya cerró (sábado) con renglones sin pagar ---
   (semanas.data || []).forEach((s: any) => {
     const inicio = String(s.semana_inicio).slice(0, 10);
     if (sumaDias(inicio, 5) > hoy) return;
     const filas = (s.raya_detalle || []).filter(
-      (f: any) => Number(f.total) > 0 || Number(f.dias_trabajados) > 0,
+      (f: any) => Number(f.total) > 0 && !f.pagado,
     );
     if (filas.length === 0) return;
     const total = filas.reduce(
@@ -259,6 +265,48 @@ export async function cargarAvisos(): Promise<Aviso[]> {
       titulo: `Toca pagar la raya · semana del ${fechaCorta(inicio)}`,
       detalle: `${filas.length} ${filas.length === 1 ? "persona" : "personas"} · ${dinero(total)} — ${personas}`,
       fecha: `${sumaDias(inicio, 5)}T12:00:00Z`,
+      urgente: true,
+    });
+  });
+
+  // --- Becas mensuales de convenio: el mes ya terminó y no hay pago registrado ---
+  const contratoVigente = new Map<string, { monto: number; inicio: string }>();
+  (contratos.data || []).forEach((c: any) => {
+    const previo = contratoVigente.get(c.empleado_id);
+    if (!previo || (c.fecha_inicio || "") > previo.inicio) {
+      contratoVigente.set(c.empleado_id, {
+        monto: montoMensual(c.remuneracion_o_beca),
+        inicio: c.fecha_inicio || "",
+      });
+    }
+  });
+  const becasPorMes = new Map<string, { nombre: string; monto: number }[]>();
+  (emps.data || []).forEach((e: any) => {
+    if (!ROLES_CONVENIO.includes(e.rol || "")) return;
+    const c = contratoVigente.get(e.id);
+    if (!c || c.monto <= 0) return;
+    const pagados = new Set<string>(
+      (pagosConv.data || [])
+        .filter((pc: any) => pc.empleado_id === e.id)
+        .map((pc: any) => String(pc.mes).slice(0, 10)),
+    );
+    mesesAdeudados(c.inicio, hoy, pagados).forEach((mes) => {
+      becasPorMes.set(mes, [
+        ...(becasPorMes.get(mes) || []),
+        { nombre: e.nombre, monto: c.monto },
+      ]);
+    });
+  });
+  becasPorMes.forEach((lista, mes) => {
+    const total = lista.reduce((a, b) => a + b.monto, 0);
+    avisos.push({
+      id: `becas-pagar-${mes}-${lista.length}`,
+      tipo: "raya",
+      titulo: `Toca pagar las becas de ${nombreMes(mes)}`,
+      detalle: `${lista.length} ${lista.length === 1 ? "persona" : "personas"} · ${dinero(total)} — ${lista
+        .map((b) => `${b.nombre} ${dinero(b.monto)}`)
+        .join(" · ")}`,
+      fecha: `${mes.slice(0, 7)}-28T12:00:00Z`,
       urgente: true,
     });
   });
