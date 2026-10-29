@@ -619,6 +619,43 @@ export default function NominasAsistenciaPage() {
       },
     });
 
+  // Lo que se le debe a una persona y el botón para pagárselo de una vez.
+  const accionPago = (id: string, nombre: string) => {
+    const pend = pendientes.filter((p) => p.empleadoId === id);
+    if (pend.length === 0) {
+      return (
+        <span className="shrink-0 text-[10px] font-semibold text-emerald-600">
+          Al corriente
+        </span>
+      );
+    }
+    const total = pend.reduce((t, p) => t + p.monto, 0);
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          setConfirmDialog({
+            titulo: `Pagar a ${nombre}`,
+            mensaje: `${pend
+              .map((p) => `${p.concepto}: ${money(p.monto)}`)
+              .join(" · ")}. Total ${money(total)}. ¿Marcar como pagado?`,
+            onConfirmar: async () => {
+              for (const p of pend) await pagar(p);
+            },
+          })
+        }
+        className="shrink-0 flex flex-col items-end leading-tight bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-2 py-1 cursor-pointer transition-colors"
+      >
+        <span className="text-[11px] font-bold tabular-nums">
+          {money(total)}
+        </span>
+        <span className="text-[9px] font-medium opacity-90">
+          Pagar{pend.length > 1 ? ` (${pend.length})` : ""}
+        </span>
+      </button>
+    );
+  };
+
   const handleEliminarSemana = async (sem: RayaSemana) => {
     setSemanas((prev) => prev.filter((s) => s.id !== sem.id));
     if (expandidaId === sem.id) setExpandidaId(null);
@@ -1218,6 +1255,7 @@ export default function NominasAsistenciaPage() {
                             {e.rol || e.area?.join(", ") || e.nivel || "—"}
                           </span>
                         </span>
+                        {accionPago(e.id, e.nombre)}
                       </div>
                     ))
                   )}
@@ -1245,12 +1283,11 @@ export default function NominasAsistenciaPage() {
                                 {e.nombre}
                               </span>
                               <span className="block text-[9.5px] text-slate-400 truncate">
-                                {e.rol}
+                                {e.rol} ·{" "}
+                                {beca > 0 ? `${money(beca)}/mes` : "Sin beca"}
                               </span>
                             </span>
-                            <span className="shrink-0 text-[11px] font-semibold text-slate-600 tabular-nums">
-                              {beca > 0 ? `${money(beca)}/mes` : "Sin beca"}
-                            </span>
+                            {accionPago(e.id, e.nombre)}
                           </div>
                         );
                       })}
