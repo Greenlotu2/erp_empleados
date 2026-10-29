@@ -94,6 +94,13 @@ const fmtRango = (semanaInicio: string) => {
     : `${ini.getDate()} ${MESES[ini.getMonth()]} – ${fin.getDate()} ${MESES[fin.getMonth()]} ${fin.getFullYear()}`;
 };
 
+const sumaDias = (ymd: string, dias: number) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + dias);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+};
+
 const iniciales = (nombre: string) =>
   nombre
     .split(/\s+/)
@@ -120,6 +127,7 @@ export default function NominasAsistenciaPage() {
     Record<string, RayaDetalle[]>
   >({});
   const [expandidaId, setExpandidaId] = useState<string | null>(null);
+  const [verProyeccion, setVerProyeccion] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
 
@@ -202,6 +210,58 @@ export default function NominasAsistenciaPage() {
     (s, sem) => s + (detallePorSemana[sem.id] || []).length,
     0,
   );
+
+  // --- Proyecciones ---
+  // Semanal: por cada persona de la plantilla, su último pago por día × el
+  // promedio de días que trabajó en sus últimas 4 semanas con pago (máx. 7).
+  // Quien aún no tiene una semana con pago capturado no entra al cálculo.
+  const proyeccionPersonas = plantilla.map((e) => {
+    const filas = semanas
+      .map((sem) =>
+        (detallePorSemana[sem.id] || []).find((d) => d.empleado_id === e.id),
+      )
+      .filter((d): d is RayaDetalle => !!d && Number(d.pago_dia) > 0);
+    if (filas.length === 0) {
+      return { empleado: e, pagoDia: 0, dias: 0, total: 0 };
+    }
+    const recientes = filas.slice(0, 4);
+    const dias = Math.min(
+      7,
+      recientes.reduce((s, d) => s + (Number(d.dias_trabajados) || 0), 0) /
+        recientes.length,
+    );
+    const pagoDia = Number(filas[0].pago_dia);
+    return { empleado: e, pagoDia, dias, total: pagoDia * dias };
+  });
+  const proyeccionSemanal = proyeccionPersonas.reduce((s, p) => s + p.total, 0);
+  const personasSinHistorial = proyeccionPersonas.filter(
+    (p) => p.pagoDia === 0,
+  ).length;
+
+  // Del año: lo registrado este año (pagado + por pagar) más la proyección
+  // semanal repetida en cada semana que aún no tiene lista, hasta el 31 dic.
+  const anioActual = new Date().getFullYear();
+  const registradoAnio = semanas
+    .filter((s) => s.semana_inicio.startsWith(String(anioActual)))
+    .reduce((s, sem) => s + totalDeSemana(sem.id), 0);
+  const hoyYmd = (() => {
+    const h = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${h.getFullYear()}-${p(h.getMonth() + 1)}-${p(h.getDate())}`;
+  })();
+  let semanasSinLista = 0;
+  for (
+    let f =
+        semanas.length > 0
+          ? sumaDias(semanas[0].semana_inicio, 7)
+          : lunesDe(hoyYmd),
+      i = 0;
+    i < 120 && f <= `${anioActual}-12-31`;
+    f = sumaDias(f, 7), i++
+  ) {
+    if (f.startsWith(String(anioActual))) semanasSinLista++;
+  }
+  const proyeccionAnio = registradoAnio + proyeccionSemanal * semanasSinLista;
 
   // --- Handlers ---
   const handleAltaPlantilla = async () => {
@@ -459,7 +519,7 @@ export default function NominasAsistenciaPage() {
         ) : (
           <>
             {/* Fila 1: resumen */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 shrink-0 mb-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 shrink-0 mb-2">
               <div className="bg-slate-900 text-white rounded-lg p-3">
                 <span className="text-[10px] uppercase tracking-wider font-medium text-slate-400">
                   Por pagar
@@ -486,7 +546,105 @@ export default function NominasAsistenciaPage() {
                   {semanasPagadas.length === 1 ? "semana" : "semanas"} pagadas
                 </span>
               </div>
+              <div className="bg-slate-900 text-white rounded-lg p-3">
+                <span className="text-[10px] uppercase tracking-wider font-medium text-slate-400">
+                  Proyección semanal
+                </span>
+                <div className="text-[22px] font-semibold text-sky-400 leading-tight mt-1 tabular-nums">
+                  {money(proyeccionSemanal)}
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  {plantilla.length - personasSinHistorial} de{" "}
+                  {plantilla.length} personas
+                  {personasSinHistorial > 0
+                    ? ` · ${personasSinHistorial} sin historial`
+                    : ""}{" "}
+                  ·{" "}
+                  <button
+                    type="button"
+                    onClick={() => setVerProyeccion((v) => !v)}
+                    className="underline hover:text-slate-300 cursor-pointer"
+                  >
+                    {verProyeccion ? "ocultar desglose" : "ver desglose"}
+                  </button>
+                </span>
+              </div>
+              <div className="bg-slate-900 text-white rounded-lg p-3">
+                <span className="text-[10px] uppercase tracking-wider font-medium text-slate-400">
+                  Proyección {anioActual}
+                </span>
+                <div className="text-[22px] font-semibold text-sky-400 leading-tight mt-1 tabular-nums">
+                  {money(proyeccionAnio)}
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  {money(registradoAnio)} registrado + {semanasSinLista}{" "}
+                  {semanasSinLista === 1 ? "semana" : "semanas"} ×{" "}
+                  {money(proyeccionSemanal)}
+                </span>
+              </div>
             </div>
+
+            {verProyeccion && (
+              <div className="bg-white border border-slate-200 rounded-lg p-2 mb-2 shrink-0 max-h-48 overflow-y-auto">
+                <div className="text-[12px] font-semibold text-slate-900 pb-1">
+                  Desglose de la proyección semanal
+                </div>
+                {plantilla.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 py-2 text-center">
+                    No hay personal en la plantilla.
+                  </p>
+                ) : (
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead>
+                      <tr className="text-[9.5px] uppercase text-slate-400 text-left">
+                        <th className="py-1 pr-2 font-semibold">Colaborador</th>
+                        <th className="py-1 px-1 font-semibold text-right">
+                          Último pago/día
+                        </th>
+                        <th className="py-1 px-1 font-semibold text-right">
+                          Días promedio
+                        </th>
+                        <th className="py-1 pl-1 font-semibold text-right">
+                          Proyectado
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proyeccionPersonas.map((p) => (
+                        <tr
+                          key={p.empleado.id}
+                          className="border-t border-slate-100"
+                        >
+                          <td className="py-1 pr-2 text-slate-800 font-medium">
+                            {p.empleado.nombre}
+                          </td>
+                          {p.pagoDia > 0 ? (
+                            <>
+                              <td className="py-1 px-1 text-right tabular-nums">
+                                {money(p.pagoDia)}
+                              </td>
+                              <td className="py-1 px-1 text-right tabular-nums">
+                                {p.dias.toFixed(1)}
+                              </td>
+                              <td className="py-1 pl-1 text-right font-semibold tabular-nums">
+                                {money(p.total)}
+                              </td>
+                            </>
+                          ) : (
+                            <td
+                              colSpan={3}
+                              className="py-1 text-right text-slate-400 italic"
+                            >
+                              Sin semanas con pago capturado
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
 
             {/* Fila 2: historial + plantilla */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 flex-1 min-h-0">
