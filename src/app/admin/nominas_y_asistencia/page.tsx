@@ -403,16 +403,48 @@ export default function NominasAsistenciaPage() {
     registradoAnio + proyeccionSemanal * semanasSinLista + becasAnio;
 
   // --- Handlers ---
-  const handleAltaPlantilla = async () => {
-    if (!altaEmpId) return;
-    setPlantillaIds((prev) => [...prev, altaEmpId]);
+  // Da de alta a una o varias personas en la plantilla. También les abre un
+  // renglón (en ceros) en las listas de raya recientes, para que aparezcan sin
+  // tener que crear otra semana.
+  const handleAltaPlantilla = async (ids: string[] = [altaEmpId]) => {
+    const nuevos = ids.filter((id) => id && !plantillaIds.includes(id));
+    if (nuevos.length === 0) return;
+    setPlantillaIds((prev) => [...prev, ...nuevos]);
     setAltaEmpId("");
     setAltaOpen(false);
     try {
-      const { error } = await (supabase.from("raya_plantilla") as any).insert({
-        empleado_id: altaEmpId,
-      });
+      const { error } = await (supabase.from("raya_plantilla") as any).insert(
+        nuevos.map((empleado_id) => ({ empleado_id })),
+      );
       if (error) throw error;
+
+      const desde = sumaDias(lunesDe(hoyPagos), -28);
+      const filas = semanas
+        .filter((sem) => sem.semana_inicio >= desde)
+        .flatMap((sem) =>
+          nuevos
+            .filter(
+              (id) =>
+                !(detallePorSemana[sem.id] || []).some(
+                  (d) => d.empleado_id === id,
+                ),
+            )
+            .map((empleado_id) => ({
+              semana_id: sem.id,
+              empleado_id,
+              dias_trabajados: 0,
+              pago_dia: 0,
+              extras: 0,
+              descuentos: 0,
+            })),
+        );
+      if (filas.length > 0) {
+        const { error: detErr } = await (
+          supabase.from("raya_detalle") as any
+        ).insert(filas);
+        if (detErr) throw detErr;
+      }
+      await fetchAll();
     } catch (err: any) {
       alert("No se pudo agregar a la plantilla: " + (err.message || "Error"));
       await fetchAll();
@@ -1220,12 +1252,23 @@ export default function NominasAsistenciaPage() {
                     </select>
                     <button
                       type="button"
-                      onClick={handleAltaPlantilla}
+                      onClick={() => handleAltaPlantilla([altaEmpId])}
                       disabled={!altaEmpId}
                       className="shrink-0 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:cursor-not-allowed text-white text-[11px] font-semibold px-2 py-1 rounded-lg cursor-pointer transition-colors"
                     >
                       Agregar
                     </button>
+                    {fueraDePlantilla.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAltaPlantilla(fueraDePlantilla.map((e) => e.id))
+                        }
+                        className="shrink-0 bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-semibold px-2 py-1 rounded-lg cursor-pointer transition-colors"
+                      >
+                        Todos ({fueraDePlantilla.length})
+                      </button>
+                    )}
                   </div>
                 )}
 
