@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Icon } from "../../../components/icons";
 
 export interface Pago {
@@ -15,7 +15,9 @@ export interface Pago {
   color?: string | null;
   concepto: string;
   monto: number;
-  fecha: string; // "YYYY-MM-DD": fin de la semana o del mes
+  fecha: string; // "YYYY-MM-DD": día en que se debe pagar (editable)
+  fechaBase: string; // el día que le toca por regla (sábado / aniversario)
+  claveFecha: string; // clave en fechas_pago si se edita la fecha
   pagado: boolean;
   fechaPago?: string | null;
 }
@@ -48,6 +50,7 @@ export function PagosPanel({
   onPagar,
   onDeshacer,
   onPagarTodo,
+  onCambiarFecha,
 }: {
   pagos: Pago[];
   vista: "porPagar" | "pagados";
@@ -55,7 +58,9 @@ export function PagosPanel({
   onPagar: (p: Pago) => void;
   onDeshacer: (p: Pago) => void;
   onPagarTodo: (lista: Pago[]) => void;
+  onCambiarFecha: (p: Pago, fecha: string | null) => void;
 }) {
+  const [editandoFecha, setEditandoFecha] = useState<string | null>(null);
   const porPagar = vista === "porPagar";
   const lista = pagos
     .filter((p) => p.pagado === !porPagar)
@@ -111,11 +116,57 @@ export function PagosPanel({
         </div>
         <div className="text-[10.5px] text-slate-500">
           {p.concepto}
-          {porPagar
-            ? ` · desde ${fechaCorta(p.fecha)}`
-            : p.fechaPago
-              ? ` · pagado el ${fechaCorta(p.fechaPago)}`
-              : ""}
+          {porPagar ? (
+            editandoFecha === p.clave ? (
+              <span className="inline-flex items-center gap-1 ml-1">
+                <input
+                  type="date"
+                  autoFocus
+                  value={p.fecha}
+                  onChange={(e) => {
+                    if (e.target.value) onCambiarFecha(p, e.target.value);
+                  }}
+                  onBlur={() => setEditandoFecha(null)}
+                  className="border border-slate-300 rounded px-1 py-0 text-[10.5px] text-slate-800 outline-none focus:border-blue-500"
+                />
+                {p.fecha !== p.fechaBase && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onCambiarFecha(p, null);
+                      setEditandoFecha(null);
+                    }}
+                    className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                  >
+                    Restablecer
+                  </button>
+                )}
+              </span>
+            ) : (
+              <>
+                {" · vence "}
+                <button
+                  type="button"
+                  title="Cambiar la fecha de pago"
+                  onClick={() => setEditandoFecha(p.clave)}
+                  className={`inline-flex items-center gap-0.5 hover:underline cursor-pointer ${
+                    p.fecha < new Date().toISOString().slice(0, 10)
+                      ? "text-red-600 font-semibold"
+                      : "text-slate-700"
+                  }`}
+                >
+                  {fechaCorta(p.fecha)}
+                  {p.fecha !== p.fechaBase ? " (editada)" : ""}
+                  <Icon name="pencil" size={10} />
+                </button>
+              </>
+            )
+          ) : p.fechaPago ? (
+            ` · pagado el ${fechaCorta(p.fechaPago)}`
+          ) : (
+            ""
+          )}
         </div>
       </div>
       <span className="shrink-0 text-[13px] font-extrabold text-slate-900 tabular-nums">

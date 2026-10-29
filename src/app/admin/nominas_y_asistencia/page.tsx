@@ -8,11 +8,11 @@ import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
 import { ROLES_CONVENIO } from "../../../lib/convenios";
 import {
-  INICIO_PAGOS_CONVENIO,
-  mesesAdeudados,
+  ciclosAdeudados,
+  ciclosBeca,
   montoMensual,
-  nombreMes,
-  ultimoDiaDelMes,
+  rangoCiclo,
+  sumaMeses,
 } from "../../../lib/pagos";
 import { PagosPanel, type Pago } from "./PagosPanel";
 
@@ -154,6 +154,8 @@ export default function NominasAsistenciaPage() {
     Record<string, { monto: number; inicio: string }>
   >({});
   const [pagosConvenio, setPagosConvenio] = useState<PagoConvenio[]>([]);
+  // Fechas de pago editadas a mano (si no hay, rige la regla: sábado / aniversario).
+  const [fechasPago, setFechasPago] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
 
@@ -171,12 +173,19 @@ export default function NominasAsistenciaPage() {
   }, []);
 
   const cargarConvenios = async () => {
-    const [{ data: contData }, { data: pagData }] = await Promise.all([
-      (supabase.from("contratos") as any).select(
-        "empleado_id, remuneracion_o_beca, fecha_inicio",
-      ),
-      (supabase.from("pagos_convenio") as any).select("*"),
-    ]);
+    const [{ data: contData }, { data: pagData }, { data: fechasData }] =
+      await Promise.all([
+        (supabase.from("contratos") as any).select(
+          "empleado_id, remuneracion_o_beca, fecha_inicio",
+        ),
+        (supabase.from("pagos_convenio") as any).select("*"),
+        (supabase.from("fechas_pago") as any).select("clave, fecha"),
+      ]);
+    const editadas: Record<string, string> = {};
+    (fechasData || []).forEach((f: any) => {
+      editadas[f.clave] = String(f.fecha).slice(0, 10);
+    });
+    setFechasPago(editadas);
     const mapa: Record<string, { monto: number; inicio: string }> = {};
     (contData || []).forEach((c: any) => {
       const previo = mapa[c.empleado_id];
@@ -293,7 +302,9 @@ export default function NominasAsistenciaPage() {
           color: e?.color,
           concepto: `Semana ${fmtRango(sem.semana_inicio)}`,
           monto: totalFila(d),
-          fecha: sumaDias(sem.semana_inicio, 6),
+          fecha: fechasPago[`raya:${d.id}`] || sumaDias(sem.semana_inicio, 5),
+          fechaBase: sumaDias(sem.semana_inicio, 5),
+          claveFecha: `raya:${d.id}`,
           pagado: !!d.pagado,
           fechaPago: d.fecha_pago || null,
         };
@@ -310,9 +321,11 @@ export default function NominasAsistenciaPage() {
         mes: pc.mes,
         empleadoNombre: e?.nombre || "—",
         color: e?.color,
-        concepto: `Beca de ${nombreMes(pc.mes)}`,
+        concepto: `Beca ${rangoCiclo(pc.mes)}`,
         monto: Number(pc.monto),
-        fecha: ultimoDiaDelMes(pc.mes),
+        fecha: sumaMeses(pc.mes, 1),
+        fechaBase: sumaMeses(pc.mes, 1),
+        claveFecha: `beca:${pc.empleado_id}:${pc.mes}`,
         pagado: true,
         fechaPago: pc.fecha_pago,
       };
@@ -320,25 +333,35 @@ export default function NominasAsistenciaPage() {
     ...personalConvenio.flatMap((e) => {
       const c = contratosPorEmp[e.id];
       if (!c || c.monto <= 0) return [];
-      const yaPagados = new Set(
+      const yaPagados = new Set<string>(
         pagosConvenio
           .filter((pc) => pc.empleado_id === e.id)
           .map((pc) => pc.mes),
       );
-      return mesesAdeudados(c.inicio, hoyPagos, yaPagados).map((mes) => ({
-        clave: `beca-${e.id}-${mes}`,
-        tipo: "convenio" as const,
-        empleadoId: e.id,
-        refId: "",
-        mes,
-        empleadoNombre: e.nombre,
-        color: e.color,
-        concepto: `Beca de ${nombreMes(mes)}`,
-        monto: c.monto,
-        fecha: ultimoDiaDelMes(mes),
-        pagado: false,
-        fechaPago: null,
-      }));
+      // La beca se paga un mes después de empezar cada ciclo (o en la fecha que
+      // se haya editado): aparece cuando llega ese día.
+      return ciclosBeca(c.inicio, sumaMeses(hoyPagos, 1))
+        .filter((ciclo) => !yaPagados.has(ciclo.inicio))
+        .map((ciclo) => {
+          const claveFecha = `beca:${e.id}:${ciclo.inicio}`;
+          return {
+            clave: `beca-${e.id}-${ciclo.inicio}`,
+            tipo: "convenio" as const,
+            empleadoId: e.id,
+            refId: "",
+            mes: ciclo.inicio,
+            empleadoNombre: e.nombre,
+            color: e.color,
+            concepto: `Beca ${rangoCiclo(ciclo.inicio)}`,
+            monto: c.monto,
+            fecha: fechasPago[claveFecha] || ciclo.vence,
+            fechaBase: ciclo.vence,
+            claveFecha,
+            pagado: false,
+            fechaPago: null,
+          };
+        })
+        .filter((p) => p.fecha <= hoyPagos);
     }),
   ];
   const pagos: Pago[] = [...pagosRaya, ...pagosBeca];
@@ -407,26 +430,22 @@ export default function NominasAsistenciaPage() {
   ) {
     if (f.startsWith(String(anioActual))) semanasSinLista++;
   }
-  // Becas de convenio del año: las ya pagadas más las meses que faltan.
+  // Becas de convenio del año: las ya pagadas más los ciclos que vencen en él.
   const becasPagadasAnio = pagosConvenio
-    .filter((pc) => pc.mes.startsWith(String(anioActual)))
+    .filter((pc) => sumaMeses(pc.mes, 1).startsWith(String(anioActual)))
     .reduce((s, pc) => s + Number(pc.monto), 0);
   const becasPorPagarAnio = personalConvenio.reduce((total, e) => {
     const c = contratosPorEmp[e.id];
     if (!c || c.monto <= 0) return total;
-    const desde = [INICIO_PAGOS_CONVENIO, c.inicio.slice(0, 7)]
-      .filter(Boolean)
-      .sort()
-      .pop()!;
-    const yaPagados = new Set(
+    const yaPagados = new Set<string>(
       pagosConvenio.filter((pc) => pc.empleado_id === e.id).map((pc) => pc.mes),
     );
-    let meses = 0;
-    for (let m = 1; m <= 12; m++) {
-      const mes = `${anioActual}-${String(m).padStart(2, "0")}`;
-      if (mes >= desde && !yaPagados.has(`${mes}-01`)) meses++;
-    }
-    return total + meses * c.monto;
+    const ciclos = ciclosBeca(c.inicio, `${anioActual}-12-31`).filter(
+      (ciclo) =>
+        ciclo.vence.startsWith(String(anioActual)) &&
+        !yaPagados.has(ciclo.inicio),
+    );
+    return total + ciclos.length * c.monto;
   }, 0);
   const becasAnio = becasPagadasAnio + becasPorPagarAnio;
   const proyeccionAnio =
@@ -609,6 +628,28 @@ export default function NominasAsistenciaPage() {
       alert("No se pudo deshacer el pago: " + (err.message || "Error"));
     } finally {
       setOcupadoClave(null);
+    }
+  };
+
+  // Cambia el día en que se debe pagar algo. Sin fecha (o igual a la regla) se
+  // vuelve al sábado / aniversario.
+  const cambiarFechaPago = async (p: Pago, nueva: string | null) => {
+    const volver = !nueva || nueva === p.fechaBase;
+    setFechasPago((prev) => {
+      const sig = { ...prev };
+      if (volver) delete sig[p.claveFecha];
+      else sig[p.claveFecha] = nueva as string;
+      return sig;
+    });
+    try {
+      const tabla = supabase.from("fechas_pago") as any;
+      const { error } = volver
+        ? await tabla.delete().eq("clave", p.claveFecha)
+        : await tabla.upsert({ clave: p.claveFecha, fecha: nueva });
+      if (error) throw error;
+    } catch (err: any) {
+      alert("No se pudo cambiar la fecha: " + (err.message || "Error"));
+      await cargarConvenios();
     }
   };
 
@@ -954,6 +995,7 @@ export default function NominasAsistenciaPage() {
                       onPagar={pagar}
                       onDeshacer={deshacerPago}
                       onPagarTodo={pagarTodo}
+                      onCambiarFecha={cambiarFechaPago}
                     />
                   ) : semanas.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-center px-4">

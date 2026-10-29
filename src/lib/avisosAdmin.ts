@@ -1,6 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { ROLES_CONVENIO } from "./convenios";
-import { mesesAdeudados, montoMensual, nombreMes } from "./pagos";
+import { ciclosBeca, montoMensual, rangoCiclo } from "./pagos";
 
 // Avisos informativos de la campana. No hay tabla propia: se calculan al vuelo
 // con lo que ya existe (tareas, reuniones, equipo, documentos, horas y raya).
@@ -46,7 +46,7 @@ export async function cargarAvisos(): Promise<Aviso[]> {
   const en24h = new Date(ahora + DIA).toISOString();
   const en30d = sumaDias(hoy, 30);
 
-  const [emps, tareas, reuniones, docs, semanas, contratos, pagosConv] =
+  const [emps, tareas, reuniones, docs, semanas, contratos, pagosConv, fechas] =
     await Promise.all([
       supabase
         .from("empleados")
@@ -75,12 +75,13 @@ export async function cargarAvisos(): Promise<Aviso[]> {
       supabase
         .from("raya_semanas")
         .select(
-          "id, semana_inicio, estado, raya_detalle (empleado_id, dias_trabajados, total, pagado)",
+          "id, semana_inicio, estado, raya_detalle (id, empleado_id, dias_trabajados, total, pagado)",
         ),
       supabase
         .from("contratos")
         .select("empleado_id, remuneracion_o_beca, fecha_inicio"),
       supabase.from("pagos_convenio").select("empleado_id, mes"),
+      supabase.from("fechas_pago").select("clave, fecha"),
     ]);
 
   const nombres = new Map<string, string>();
@@ -244,32 +245,44 @@ export async function cargarAvisos(): Promise<Aviso[]> {
     });
   });
 
-  // --- Pagos: raya de una semana que ya cerró (sábado) con renglones sin pagar ---
+  // --- Pagos -----------------------------------------------------------------
+  // Fechas de pago editadas a mano; sin ellas rige la regla (sábado / aniversario).
+  const fechaEditada = new Map<string, string>();
+  (fechas.data || []).forEach((f: any) =>
+    fechaEditada.set(f.clave, String(f.fecha).slice(0, 10)),
+  );
+  // Raya: renglones sin pagar cuyo día de pago es hoy, ya pasó o es mañana.
   (semanas.data || []).forEach((s: any) => {
     const inicio = String(s.semana_inicio).slice(0, 10);
-    if (sumaDias(inicio, 5) > hoy) return;
-    const filas = (s.raya_detalle || []).filter(
-      (f: any) => Number(f.total) > 0 && !f.pagado,
-    );
-    if (filas.length === 0) return;
-    const total = filas.reduce(
-      (a: number, f: any) => a + Number(f.total || 0),
-      0,
-    );
-    const personas = filas
-      .map((f: any) => `${quien(f.empleado_id)} ${dinero(f.total)}`)
-      .join(" · ");
-    avisos.push({
-      id: `raya-pagar-${s.id}-${filas.length}`,
-      tipo: "raya",
-      titulo: `Toca pagar la raya · semana del ${fechaCorta(inicio)}`,
-      detalle: `${filas.length} ${filas.length === 1 ? "persona" : "personas"} · ${dinero(total)} — ${personas}`,
-      fecha: `${sumaDias(inicio, 5)}T12:00:00Z`,
-      urgente: true,
+    const porDia = new Map<string, any[]>();
+    (s.raya_detalle || []).forEach((f: any) => {
+      if (!(Number(f.total) > 0) || f.pagado) return;
+      const vence = fechaEditada.get(`raya:${f.id}`) || sumaDias(inicio, 5);
+      if (vence > manana) return;
+      porDia.set(vence, [...(porDia.get(vence) || []), f]);
+    });
+    porDia.forEach((filas, vence) => {
+      const total = filas.reduce(
+        (a: number, f: any) => a + Number(f.total || 0),
+        0,
+      );
+      const personas = filas
+        .map((f: any) => `${quien(f.empleado_id)} ${dinero(f.total)}`)
+        .join(" · ");
+      const ya = vence <= hoy;
+      avisos.push({
+        id: `raya-pagar-${s.id}-${vence}-${filas.length}-${ya ? "ya" : "man"}`,
+        tipo: "raya",
+        titulo: `${ya ? "Toca pagar" : "Mañana toca pagar"} la raya · semana del ${fechaCorta(inicio)}`,
+        detalle: `${filas.length} ${filas.length === 1 ? "persona" : "personas"} · ${dinero(total)} — ${personas}`,
+        fecha: `${vence}T12:00:00Z`,
+        urgente: ya,
+      });
     });
   });
 
-  // --- Becas mensuales de convenio: el mes ya terminó y no hay pago registrado ---
+  // Becas de convenio: un ciclo por mes desde que empezó el contrato; se paga un
+  // mes después de empezar cada ciclo (o el día que se haya editado).
   const contratoVigente = new Map<string, { monto: number; inicio: string }>();
   (contratos.data || []).forEach((c: any) => {
     const previo = contratoVigente.get(c.empleado_id);
@@ -280,7 +293,6 @@ export async function cargarAvisos(): Promise<Aviso[]> {
       });
     }
   });
-  const becasPorMes = new Map<string, { nombre: string; monto: number }[]>();
   (emps.data || []).forEach((e: any) => {
     if (!ROLES_CONVENIO.includes(e.rol || "")) return;
     const c = contratoVigente.get(e.id);
@@ -290,25 +302,22 @@ export async function cargarAvisos(): Promise<Aviso[]> {
         .filter((pc: any) => pc.empleado_id === e.id)
         .map((pc: any) => String(pc.mes).slice(0, 10)),
     );
-    mesesAdeudados(c.inicio, hoy, pagados).forEach((mes) => {
-      becasPorMes.set(mes, [
-        ...(becasPorMes.get(mes) || []),
-        { nombre: e.nombre, monto: c.monto },
-      ]);
-    });
-  });
-  becasPorMes.forEach((lista, mes) => {
-    const total = lista.reduce((a, b) => a + b.monto, 0);
-    avisos.push({
-      id: `becas-pagar-${mes}-${lista.length}`,
-      tipo: "raya",
-      titulo: `Toca pagar las becas de ${nombreMes(mes)}`,
-      detalle: `${lista.length} ${lista.length === 1 ? "persona" : "personas"} · ${dinero(total)} — ${lista
-        .map((b) => `${b.nombre} ${dinero(b.monto)}`)
-        .join(" · ")}`,
-      fecha: `${mes.slice(0, 7)}-28T12:00:00Z`,
-      urgente: true,
-    });
+    ciclosBeca(c.inicio, sumaDias(hoy, 40))
+      .filter((ciclo) => !pagados.has(ciclo.inicio))
+      .forEach((ciclo) => {
+        const vence =
+          fechaEditada.get(`beca:${e.id}:${ciclo.inicio}`) || ciclo.vence;
+        if (vence > manana) return;
+        const ya = vence <= hoy;
+        avisos.push({
+          id: `beca-pagar-${e.id}-${ciclo.inicio}-${ya ? "ya" : "man"}`,
+          tipo: "raya",
+          titulo: `${ya ? "Toca pagar" : "Mañana toca pagar"} la beca de ${e.nombre}`,
+          detalle: `${dinero(c.monto)} · ${rangoCiclo(ciclo.inicio)}`,
+          fecha: `${vence}T12:00:00Z`,
+          urgente: ya,
+        });
+      });
   });
 
   return avisos.sort((a, b) => b.fecha.localeCompare(a.fecha));
