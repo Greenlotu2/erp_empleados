@@ -18,6 +18,9 @@ export interface Pago {
   fecha: string; // "YYYY-MM-DD": día en que se debe pagar (editable)
   fechaBase: string; // el día que le toca por regla (sábado / aniversario)
   claveFecha: string; // clave en fechas_pago si se edita la fecha
+  // Raya cuyo día de pago ya llegó pero aún no tiene días capturados.
+  faltaCaptura?: boolean;
+  semanaId?: string;
   pagado: boolean;
   fechaPago?: string | null;
 }
@@ -51,6 +54,7 @@ export function PagosPanel({
   onDeshacer,
   onPagarTodo,
   onCambiarFecha,
+  onCapturar,
 }: {
   pagos: Pago[];
   vista: "porPagar" | "pagados";
@@ -59,6 +63,7 @@ export function PagosPanel({
   onDeshacer: (p: Pago) => void;
   onPagarTodo: (lista: Pago[]) => void;
   onCambiarFecha: (p: Pago, fecha: string | null) => void;
+  onCapturar: (p: Pago) => void;
 }) {
   const [editandoFecha, setEditandoFecha] = useState<string | null>(null);
   const porPagar = vista === "porPagar";
@@ -84,13 +89,14 @@ export function PagosPanel({
   }
 
   // Los trabajadores cobran por semana y las prácticas/convenios por mes.
+  const porCapturar = porPagar ? lista.filter((p) => p.faltaCaptura) : [];
   const secciones = [
     {
       titulo: "Semanal · trabajadores",
       vacio: porPagar
         ? "Sin raya semanal pendiente."
         : "Aún no hay rayas pagadas.",
-      lista: lista.filter((p) => p.tipo === "raya"),
+      lista: lista.filter((p) => p.tipo === "raya" && !p.faltaCaptura),
     },
     {
       titulo: "Mensual · prácticas y convenios",
@@ -196,6 +202,43 @@ export function PagosPanel({
 
   return (
     <div className="flex flex-col gap-3">
+      {porCapturar.length > 0 && (
+        <section className="flex flex-col gap-1">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 text-[11px] text-amber-800">
+            <strong>Falta capturar la raya</strong> · {porCapturar.length}{" "}
+            {porCapturar.length === 1 ? "persona" : "personas"}. Ya llegó su día
+            de pago pero no tienen días capturados.
+          </div>
+          {porCapturar.map((p) => (
+            <div
+              key={p.clave}
+              className="flex items-center gap-2 border border-amber-200 bg-amber-50/40 rounded-lg px-2 py-1.5"
+            >
+              <span
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                style={{ backgroundColor: p.color || "#64748b" }}
+              >
+                {iniciales(p.empleadoNombre)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold text-slate-800 truncate">
+                  {p.empleadoNombre}
+                </div>
+                <div className="text-[10.5px] text-slate-500">
+                  {p.concepto} · vence {fechaCorta(p.fecha)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onCapturar(p)}
+                className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-white bg-amber-600 hover:bg-amber-700 px-2 py-1 rounded-lg cursor-pointer"
+              >
+                <Icon name="pencil" size={13} /> Capturar
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
       {secciones.map((sec) => {
         const subtotal = sec.lista.reduce((t, p) => t + p.monto, 0);
         return (

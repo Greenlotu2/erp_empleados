@@ -7,6 +7,7 @@ import { ModalOverlay } from "../../../components/ModalOverlay";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentAdminId } from "../../../lib/currentAdmin";
 import { ROLES_CONVENIO } from "../../../lib/convenios";
+import { asegurarSemanasRaya } from "../../../lib/rayaAuto";
 import {
   ciclosAdeudados,
   ciclosBeca,
@@ -203,6 +204,7 @@ export default function NominasAsistenciaPage() {
   const fetchAll = async () => {
     try {
       setLoading(true);
+      await asegurarSemanasRaya();
       const [{ data: empData }, { data: semData }, { data: detData }] =
         await Promise.all([
           (supabase.from("empleados") as any)
@@ -219,42 +221,6 @@ export default function NominasAsistenciaPage() {
       (detData || []).forEach((r: any) => {
         (map[r.semana_id] ||= []).push(r);
       });
-      // Todo el personal de planta tiene renglón (en ceros) en las listas de las
-      // últimas semanas: así quien se registra después aparece sin dar de alta.
-      const planta = (empData || []).filter(
-        (e: any) => !esConvenio(e) && e.nivel !== "Gerencia",
-      );
-      const desde = sumaDias(lunesDe(hoyPagos), -28);
-      const faltan = (semData || [])
-        .filter((sem: any) => sem.semana_inicio >= desde)
-        .flatMap((sem: any) =>
-          planta
-            .filter(
-              (e: any) =>
-                !(map[sem.id] || []).some((d) => d.empleado_id === e.id),
-            )
-            .map((e: any) => ({
-              semana_id: sem.id,
-              empleado_id: e.id,
-              dias_trabajados: 0,
-              pago_dia: 0,
-              extras: 0,
-              descuentos: 0,
-            })),
-        );
-      if (faltan.length > 0) {
-        await (supabase.from("raya_detalle") as any).upsert(faltan, {
-          onConflict: "semana_id,empleado_id",
-          ignoreDuplicates: true,
-        });
-        const { data: det2 } = await (
-          supabase.from("raya_detalle") as any
-        ).select("*");
-        for (const k of Object.keys(map)) delete map[k];
-        (det2 || []).forEach((r: any) => {
-          (map[r.semana_id] ||= []).push(r);
-        });
-      }
       setDetallePorSemana(map);
       await cargarConvenios();
     } catch (err) {
@@ -290,7 +256,14 @@ export default function NominasAsistenciaPage() {
   })();
   const pagosRaya: Pago[] = semanas.flatMap((sem) =>
     (detallePorSemana[sem.id] || [])
-      .filter((d) => totalFila(d) > 0)
+      .filter((d) => {
+        if (totalFila(d) > 0) return true;
+        // Sin días capturados pero con pago por día conocido: solo recuerda
+        // capturar cuando ya llegó el día de pago.
+        const vence =
+          fechasPago[`raya:${d.id}`] || sumaDias(sem.semana_inicio, 5);
+        return !d.pagado && Number(d.pago_dia) > 0 && vence <= hoyPagos;
+      })
       .map((d) => {
         const e = empleados.find((x) => x.id === d.empleado_id);
         return {
@@ -307,6 +280,8 @@ export default function NominasAsistenciaPage() {
           claveFecha: `raya:${d.id}`,
           pagado: !!d.pagado,
           fechaPago: d.fecha_pago || null,
+          faltaCaptura: totalFila(d) <= 0,
+          semanaId: sem.id,
         };
       }),
   );
@@ -365,7 +340,8 @@ export default function NominasAsistenciaPage() {
     }),
   ];
   const pagos: Pago[] = [...pagosRaya, ...pagosBeca];
-  const pendientes = pagos.filter((p) => !p.pagado);
+  const pendientes = pagos.filter((p) => !p.pagado && !p.faltaCaptura);
+  const porCapturar = pagos.filter((p) => p.faltaCaptura);
   const hechos = pagos.filter((p) => p.pagado);
   const totalPorPagar = pendientes.reduce((s, p) => s + p.monto, 0);
   const totalPagado = hechos.reduce((s, p) => s + p.monto, 0);
@@ -653,6 +629,12 @@ export default function NominasAsistenciaPage() {
     }
   };
 
+  // Lleva a la lista de raya de esa semana para capturar días.
+  const irACapturar = (p: Pago) => {
+    setVista("listas");
+    if (p.semanaId) setExpandidaId(p.semanaId);
+  };
+
   const pagarTodo = (lista: Pago[]) =>
     setConfirmDialog({
       titulo: "Pagar todo",
@@ -667,6 +649,13 @@ export default function NominasAsistenciaPage() {
   // Lo que se le debe a una persona y el botón para pagárselo de una vez.
   const accionPago = (id: string, nombre: string) => {
     const pend = pendientes.filter((p) => p.empleadoId === id);
+    if (pend.length === 0 && porCapturar.some((p) => p.empleadoId === id)) {
+      return (
+        <span className="shrink-0 text-[10px] font-semibold text-amber-600">
+          Falta capturar
+        </span>
+      );
+    }
     if (pend.length === 0) {
       return (
         <span className="shrink-0 text-[10px] font-semibold text-emerald-600">
@@ -996,6 +985,7 @@ export default function NominasAsistenciaPage() {
                       onDeshacer={deshacerPago}
                       onPagarTodo={pagarTodo}
                       onCambiarFecha={cambiarFechaPago}
+                      onCapturar={irACapturar}
                     />
                   ) : semanas.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-center px-4">

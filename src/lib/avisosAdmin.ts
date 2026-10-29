@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { asegurarSemanasRaya } from "./rayaAuto";
 import { ROLES_CONVENIO } from "./convenios";
 import { ciclosBeca, montoMensual, rangoCiclo } from "./pagos";
 
@@ -38,6 +39,8 @@ const dinero = (n: number) =>
   `$${Number(n || 0).toLocaleString("es-MX", { maximumFractionDigits: 2 })}`;
 
 export async function cargarAvisos(): Promise<Aviso[]> {
+  // Cada semana se abre sola la lista de raya (la actual y la anterior).
+  await asegurarSemanasRaya();
   const ahora = Date.now();
   const hoy = hoyMx();
   const manana = sumaDias(hoy, 1);
@@ -75,7 +78,7 @@ export async function cargarAvisos(): Promise<Aviso[]> {
       supabase
         .from("raya_semanas")
         .select(
-          "id, semana_inicio, estado, raya_detalle (id, empleado_id, dias_trabajados, total, pagado)",
+          "id, semana_inicio, estado, raya_detalle (id, empleado_id, dias_trabajados, pago_dia, total, pagado)",
         ),
       supabase
         .from("contratos")
@@ -255,12 +258,30 @@ export async function cargarAvisos(): Promise<Aviso[]> {
   (semanas.data || []).forEach((s: any) => {
     const inicio = String(s.semana_inicio).slice(0, 10);
     const porDia = new Map<string, any[]>();
+    const sinCaptura: any[] = [];
     (s.raya_detalle || []).forEach((f: any) => {
-      if (!(Number(f.total) > 0) || f.pagado) return;
       const vence = fechaEditada.get(`raya:${f.id}`) || sumaDias(inicio, 5);
+      // Ya llegó su día de pago pero no hay días capturados.
+      if (!f.pagado && Number(f.pago_dia) > 0 && !(Number(f.total) > 0)) {
+        if (vence <= hoy) sinCaptura.push(f);
+        return;
+      }
+      if (!(Number(f.total) > 0) || f.pagado) return;
       if (vence > manana) return;
       porDia.set(vence, [...(porDia.get(vence) || []), f]);
     });
+    if (sinCaptura.length > 0) {
+      avisos.push({
+        id: `raya-capturar-${s.id}-${sinCaptura.length}`,
+        tipo: "raya",
+        titulo: `Falta capturar la raya · semana del ${fechaCorta(inicio)}`,
+        detalle: `Ya es día de pago y no hay días capturados de: ${sinCaptura
+          .map((f: any) => quien(f.empleado_id))
+          .join(" · ")}`,
+        fecha: `${sumaDias(inicio, 5)}T12:00:00Z`,
+        urgente: true,
+      });
+    }
     porDia.forEach((filas, vence) => {
       const total = filas.reduce(
         (a: number, f: any) => a + Number(f.total || 0),
