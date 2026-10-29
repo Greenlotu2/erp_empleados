@@ -239,7 +239,7 @@ export default function NominasAsistenciaPage() {
   ).length;
 
   // Del año: lo registrado este año (pagado + por pagar) más la proyección
-  // semanal repetida en cada semana que aún no tiene lista, hasta el 31 dic.
+  // semanal repetida en cada semana que falta, desde hoy hasta el 31 dic.
   const anioActual = new Date().getFullYear();
   const registradoAnio = semanas
     .filter((s) => s.semana_inicio.startsWith(String(anioActual)))
@@ -249,13 +249,18 @@ export default function NominasAsistenciaPage() {
     const p = (n: number) => String(n).padStart(2, "0");
     return `${h.getFullYear()}-${p(h.getMonth() + 1)}-${p(h.getDate())}`;
   })();
+  // Solo hacia adelante: desde la semana actual, o desde la siguiente a la
+  // última lista registrada si ya hay una de esta semana o posterior.
+  let inicioProyeccion = lunesDe(hoyYmd);
+  if (semanas.length > 0) {
+    const despuesDeLaUltima = sumaDias(semanas[0].semana_inicio, 7);
+    if (despuesDeLaUltima > inicioProyeccion) {
+      inicioProyeccion = despuesDeLaUltima;
+    }
+  }
   let semanasSinLista = 0;
   for (
-    let f =
-        semanas.length > 0
-          ? sumaDias(semanas[0].semana_inicio, 7)
-          : lunesDe(hoyYmd),
-      i = 0;
+    let f = inicioProyeccion, i = 0;
     i < 120 && f <= `${anioActual}-12-31`;
     f = sumaDias(f, 7), i++
   ) {
