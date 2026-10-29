@@ -187,13 +187,19 @@ export default function NominasAsistenciaPage() {
 
   const totalDeSemana = (semanaId: string) =>
     (detallePorSemana[semanaId] || []).reduce((s, d) => s + totalFila(d), 0);
-  const semanasEmitidas = semanas.filter((s) => s.estado === "Emitida");
-  const gastoAcumulado = semanasEmitidas.reduce(
+  // Una semana pasa Borrador → Emitida (lista cerrada, falta pagarla) → Pagada.
+  const semanasPorPagar = semanas.filter((s) => s.estado !== "Pagada");
+  const semanasPagadas = semanas.filter((s) => s.estado === "Pagada");
+  const totalPorPagar = semanasPorPagar.reduce(
     (s, sem) => s + totalDeSemana(sem.id),
     0,
   );
-  const gastoTotalTodo = semanas.reduce(
+  const totalPagado = semanasPagadas.reduce(
     (s, sem) => s + totalDeSemana(sem.id),
+    0,
+  );
+  const personasPorPagar = semanasPorPagar.reduce(
+    (s, sem) => s + (detallePorSemana[sem.id] || []).length,
     0,
   );
 
@@ -456,26 +462,28 @@ export default function NominasAsistenciaPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 shrink-0 mb-2">
               <div className="bg-slate-900 text-white rounded-lg p-3">
                 <span className="text-[10px] uppercase tracking-wider font-medium text-slate-400">
-                  Gasto en raya acumulado
+                  Por pagar
                 </span>
-                <div className="text-[22px] font-semibold text-emerald-400 leading-tight mt-1 tabular-nums">
-                  {money(gastoAcumulado)}
+                <div className="text-[22px] font-semibold text-amber-400 leading-tight mt-1 tabular-nums">
+                  {money(totalPorPagar)}
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  Semanas emitidas · {money(gastoTotalTodo)} incl. borradores
+                  {semanasPorPagar.length}{" "}
+                  {semanasPorPagar.length === 1 ? "semana" : "semanas"} ·{" "}
+                  {personasPorPagar}{" "}
+                  {personasPorPagar === 1 ? "persona" : "personas"}
                 </span>
               </div>
-              <div className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-slate-900">
-                    Listas de raya emitidas
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Semanas cerradas y auditadas.
-                  </p>
+              <div className="bg-slate-900 text-white rounded-lg p-3">
+                <span className="text-[10px] uppercase tracking-wider font-medium text-slate-400">
+                  Pagados
+                </span>
+                <div className="text-[22px] font-semibold text-emerald-400 leading-tight mt-1 tabular-nums">
+                  {money(totalPagado)}
                 </div>
-                <span className="shrink-0 text-lg font-semibold text-blue-700 bg-blue-50 rounded-lg px-3 py-1 tabular-nums">
-                  {semanasEmitidas.length}
+                <span className="text-[10px] text-slate-500">
+                  {semanasPagadas.length}{" "}
+                  {semanasPagadas.length === 1 ? "semana" : "semanas"} pagadas
                 </span>
               </div>
             </div>
@@ -527,254 +535,311 @@ export default function NominasAsistenciaPage() {
                       </span>
                     </div>
                   ) : (
-                    semanas.map((sem) => {
-                      const abierta = expandidaId === sem.id;
-                      const filas = detallePorSemana[sem.id] || [];
-                      const bloqueada = sem.estado === "Emitida";
-                      return (
-                        <div
-                          key={sem.id}
-                          className="border border-slate-200 rounded-lg overflow-hidden"
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandidaId(abierta ? null : sem.id)
-                            }
-                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 hover:bg-slate-50 transition-colors cursor-pointer text-left"
-                          >
-                            <span className="flex items-center gap-1.5 min-w-0">
-                              <Icon
-                                name="chevron-right"
-                                size={14}
-                                className={`text-slate-400 transition-transform ${abierta ? "rotate-90" : ""}`}
-                              />
-                              <span className="text-[12px] font-bold text-slate-800 truncate">
-                                {fmtRango(sem.semana_inicio)}
-                              </span>
-                              <span
-                                className={`text-[9px] font-bold px-1 py-0.5 rounded-full border ${
-                                  bloqueada
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200"
-                                }`}
-                              >
-                                {sem.estado}
-                              </span>
-                            </span>
-                            <span className="shrink-0 text-[12px] font-extrabold text-slate-900">
-                              {money(totalDeSemana(sem.id))}
-                            </span>
-                          </button>
-
-                          {abierta && (
+                    [
+                      { titulo: "Por pagar", lista: semanasPorPagar },
+                      { titulo: "Pagadas", lista: semanasPagadas },
+                    ].map((grupo) => (
+                      <div key={grupo.titulo} className="space-y-1">
+                        <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 pt-1">
+                          {grupo.titulo} · {grupo.lista.length}
+                        </div>
+                        {grupo.lista.length === 0 && (
+                          <p className="text-[11px] text-slate-400 italic pb-1">
+                            {grupo.titulo === "Por pagar"
+                              ? "No hay semanas pendientes de pago."
+                              : "Aún no hay semanas pagadas."}
+                          </p>
+                        )}
+                        {grupo.lista.map((sem) => {
+                          const abierta = expandidaId === sem.id;
+                          const filas = detallePorSemana[sem.id] || [];
+                          const bloqueada = sem.estado !== "Borrador";
+                          return (
                             <div
-                              id="raya-print"
-                              className="border-t border-slate-100 p-1.5"
+                              key={sem.id}
+                              className="border border-slate-200 rounded-lg overflow-hidden"
                             >
-                              <div className="hidden print:block mb-2 text-sm font-bold">
-                                Raya · {fmtRango(sem.semana_inicio)}
-                              </div>
-                              {filas.length === 0 ? (
-                                <p className="text-[11px] text-slate-400 py-2 text-center">
-                                  No hay personal en la plantilla. Agrega
-                                  colaboradores en "Plantilla Oficial".
-                                </p>
-                              ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-[11px] border-collapse">
-                                    <thead>
-                                      <tr className="text-[9.5px] uppercase text-slate-400 text-left">
-                                        <th className="py-1 pr-2 font-semibold">
-                                          Colaborador
-                                        </th>
-                                        <th className="py-1 px-1 font-semibold text-center">
-                                          Asistencia
-                                        </th>
-                                        <th className="py-1 px-1 font-semibold w-12">
-                                          Días
-                                        </th>
-                                        <th className="py-1 px-1 font-semibold w-16">
-                                          Pago/día
-                                        </th>
-                                        <th className="py-1 px-1 font-semibold w-16">
-                                          Extras
-                                        </th>
-                                        <th className="py-1 px-1 font-semibold w-16">
-                                          Desc.
-                                        </th>
-                                        <th className="py-1 pl-1 font-semibold text-right w-20">
-                                          Total
-                                        </th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {filas.map((d) => {
-                                        const emp = empleados.find(
-                                          (e) => e.id === d.empleado_id,
-                                        );
-                                        return (
-                                          <tr
-                                            key={d.id}
-                                            className="border-t border-slate-100"
-                                          >
-                                            <td className="py-1 pr-2">
-                                              <span className="flex items-center gap-1.5">
-                                                <span
-                                                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0"
-                                                  style={{
-                                                    backgroundColor:
-                                                      emp?.color || "#64748b",
-                                                  }}
-                                                >
-                                                  {iniciales(
-                                                    emp?.nombre || "?",
-                                                  )}
-                                                </span>
-                                                <span className="font-semibold text-slate-800 truncate">
-                                                  {emp?.nombre || "—"}
-                                                </span>
-                                              </span>
-                                            </td>
-                                            <td className="py-1 px-1">
-                                              <span className="flex items-center gap-0.5 justify-center no-print">
-                                                {DIAS.map((dia) => (
-                                                  <button
-                                                    key={dia}
-                                                    type="button"
-                                                    disabled={bloqueada}
-                                                    onClick={() =>
-                                                      toggleDia(sem.id, d, dia)
-                                                    }
-                                                    className={`w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center transition-colors ${
-                                                      d.asistencia?.[dia]
-                                                        ? "bg-blue-600 text-white"
-                                                        : "bg-slate-100 text-slate-400"
-                                                    } ${bloqueada ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-blue-100"}`}
-                                                  >
-                                                    {DIAS_LABEL[dia]}
-                                                  </button>
-                                                ))}
-                                              </span>
-                                            </td>
-                                            {(
-                                              [
-                                                "dias_trabajados",
-                                                "pago_dia",
-                                                "extras",
-                                                "descuentos",
-                                              ] as const
-                                            ).map((campo) => (
-                                              <td
-                                                key={campo}
-                                                className="py-1 px-1"
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandidaId(abierta ? null : sem.id)
+                                }
+                                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 hover:bg-slate-50 transition-colors cursor-pointer text-left"
+                              >
+                                <span className="flex items-center gap-1.5 min-w-0">
+                                  <Icon
+                                    name="chevron-right"
+                                    size={14}
+                                    className={`text-slate-400 transition-transform ${abierta ? "rotate-90" : ""}`}
+                                  />
+                                  <span className="text-[12px] font-bold text-slate-800 truncate">
+                                    {fmtRango(sem.semana_inicio)}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-bold px-1 py-0.5 rounded-full border ${
+                                      sem.estado === "Pagada"
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : sem.estado === "Emitida"
+                                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                                          : "bg-amber-50 text-amber-700 border-amber-200"
+                                    }`}
+                                  >
+                                    {sem.estado === "Emitida"
+                                      ? "Por pagar"
+                                      : sem.estado}
+                                  </span>
+                                </span>
+                                <span className="shrink-0 text-[12px] font-extrabold text-slate-900">
+                                  {money(totalDeSemana(sem.id))}
+                                </span>
+                              </button>
+
+                              {abierta && (
+                                <div
+                                  id="raya-print"
+                                  className="border-t border-slate-100 p-1.5"
+                                >
+                                  <div className="hidden print:block mb-2 text-sm font-bold">
+                                    Raya · {fmtRango(sem.semana_inicio)}
+                                  </div>
+                                  {filas.length === 0 ? (
+                                    <p className="text-[11px] text-slate-400 py-2 text-center">
+                                      No hay personal en la plantilla. Agrega
+                                      colaboradores en "Plantilla Oficial".
+                                    </p>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-[11px] border-collapse">
+                                        <thead>
+                                          <tr className="text-[9.5px] uppercase text-slate-400 text-left">
+                                            <th className="py-1 pr-2 font-semibold">
+                                              Colaborador
+                                            </th>
+                                            <th className="py-1 px-1 font-semibold text-center">
+                                              Asistencia
+                                            </th>
+                                            <th className="py-1 px-1 font-semibold w-12">
+                                              Días
+                                            </th>
+                                            <th className="py-1 px-1 font-semibold w-16">
+                                              Pago/día
+                                            </th>
+                                            <th className="py-1 px-1 font-semibold w-16">
+                                              Extras
+                                            </th>
+                                            <th className="py-1 px-1 font-semibold w-16">
+                                              Desc.
+                                            </th>
+                                            <th className="py-1 pl-1 font-semibold text-right w-20">
+                                              Total
+                                            </th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {filas.map((d) => {
+                                            const emp = empleados.find(
+                                              (e) => e.id === d.empleado_id,
+                                            );
+                                            return (
+                                              <tr
+                                                key={d.id}
+                                                className="border-t border-slate-100"
                                               >
-                                                <input
-                                                  type="number"
-                                                  min="0"
-                                                  max={
-                                                    campo === "dias_trabajados"
-                                                      ? 7
-                                                      : undefined
-                                                  }
-                                                  step={
-                                                    campo === "dias_trabajados"
-                                                      ? "0.5"
-                                                      : "1"
-                                                  }
-                                                  disabled={bloqueada}
-                                                  value={(d as any)[campo] ?? 0}
-                                                  onChange={(e) =>
-                                                    patchDetalleLocal(
-                                                      sem.id,
-                                                      d.id,
-                                                      {
-                                                        [campo]:
-                                                          e.target.value === ""
-                                                            ? 0
-                                                            : Number(
-                                                                e.target.value,
-                                                              ),
-                                                      } as any,
-                                                    )
-                                                  }
-                                                  onBlur={() =>
-                                                    handleGuardarFila(
-                                                      sem.id,
-                                                      d,
-                                                      campo,
-                                                    )
-                                                  }
-                                                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[11px] text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 disabled:opacity-60"
-                                                />
-                                              </td>
-                                            ))}
-                                            <td className="py-1 pl-1 text-right font-extrabold text-slate-900">
-                                              {money(totalFila(d))}
+                                                <td className="py-1 pr-2">
+                                                  <span className="flex items-center gap-1.5">
+                                                    <span
+                                                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0"
+                                                      style={{
+                                                        backgroundColor:
+                                                          emp?.color ||
+                                                          "#64748b",
+                                                      }}
+                                                    >
+                                                      {iniciales(
+                                                        emp?.nombre || "?",
+                                                      )}
+                                                    </span>
+                                                    <span className="font-semibold text-slate-800 truncate">
+                                                      {emp?.nombre || "—"}
+                                                    </span>
+                                                  </span>
+                                                </td>
+                                                <td className="py-1 px-1">
+                                                  <span className="flex items-center gap-0.5 justify-center no-print">
+                                                    {DIAS.map((dia) => (
+                                                      <button
+                                                        key={dia}
+                                                        type="button"
+                                                        disabled={bloqueada}
+                                                        onClick={() =>
+                                                          toggleDia(
+                                                            sem.id,
+                                                            d,
+                                                            dia,
+                                                          )
+                                                        }
+                                                        className={`w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center transition-colors ${
+                                                          d.asistencia?.[dia]
+                                                            ? "bg-blue-600 text-white"
+                                                            : "bg-slate-100 text-slate-400"
+                                                        } ${bloqueada ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-blue-100"}`}
+                                                      >
+                                                        {DIAS_LABEL[dia]}
+                                                      </button>
+                                                    ))}
+                                                  </span>
+                                                </td>
+                                                {(
+                                                  [
+                                                    "dias_trabajados",
+                                                    "pago_dia",
+                                                    "extras",
+                                                    "descuentos",
+                                                  ] as const
+                                                ).map((campo) => (
+                                                  <td
+                                                    key={campo}
+                                                    className="py-1 px-1"
+                                                  >
+                                                    <input
+                                                      type="number"
+                                                      min="0"
+                                                      max={
+                                                        campo ===
+                                                        "dias_trabajados"
+                                                          ? 7
+                                                          : undefined
+                                                      }
+                                                      step={
+                                                        campo ===
+                                                        "dias_trabajados"
+                                                          ? "0.5"
+                                                          : "1"
+                                                      }
+                                                      disabled={bloqueada}
+                                                      value={
+                                                        (d as any)[campo] ?? 0
+                                                      }
+                                                      onChange={(e) =>
+                                                        patchDetalleLocal(
+                                                          sem.id,
+                                                          d.id,
+                                                          {
+                                                            [campo]:
+                                                              e.target.value ===
+                                                              ""
+                                                                ? 0
+                                                                : Number(
+                                                                    e.target
+                                                                      .value,
+                                                                  ),
+                                                          } as any,
+                                                        )
+                                                      }
+                                                      onBlur={() =>
+                                                        handleGuardarFila(
+                                                          sem.id,
+                                                          d,
+                                                          campo,
+                                                        )
+                                                      }
+                                                      className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[11px] text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 disabled:opacity-60"
+                                                    />
+                                                  </td>
+                                                ))}
+                                                <td className="py-1 pl-1 text-right font-extrabold text-slate-900">
+                                                  {money(totalFila(d))}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                        <tfoot>
+                                          <tr className="border-t-2 border-slate-200">
+                                            <td
+                                              colSpan={6}
+                                              className="py-1 pr-2 text-right text-[10px] uppercase font-bold text-slate-400"
+                                            >
+                                              Total de la semana
+                                            </td>
+                                            <td className="py-1 pl-1 text-right text-[13px] font-extrabold text-emerald-600">
+                                              {money(totalDeSemana(sem.id))}
                                             </td>
                                           </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                    <tfoot>
-                                      <tr className="border-t-2 border-slate-200">
-                                        <td
-                                          colSpan={6}
-                                          className="py-1 pr-2 text-right text-[10px] uppercase font-bold text-slate-400"
+                                        </tfoot>
+                                      </table>
+                                    </div>
+                                  )}
+
+                                  <div className="flex items-center justify-end gap-1 pt-1.5 mt-1 border-t border-slate-100 no-print">
+                                    {sem.estado === "Borrador" && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          cambiarEstadoSemana(sem, "Emitida")
+                                        }
+                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded-lg cursor-pointer"
+                                      >
+                                        <Icon name="check" size={13} /> Emitir
+                                      </button>
+                                    )}
+                                    {sem.estado === "Emitida" && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            cambiarEstadoSemana(sem, "Borrador")
+                                          }
+                                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg cursor-pointer"
                                         >
-                                          Total de la semana
-                                        </td>
-                                        <td className="py-1 pl-1 text-right text-[13px] font-extrabold text-emerald-600">
-                                          {money(totalDeSemana(sem.id))}
-                                        </td>
-                                      </tr>
-                                    </tfoot>
-                                  </table>
+                                          <Icon name="undo" size={13} /> Reabrir
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            cambiarEstadoSemana(sem, "Pagada")
+                                          }
+                                          className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded-lg cursor-pointer"
+                                        >
+                                          <Icon name="banknote" size={13} />{" "}
+                                          Marcar pagada
+                                        </button>
+                                      </>
+                                    )}
+                                    {sem.estado === "Pagada" && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          cambiarEstadoSemana(sem, "Emitida")
+                                        }
+                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg cursor-pointer"
+                                      >
+                                        <Icon name="undo" size={13} /> Quitar
+                                        pago
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setConfirmDialog({
+                                          titulo: "Eliminar semana",
+                                          mensaje: `¿Eliminar la lista de raya de ${fmtRango(sem.semana_inicio)}? Se borra también su desglose.`,
+                                          onConfirmar: () =>
+                                            handleEliminarSemana(sem),
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg cursor-pointer"
+                                    >
+                                      <Icon name="trash" size={13} /> Eliminar
+                                    </button>
+                                  </div>
                                 </div>
                               )}
-
-                              <div className="flex items-center justify-end gap-1 pt-1.5 mt-1 border-t border-slate-100 no-print">
-                                {bloqueada ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      cambiarEstadoSemana(sem, "Borrador")
-                                    }
-                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg cursor-pointer"
-                                  >
-                                    <Icon name="undo" size={13} /> Reabrir
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      cambiarEstadoSemana(sem, "Emitida")
-                                    }
-                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded-lg cursor-pointer"
-                                  >
-                                    <Icon name="check" size={13} /> Emitir
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setConfirmDialog({
-                                      titulo: "Eliminar semana",
-                                      mensaje: `¿Eliminar la lista de raya de ${fmtRango(sem.semana_inicio)}? Se borra también su desglose.`,
-                                      onConfirmar: () =>
-                                        handleEliminarSemana(sem),
-                                    })
-                                  }
-                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg cursor-pointer"
-                                >
-                                  <Icon name="trash" size={13} /> Eliminar
-                                </button>
-                              </div>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })
+                          );
+                        })}
+                      </div>
+                    ))
                   )}
                 </div>
               </div>

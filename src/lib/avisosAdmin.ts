@@ -74,7 +74,7 @@ export async function cargarAvisos(): Promise<Aviso[]> {
       .select(
         "id, semana_inicio, estado, raya_detalle (empleado_id, dias_trabajados, total)",
       )
-      .neq("estado", "Emitida"),
+      .neq("estado", "Pagada"),
   ]);
 
   const nombres = new Map<string, string>();
