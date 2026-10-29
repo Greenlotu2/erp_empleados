@@ -139,7 +139,6 @@ const totalFila = (d: {
 
 export default function NominasAsistenciaPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
-  const [plantillaIds, setPlantillaIds] = useState<string[]>([]);
   const [semanas, setSemanas] = useState<RayaSemana[]>([]);
   const [detallePorSemana, setDetallePorSemana] = useState<
     Record<string, RayaDetalle[]>
@@ -161,8 +160,6 @@ export default function NominasAsistenciaPage() {
   const [nuevaSemanaOpen, setNuevaSemanaOpen] = useState(false);
   const [nuevaSemanaFecha, setNuevaSemanaFecha] = useState("");
   const [creandoSemana, setCreandoSemana] = useState(false);
-  const [altaOpen, setAltaOpen] = useState(false);
-  const [altaEmpId, setAltaEmpId] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<{
     titulo: string;
     mensaje: string;
@@ -197,28 +194,58 @@ export default function NominasAsistenciaPage() {
   const fetchAll = async () => {
     try {
       setLoading(true);
-      const [
-        { data: empData },
-        { data: plData },
-        { data: semData },
-        { data: detData },
-      ] = await Promise.all([
-        (supabase.from("empleados") as any)
-          .select("id, nombre, color, area, nivel, rol")
-          .order("nombre"),
-        (supabase.from("raya_plantilla") as any).select("empleado_id"),
-        (supabase.from("raya_semanas") as any)
-          .select("*")
-          .order("semana_inicio", { ascending: false }),
-        (supabase.from("raya_detalle") as any).select("*"),
-      ]);
+      const [{ data: empData }, { data: semData }, { data: detData }] =
+        await Promise.all([
+          (supabase.from("empleados") as any)
+            .select("id, nombre, color, area, nivel, rol")
+            .order("nombre"),
+          (supabase.from("raya_semanas") as any)
+            .select("*")
+            .order("semana_inicio", { ascending: false }),
+          (supabase.from("raya_detalle") as any).select("*"),
+        ]);
       setEmpleados(empData || []);
-      setPlantillaIds((plData || []).map((r: any) => r.empleado_id));
       setSemanas(semData || []);
       const map: Record<string, RayaDetalle[]> = {};
       (detData || []).forEach((r: any) => {
         (map[r.semana_id] ||= []).push(r);
       });
+      // Todo el personal de planta tiene renglón (en ceros) en las listas de las
+      // últimas semanas: así quien se registra después aparece sin dar de alta.
+      const planta = (empData || []).filter(
+        (e: any) => !esConvenio(e) && e.nivel !== "Gerencia",
+      );
+      const desde = sumaDias(lunesDe(hoyPagos), -28);
+      const faltan = (semData || [])
+        .filter((sem: any) => sem.semana_inicio >= desde)
+        .flatMap((sem: any) =>
+          planta
+            .filter(
+              (e: any) =>
+                !(map[sem.id] || []).some((d) => d.empleado_id === e.id),
+            )
+            .map((e: any) => ({
+              semana_id: sem.id,
+              empleado_id: e.id,
+              dias_trabajados: 0,
+              pago_dia: 0,
+              extras: 0,
+              descuentos: 0,
+            })),
+        );
+      if (faltan.length > 0) {
+        await (supabase.from("raya_detalle") as any).upsert(faltan, {
+          onConflict: "semana_id,empleado_id",
+          ignoreDuplicates: true,
+        });
+        const { data: det2 } = await (
+          supabase.from("raya_detalle") as any
+        ).select("*");
+        for (const k of Object.keys(map)) delete map[k];
+        (det2 || []).forEach((r: any) => {
+          (map[r.semana_id] ||= []).push(r);
+        });
+      }
       setDetallePorSemana(map);
       await cargarConvenios();
     } catch (err) {
@@ -232,17 +259,14 @@ export default function NominasAsistenciaPage() {
     fetchAll();
   }, []);
 
-  const plantilla = plantillaIds
-    .map((id) => empleados.find((e) => e.id === id))
-    .filter((e): e is Empleado => Boolean(e));
-  // El picker de ALTA ofrece a todos menos Gerencia. Los de convenio no entran
-  // a la raya semanal: cobran su beca mensual aparte.
-  const fueraDePlantilla = empleados.filter(
-    (e) =>
-      !plantillaIds.includes(e.id) && !esConvenio(e) && e.nivel !== "Gerencia",
+  // Todos cobran, menos Gerencia: la planta por raya semanal y el personal de
+  // convenio por su beca mensual. Ya no hay alta manual.
+  const plantilla = empleados.filter(
+    (e) => !esConvenio(e) && e.nivel !== "Gerencia",
   );
-  // Personal de convenio (no recibe raya) — se lista aparte, solo informativo.
-  const personalConvenio = empleados.filter(esConvenio);
+  const personalConvenio = empleados.filter(
+    (e) => esConvenio(e) && e.nivel !== "Gerencia",
+  );
 
   const totalDeSemana = (semanaId: string) =>
     (detallePorSemana[semanaId] || []).reduce((s, d) => s + totalFila(d), 0);
@@ -405,67 +429,6 @@ export default function NominasAsistenciaPage() {
     registradoAnio + proyeccionSemanal * semanasSinLista + becasAnio;
 
   // --- Handlers ---
-  // Da de alta a una o varias personas en la plantilla. También les abre un
-  // renglón (en ceros) en las listas de raya recientes, para que aparezcan sin
-  // tener que crear otra semana.
-  const handleAltaPlantilla = async (ids: string[] = [altaEmpId]) => {
-    const nuevos = ids.filter((id) => id && !plantillaIds.includes(id));
-    if (nuevos.length === 0) return;
-    setPlantillaIds((prev) => [...prev, ...nuevos]);
-    setAltaEmpId("");
-    setAltaOpen(false);
-    try {
-      const { error } = await (supabase.from("raya_plantilla") as any).insert(
-        nuevos.map((empleado_id) => ({ empleado_id })),
-      );
-      if (error) throw error;
-
-      const desde = sumaDias(lunesDe(hoyPagos), -28);
-      const filas = semanas
-        .filter((sem) => sem.semana_inicio >= desde)
-        .flatMap((sem) =>
-          nuevos
-            .filter(
-              (id) =>
-                !(detallePorSemana[sem.id] || []).some(
-                  (d) => d.empleado_id === id,
-                ),
-            )
-            .map((empleado_id) => ({
-              semana_id: sem.id,
-              empleado_id,
-              dias_trabajados: 0,
-              pago_dia: 0,
-              extras: 0,
-              descuentos: 0,
-            })),
-        );
-      if (filas.length > 0) {
-        const { error: detErr } = await (
-          supabase.from("raya_detalle") as any
-        ).insert(filas);
-        if (detErr) throw detErr;
-      }
-      await fetchAll();
-    } catch (err: any) {
-      alert("No se pudo agregar a la plantilla: " + (err.message || "Error"));
-      await fetchAll();
-    }
-  };
-
-  const handleQuitarPlantilla = async (empId: string) => {
-    setPlantillaIds((prev) => prev.filter((id) => id !== empId));
-    try {
-      const { error } = await (supabase.from("raya_plantilla") as any)
-        .delete()
-        .eq("empleado_id", empId);
-      if (error) throw error;
-    } catch (err: any) {
-      alert("No se pudo quitar de la plantilla: " + (err.message || "Error"));
-      await fetchAll();
-    }
-  };
-
   const handleNuevaSemana = async () => {
     if (!nuevaSemanaFecha) return;
     const semanaInicio = lunesDe(nuevaSemanaFecha);
@@ -485,10 +448,10 @@ export default function NominasAsistenciaPage() {
         .single();
       if (error) throw error;
 
-      if (plantillaIds.length > 0) {
-        const filas = plantillaIds.map((empId) => ({
+      if (plantilla.length > 0) {
+        const filas = plantilla.map((e) => ({
           semana_id: sem.id,
-          empleado_id: empId,
+          empleado_id: e.id,
           dias_trabajados: 0,
           pago_dia: 0,
           extras: 0,
@@ -1021,8 +984,7 @@ export default function NominasAsistenciaPage() {
                                   </div>
                                   {filas.length === 0 ? (
                                     <p className="text-[11px] text-slate-400 py-2 text-center">
-                                      No hay personal en la plantilla. Agrega
-                                      colaboradores en "Plantilla Oficial".
+                                      No hay personal de planta registrado.
                                     </p>
                                   ) : (
                                     <div className="overflow-x-auto">
@@ -1216,152 +1178,82 @@ export default function NominasAsistenciaPage() {
                 </div>
               </div>
 
-              {/* Plantilla Oficial */}
+              {/* Personal: planta y convenio */}
               <div className="bg-white border border-slate-200 rounded-lg p-2 flex flex-col min-h-0 overflow-hidden">
-                <div className="flex items-center justify-between gap-1 shrink-0 pb-1.5 border-b border-slate-100">
-                  <div className="min-w-0">
-                    <div className="text-[12px] font-semibold text-slate-900">
-                      Plantilla Oficial
-                    </div>
-                    <p className="text-[10.5px] text-slate-400">
-                      Personal activo asignado · {plantilla.length}
-                    </p>
+                <div className="shrink-0 pb-1.5 border-b border-slate-100">
+                  <div className="text-[12px] font-semibold text-slate-900">
+                    Personal
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setAltaOpen((v) => !v)}
-                    className="shrink-0 inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white font-medium text-[11px] px-1.5 py-1 rounded-md cursor-pointer transition-colors"
-                  >
-                    <Icon name="user-plus" size={13} />
-                    Alta
-                  </button>
+                  <p className="text-[10.5px] text-slate-400">
+                    {plantilla.length} de planta · {personalConvenio.length} de
+                    convenio
+                  </p>
                 </div>
 
-                {altaOpen && (
-                  <div className="flex gap-1 py-1.5 shrink-0 border-b border-slate-100">
-                    <select
-                      value={altaEmpId}
-                      onChange={(e) => setAltaEmpId(e.target.value)}
-                      className="flex-1 min-w-0 bg-slate-50 border border-slate-200 text-slate-700 text-[11px] py-1 px-1 rounded-lg outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                    >
-                      <option value="">Elegir persona…</option>
-                      {fueraDePlantilla.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.nombre}
-                          {e.rol ? ` · ${e.rol}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleAltaPlantilla([altaEmpId])}
-                      disabled={!altaEmpId}
-                      className="shrink-0 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:cursor-not-allowed text-white text-[11px] font-semibold px-2 py-1 rounded-lg cursor-pointer transition-colors"
-                    >
-                      Agregar
-                    </button>
-                    {fueraDePlantilla.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleAltaPlantilla(fueraDePlantilla.map((e) => e.id))
-                        }
-                        className="shrink-0 bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-semibold px-2 py-1 rounded-lg cursor-pointer transition-colors"
-                      >
-                        Todos ({fueraDePlantilla.length})
-                      </button>
-                    )}
-                  </div>
-                )}
-
                 <div className="flex-1 overflow-y-auto min-h-0 pt-1.5 flex flex-col gap-0.5">
+                  <span className="block text-[9.5px] font-bold text-slate-400 uppercase tracking-wide px-1 pb-0.5">
+                    Planta · raya semanal ({plantilla.length})
+                  </span>
                   {plantilla.length === 0 ? (
                     <span className="text-[11px] text-slate-400 italic px-1 py-2 text-center">
-                      Sin personal en la plantilla todavía.
+                      Sin personal de planta todavía.
                     </span>
                   ) : (
-                    plantilla.map((e) => {
-                      const convenio = esConvenio(e);
-                      return (
-                        <div
-                          key={e.id}
-                          className="group flex items-center gap-1.5 px-1 py-1 rounded-lg hover:bg-slate-50 transition-colors"
+                    plantilla.map((e) => (
+                      <div
+                        key={e.id}
+                        className="flex items-center gap-1.5 px-1 py-1 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        <span
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                          style={{ backgroundColor: e.color || "#64748b" }}
                         >
-                          <span
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
-                            style={{ backgroundColor: e.color || "#64748b" }}
-                          >
-                            {iniciales(e.nombre)}
+                          {iniciales(e.nombre)}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[12px] font-medium text-slate-800 truncate">
+                            {e.nombre}
                           </span>
-                          <span className="flex-1 min-w-0">
-                            <span className="block text-[12px] font-medium text-slate-800 truncate">
-                              {e.nombre}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <span className="text-[9.5px] text-slate-400 truncate">
-                                {e.rol || e.area?.join(", ") || e.nivel || "—"}
-                              </span>
-                              {convenio && (
-                                <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1 py-0 shrink-0">
-                                  SIN RAYA
-                                </span>
-                              )}
-                            </span>
+                          <span className="block text-[9.5px] text-slate-400 truncate">
+                            {e.rol || e.area?.join(", ") || e.nivel || "—"}
                           </span>
-                          <button
-                            type="button"
-                            title="Quitar de la plantilla"
-                            onClick={() =>
-                              setConfirmDialog({
-                                titulo: "Quitar de la plantilla",
-                                mensaje: `¿Quitar a ${e.nombre} de la plantilla oficial? No afecta las semanas ya registradas.`,
-                                onConfirmar: () => handleQuitarPlantilla(e.id),
-                              })
-                            }
-                            className="shrink-0 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer p-0.5"
-                          >
-                            <svg
-                              width="13"
-                              height="13"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.75"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M18 6 6 18M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                      );
-                    })
+                        </span>
+                      </div>
+                    ))
                   )}
 
                   {personalConvenio.length > 0 && (
                     <div className="mt-1.5 pt-1.5 border-t border-slate-100">
-                      <span className="block text-[9.5px] font-bold text-slate-400 uppercase tracking-wide px-1 pb-1">
+                      <span className="block text-[9.5px] font-bold text-slate-400 uppercase tracking-wide px-1 pb-0.5">
                         Convenio · beca mensual ({personalConvenio.length})
                       </span>
-                      {personalConvenio.map((e) => (
-                        <div
-                          key={e.id}
-                          className="flex items-center gap-1.5 px-1 py-0.5 opacity-70"
-                        >
-                          <span
-                            className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold shrink-0"
-                            style={{ backgroundColor: e.color || "#94a3b8" }}
+                      {personalConvenio.map((e) => {
+                        const beca = contratosPorEmp[e.id]?.monto || 0;
+                        return (
+                          <div
+                            key={e.id}
+                            className="flex items-center gap-1.5 px-1 py-1 rounded-lg hover:bg-slate-50 transition-colors"
                           >
-                            {iniciales(e.nombre)}
-                          </span>
-                          <span className="flex-1 min-w-0 text-[11px] text-slate-500 truncate">
-                            {e.nombre}
-                          </span>
-                          <span className="text-[9px] text-slate-400 shrink-0">
-                            {e.rol}
-                          </span>
-                        </div>
-                      ))}
+                            <span
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                              style={{ backgroundColor: e.color || "#94a3b8" }}
+                            >
+                              {iniciales(e.nombre)}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-[12px] font-medium text-slate-800 truncate">
+                                {e.nombre}
+                              </span>
+                              <span className="block text-[9.5px] text-slate-400 truncate">
+                                {e.rol}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-[11px] font-semibold text-slate-600 tabular-nums">
+                              {beca > 0 ? `${money(beca)}/mes` : "Sin beca"}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1402,7 +1294,7 @@ export default function NominasAsistenciaPage() {
               {nuevaSemanaFecha && (
                 <p className="mt-1 text-[10.5px] text-slate-400">
                   Se registrará la semana {fmtRango(lunesDe(nuevaSemanaFecha))}{" "}
-                  · {plantillaIds.length} colaborador(es) de la plantilla.
+                  · {plantilla.length} colaborador(es) de planta.
                 </p>
               )}
             </div>
