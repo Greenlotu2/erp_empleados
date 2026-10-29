@@ -235,9 +235,11 @@ export default function NominasAsistenciaPage() {
   const plantilla = plantillaIds
     .map((id) => empleados.find((e) => e.id === id))
     .filter((e): e is Empleado => Boolean(e));
-  // El picker de ALTA solo ofrece personal pagable (excluye convenio).
+  // El picker de ALTA ofrece a todos menos Gerencia. Los de convenio no entran
+  // a la raya semanal: cobran su beca mensual aparte.
   const fueraDePlantilla = empleados.filter(
-    (e) => !plantillaIds.includes(e.id) && !esConvenio(e),
+    (e) =>
+      !plantillaIds.includes(e.id) && !esConvenio(e) && e.nivel !== "Gerencia",
   );
   // Personal de convenio (no recibe raya) — se lista aparte, solo informativo.
   const personalConvenio = empleados.filter(esConvenio);
@@ -1339,7 +1341,7 @@ export default function NominasAsistenciaPage() {
                   {personalConvenio.length > 0 && (
                     <div className="mt-1.5 pt-1.5 border-t border-slate-100">
                       <span className="block text-[9.5px] font-bold text-slate-400 uppercase tracking-wide px-1 pb-1">
-                        Convenio · no reciben raya ({personalConvenio.length})
+                        Convenio · beca mensual ({personalConvenio.length})
                       </span>
                       {personalConvenio.map((e) => (
                         <div
