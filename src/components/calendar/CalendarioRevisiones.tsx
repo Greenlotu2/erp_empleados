@@ -270,17 +270,23 @@ export default function CalendarioRevisiones({
   // más lo usa; a quien no tenga (o choque con otro) se le asigna el siguiente color
   // libre de la paleta, y si se agota, un tono generado por ángulo áureo. El orden es
   // estable (por id) para que el color de cada persona no cambie entre recargas.
-  // Solo aplica a TRABAJADORES — gerencia y coordinadores no entran al mapa (usan gris).
+  // Aplica a trabajadores y coordinadores — solo Gerencia no entra al mapa (usa gris).
+  // Los trabajadores se procesan primero, así sumar coordinadores no cambia los
+  // colores que ya tenían asignados.
   const colorPorEmpleado = useMemo(() => {
     const mapa = new Map<string, string>();
     const usados = new Set<string>();
-    const esTrabajador = (e: EmpleadoSelect) => {
-      const n = (e.nivel || "").toLowerCase().trim();
-      return !n.includes("geren") && !n.includes("coordin");
-    };
-    const orden = [...empleadosList]
-      .filter(esTrabajador)
-      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const nivelDe = (e: EmpleadoSelect) => (e.nivel || "").toLowerCase().trim();
+    const esGerencia = (e: EmpleadoSelect) => nivelDe(e).includes("geren");
+    const esCoordinador = (e: EmpleadoSelect) => nivelDe(e).includes("coordin");
+    const porId = (a: EmpleadoSelect, b: EmpleadoSelect) =>
+      String(a.id).localeCompare(String(b.id));
+    const orden = [
+      ...empleadosList
+        .filter((e) => !esGerencia(e) && !esCoordinador(e))
+        .sort(porId),
+      ...empleadosList.filter(esCoordinador).sort(porId),
+    ];
 
     // 1ª pasada: honrar colores guardados que no choquen entre sí.
     orden.forEach((e) => {
@@ -316,7 +322,7 @@ export default function CalendarioRevisiones({
 
   const getColorEmpleado = (empleadoId?: string) => {
     if (!empleadoId) return undefined;
-    // Trabajador → su color único; gerencia/coordinador/desconocido → gris neutro.
+    // Trabajador o coordinador → su color único; gerencia/desconocido → gris neutro.
     return colorPorEmpleado.get(empleadoId) || "#64748b";
   };
 
@@ -1077,12 +1083,17 @@ export default function CalendarioRevisiones({
             </p>
 
             <div className="flex flex-col gap-1 max-h-72 lg:max-h-none lg:flex-1 lg:min-h-0 overflow-y-auto pr-1 [scrollbar-width:thin]">
-              {empleadosPorNivel.trabajador.length === 0 ? (
+              {empleadosPorNivel.trabajador.length +
+                empleadosPorNivel.coordinador.length ===
+              0 ? (
                 <p className="text-[10px] text-slate-300 italic">
                   Sin trabajadores
                 </p>
               ) : (
-                empleadosPorNivel.trabajador.map((emp) => {
+                [
+                  ...empleadosPorNivel.trabajador,
+                  ...empleadosPorNivel.coordinador,
+                ].map((emp) => {
                   const activo = selectedEmployeeFilter === emp.id;
                   return (
                     <button
