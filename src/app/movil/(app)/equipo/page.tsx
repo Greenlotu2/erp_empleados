@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Avatar, DeslizarParaActualizar, ErrorCarga } from "../../_componentes/comunes";
+import {
+  Avatar,
+  DeslizarParaActualizar,
+  ErrorCarga,
+} from "../../_componentes/comunes";
 import { EsqueletoEquipo } from "../../_componentes/esqueletos";
 import {
   esPorRevisar,
@@ -12,6 +16,8 @@ import {
   type EmpleadoMovil,
   type TareaMovil,
 } from "../../_lib/equipo";
+import { useEnObra } from "../../_lib/enObra";
+import { esArquitecto } from "../../../../lib/enObra";
 
 type Filtro = "todos" | "disponibles" | "ocupados";
 const DIRECCION = "Dirección";
@@ -24,12 +30,17 @@ interface Carga {
 
 export default function EquipoPage() {
   const { datos, error, recargar } = useDatosEquipo();
+  const enObra = useEnObra();
   const [filtro, setFiltro] = useState<Filtro>("todos");
 
   const cargaPorId = useMemo(() => {
     const m: Record<string, Carga> = {};
     (datos?.tareas || []).forEach((t: TareaMovil) => {
-      const c = (m[t.empleado_id] ||= { activas: 0, porRevisar: 0, urgentes: 0 });
+      const c = (m[t.empleado_id] ||= {
+        activas: 0,
+        porRevisar: 0,
+        urgentes: 0,
+      });
       c.activas++;
       if (esPorRevisar(t)) c.porRevisar++;
       if (urgencia(t)) c.urgentes++;
@@ -79,7 +90,16 @@ export default function EquipoPage() {
             href="/movil/asignar"
             className="ml-auto h-[34px] px-3 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[13px] font-semibold flex items-center gap-1"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M12 5v14M5 12h14" />
             </svg>
             Asignar
@@ -141,6 +161,8 @@ export default function EquipoPage() {
                   empleado={e}
                   carga={cargaPorId[e.id]}
                   esYo={e.id === datos.yo.id}
+                  enObra={enObra.ids.has(e.id)}
+                  onCambiarObra={enObra.cambiar}
                 />
               ))}
             </div>
@@ -155,10 +177,14 @@ function FilaPersona({
   empleado: e,
   carga,
   esYo,
+  enObra,
+  onCambiarObra,
 }: {
   empleado: EmpleadoMovil;
   carga?: Carga;
   esYo: boolean;
+  enObra: boolean;
+  onCambiarObra: (id: string, valor: boolean) => void;
 }) {
   // "General" era el valor por defecto heredado; no distingue a nadie.
   const especialidad = e.especialidad !== "General" ? e.especialidad : null;
@@ -181,13 +207,37 @@ function FilaPersona({
             ? "sin tareas"
             : `${activas} ${activas === 1 ? "activa" : "activas"}`}
           {!!carga?.porRevisar && (
-            <span className="text-blue-600 font-semibold"> · {carga.porRevisar} por revisar</span>
+            <span className="text-blue-600 font-semibold">
+              {" "}
+              · {carga.porRevisar} por revisar
+            </span>
           )}
           {!!carga?.urgentes && (
-            <span className="text-red-600 font-semibold"> · {carga.urgentes} urgente{carga.urgentes > 1 ? "s" : ""}</span>
+            <span className="text-red-600 font-semibold">
+              {" "}
+              · {carga.urgentes} urgente{carga.urgentes > 1 ? "s" : ""}
+            </span>
           )}
         </div>
       </div>
+      {esArquitecto(e.especialidad) && (
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            onCambiarObra(e.id, !enObra);
+          }}
+          className={`shrink-0 h-7 px-2.5 rounded-full text-[11px] font-semibold border cursor-pointer ${
+            enObra
+              ? "bg-amber-100 text-amber-800 border-amber-300"
+              : "bg-white text-slate-500 border-slate-200"
+          }`}
+          title="Cambia hasta el final del día"
+        >
+          {enObra ? "En obra" : "Oficina"}
+        </button>
+      )}
       <span
         className={`flex items-center gap-1.5 text-xs font-medium shrink-0 ${
           e.disponibilidad ? "text-emerald-700" : "text-amber-700"

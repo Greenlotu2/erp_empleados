@@ -10,6 +10,7 @@ import { getCurrentAdminId } from "../lib/currentAdmin";
 import { PALETA_EMPLEADOS, colorLibreEmpleado } from "../lib/coloresEmpleados";
 import { ModalOverlay } from "../components/ModalOverlay";
 import { abrirArchivo } from "../lib/storageUrls";
+import { esArquitecto, estaEnObra, hoyMx } from "../lib/enObra";
 import { EVENTO_NOTIF_RESUELTA } from "../components/CampanaNotificaciones";
 import { RestablecerContrasena } from "../components/RestablecerContrasena";
 import {
@@ -161,6 +162,8 @@ interface Employee {
   currentProject: string;
   currentTaskDependency?: string;
   status: "Ocupado" | "Disponible";
+  // Arquitectos: solo cuenta el día en que se marca (vuelve solo a oficina).
+  enObra?: boolean;
   avatar: string | null;
   color?: string;
   completedTasksCount: number;
@@ -770,6 +773,7 @@ export default function AdminDashboard() {
             currentProject: activeProj?.nombre || "Sin Proyecto",
             currentTaskDependency: activeParentTask?.titulo,
             status: emp.disponibilidad ? "Disponible" : "Ocupado",
+            enObra: estaEnObra(emp.en_obra_fecha),
             avatar: emp.avatar_url || null,
             color: emp.color || "#2563eb",
             completedTasksCount: mappedHistory.filter(
@@ -1149,6 +1153,29 @@ export default function AdminDashboard() {
   };
 
   // 📌 ASIGNACIÓN DE TAREA
+  // Arquitectos que van y vienen de la obra: el estado dura el día (al siguiente
+  // vuelve solo a "oficina") y lo cambian administradores y coordinadores.
+  const toggleEnObra = async (emp: Employee) => {
+    const aplicar = (enObra: boolean) => {
+      setEmployees((prev) =>
+        prev.map((e) => (e.id === emp.id ? { ...e, enObra } : e)),
+      );
+      setSelectedEmployee((prev) =>
+        prev && prev.id === emp.id ? { ...prev, enObra } : prev,
+      );
+    };
+    const nuevo = !emp.enObra;
+    aplicar(nuevo);
+    const { error } = await supabase
+      .from("empleados")
+      .update({ en_obra_fecha: nuevo ? hoyMx() : null })
+      .eq("id", emp.id);
+    if (error) {
+      aplicar(!!emp.enObra);
+      alert("No se pudo cambiar el estado de obra: " + error.message);
+    }
+  };
+
   const handleAssignTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim() || !selectedEmployee) return;
@@ -1931,6 +1958,12 @@ export default function AdminDashboard() {
                                     ? `• ${emp.especialidad}`
                                     : ""}
                                 </p>
+                                {emp.enObra && (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1 rounded mt-0.5">
+                                    <Icon name="building" size={9} /> En obra
+                                    hoy
+                                  </span>
+                                )}
                                 {otrasAreas.length > 0 && (
                                   <div className="flex flex-wrap gap-0.5 mt-0.5">
                                     {otrasAreas.map((a) => (
@@ -2026,6 +2059,23 @@ export default function AdminDashboard() {
                         {selectedEmployee.especialidad &&
                           ` • ${selectedEmployee.especialidad}`}
                       </p>
+                      {esArquitecto(selectedEmployee.especialidad) && (
+                        <button
+                          type="button"
+                          onClick={() => toggleEnObra(selectedEmployee)}
+                          title="Cambia hasta el final del día; mañana vuelve a Oficina"
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                            selectedEmployee.enObra
+                              ? "bg-amber-100 text-amber-800 border-amber-300"
+                              : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          <Icon name="building" size={11} />
+                          {selectedEmployee.enObra
+                            ? "En obra hoy"
+                            : "En oficina"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
