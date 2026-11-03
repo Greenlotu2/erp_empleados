@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon } from './icons';
 
 export interface TaskCardProps {
@@ -35,6 +35,8 @@ export default function TaskCard({
   slackDays,
   onRequestExtension,
 }: TaskCardProps) {
+  const [abierta, setAbierta] = useState(false);
+
   const priorityColors = {
     Baja: 'bg-slate-100 text-slate-700 border-slate-200',
     Media: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -65,14 +67,35 @@ export default function TaskCard({
       )}
 
       {/* Encabezado */}
-      <div className="flex items-start justify-between gap-1 pr-8">
+      <button
+        type="button"
+        onClick={() => setAbierta((v) => !v)}
+        aria-expanded={abierta}
+        className={`w-full flex items-start justify-between gap-2 text-left cursor-pointer ${isCritical ? 'pt-4' : ''}`}
+      >
         <div className="min-w-0">
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-md uppercase tracking-wide">
             <Icon name="folder" size={10} /> {projectName}
           </span>
           <h4 className="font-semibold text-slate-900 text-[13px] mt-1 leading-snug">{title}</h4>
         </div>
-      </div>
+        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+          {dueDate && (
+            <span className="hidden sm:inline font-mono text-[10px] text-slate-500">{dueDate}</span>
+          )}
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${statusColors[status]}`}>
+            {status}
+          </span>
+          <Icon
+            name="chevron-down"
+            size={14}
+            className={`text-slate-400 transition-transform ${abierta ? 'rotate-180' : ''}`}
+          />
+        </div>
+      </button>
+
+      {abierta && (
+        <div className="space-y-1.5">
 
       {/* Descripción */}
       {description && (
@@ -167,12 +190,8 @@ export default function TaskCard({
       )}
 
       {/* Acciones */}
-      <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
-        <span className={`text-[10px] font-semibold px-1.5 py-1 rounded-md ${statusColors[status]}`}>
-          {status}
-        </span>
-
-        {status !== 'Completada' && onRequestExtension && (
+      {status !== 'Completada' && onRequestExtension && (
+        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-end gap-1">
           <button
             type="button"
             onClick={onRequestExtension}
@@ -181,8 +200,10 @@ export default function TaskCard({
           >
             <Icon name="clock" size={11} /> Tiempo extra
           </button>
-        )}
-      </div>
+        </div>
+      )}
+        </div>
+      )}
     </div>
   );
 }
