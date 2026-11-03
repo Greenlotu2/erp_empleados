@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const MAX_DAILY_SECONDS = 5 * 3600; // 5 Horas = 18,000s
 
   // 🌐 URL de la API: producción por defecto; `custom_api_url` en storage la sobreescribe (p. ej. localhost para desarrollo)
-  let API_BASE_URL = "https://erp-empleados-rocal.vercel.app/api";
+  let API_BASE_URL = "https://erp-rocal.vercel.app/api";
   chrome.storage.local.get(['custom_api_url'], (res) => {
     if (res?.custom_api_url) {
       API_BASE_URL = res.custom_api_url.replace(/\/+$/, '');
