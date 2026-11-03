@@ -475,6 +475,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Tarjeta de la lista de Equipo desplegada (una a la vez).
+  const [empDesplegado, setEmpDesplegado] = useState<string | number | null>(
+    null,
+  );
   const [teamFilter, setTeamFilter] = useState<"trabajadores" | "estudiantes">(
     "trabajadores",
   );
@@ -1916,7 +1920,12 @@ export default function AdminDashboard() {
                       return (
                         <div
                           key={emp.id}
-                          onClick={() => setSelectedEmployee(emp)}
+                          onClick={() => {
+                            setSelectedEmployee(emp);
+                            setEmpDesplegado((prev) =>
+                              prev === emp.id ? null : emp.id,
+                            );
+                          }}
                           className={`p-2 rounded-lg border transition-colors cursor-pointer relative ${
                             isSelected
                               ? "bg-blue-50/50 border-blue-500 shadow-sm ring-1 ring-blue-500/20"
@@ -1951,31 +1960,11 @@ export default function AdminDashboard() {
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-slate-500">
-                                  {emp.role}{" "}
-                                  {emp.escuela ? `· ${emp.escuela} ` : ""}
-                                  {emp.especialidad
-                                    ? `• ${emp.especialidad}`
-                                    : ""}
-                                </p>
                                 {emp.enObra && (
                                   <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1 rounded mt-0.5">
                                     <Icon name="building" size={9} /> En obra
                                     hoy
                                   </span>
-                                )}
-                                {otrasAreas.length > 0 && (
-                                  <div className="flex flex-wrap gap-0.5 mt-0.5">
-                                    {otrasAreas.map((a) => (
-                                      <span
-                                        key={a}
-                                        title="También pertenece a esta área"
-                                        className="text-[9px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1 rounded"
-                                      >
-                                        + {a}
-                                      </span>
-                                    ))}
-                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1994,32 +1983,56 @@ export default function AdminDashboard() {
                             </span>
                           </div>
 
-                          <div className="mt-1 pt-1 border-t border-slate-100/80 flex items-center justify-between text-[11px] text-slate-500">
-                            {esEstudiante ? (
-                              <span className="inline-flex items-center gap-1 text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded-md">
-                                <Icon name="clock" size={11} />{" "}
-                                {emp.horasAcumuladas || 0} /{" "}
-                                {emp.horasTotalesObjetivo || 480} hrs
-                              </span>
-                            ) : (
-                              <span>
-                                Historial:{" "}
-                                <strong className="text-slate-800">
-                                  {emp.taskHistory.length} tareas
-                                </strong>
-                              </span>
-                            )}
-                            <span className="truncate max-w-[150px] inline-flex items-center gap-1">
-                              <Icon
-                                name="folder"
-                                size={11}
-                                className="shrink-0"
-                              />
-                              <strong className="text-slate-700 font-medium truncate">
-                                {emp.currentProject}
-                              </strong>
-                            </span>
-                          </div>
+                          {empDesplegado === emp.id && (
+                            <div className="mt-1 pt-1 border-t border-slate-100/80 space-y-1 text-[11px] text-slate-500">
+                              <p className="text-xs text-slate-600">
+                                {emp.role}
+                                {emp.escuela ? ` · ${emp.escuela}` : ""}
+                                {emp.especialidad
+                                  ? ` • ${emp.especialidad}`
+                                  : ""}
+                              </p>
+                              {otrasAreas.length > 0 && (
+                                <div className="flex flex-wrap gap-0.5">
+                                  {otrasAreas.map((a) => (
+                                    <span
+                                      key={a}
+                                      title="También pertenece a esta área"
+                                      className="text-[9px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1 rounded"
+                                    >
+                                      + {a}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between">
+                                {esEstudiante ? (
+                                  <span className="inline-flex items-center gap-1 text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded-md">
+                                    <Icon name="clock" size={11} />{" "}
+                                    {emp.horasAcumuladas || 0} /{" "}
+                                    {emp.horasTotalesObjetivo || 480} hrs
+                                  </span>
+                                ) : (
+                                  <span>
+                                    Historial:{" "}
+                                    <strong className="text-slate-800">
+                                      {emp.taskHistory.length} tareas
+                                    </strong>
+                                  </span>
+                                )}
+                                <span className="truncate max-w-[150px] inline-flex items-center gap-1">
+                                  <Icon
+                                    name="folder"
+                                    size={11}
+                                    className="shrink-0"
+                                  />
+                                  <strong className="text-slate-700 font-medium truncate">
+                                    {emp.currentProject}
+                                  </strong>
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
