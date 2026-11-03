@@ -11,6 +11,8 @@ import { PALETA_EMPLEADOS, colorLibreEmpleado } from "../lib/coloresEmpleados";
 import { ModalOverlay } from "../components/ModalOverlay";
 import { abrirArchivo } from "../lib/storageUrls";
 import { esArquitecto, estaEnObra, hoyMx } from "../lib/enObra";
+import { montoMensual } from "../lib/pagos";
+import { asegurarSemanasRaya } from "../lib/rayaAuto";
 import { EVENTO_NOTIF_RESUELTA } from "../components/CampanaNotificaciones";
 import { RestablecerContrasena } from "../components/RestablecerContrasena";
 import {
@@ -609,10 +611,23 @@ export default function AdminDashboard() {
     disponibilidad: "Disponible",
     horasTotalesObjetivo: "480",
     remuneracion: "15000",
+    pagoDia: "",
     color: "#2563eb",
     escuela: "",
     lineas: [] as string[],
   });
+  // Pago por día con el que se abrió el modal (para saber si cambió).
+  const [pagoDiaInicial, setPagoDiaInicial] = useState("");
+
+  // Edición de una tarea del historial.
+  const [editTarea, setEditTarea] = useState<{
+    id: string | number;
+    titulo: string;
+    descripcion: string;
+    prioridad: string;
+    fechaLimite: string;
+  } | null>(null);
+  const [guardandoTarea, setGuardandoTarea] = useState(false);
 
   const getDocFolder = (docName: string): string => {
     const lower = docName.toLowerCase();
@@ -1513,10 +1528,10 @@ export default function AdminDashboard() {
   const handleEditClick = () => {
     if (!selectedEmployee) return;
 
-    const currentSalaryDigits = selectedEmployee.contract?.stipendOrSalary
-      ? selectedEmployee.contract.stipendOrSalary.replace(/[^0-9]/g, "")
-      : "0";
+    const beca = montoMensual(selectedEmployee.contract?.stipendOrSalary);
+    const currentSalaryDigits = beca > 0 ? String(beca) : "";
 
+    setPagoDiaInicial("");
     setEditFormData({
       nombre: selectedEmployee.name,
       correo: selectedEmployee.email,
@@ -1529,11 +1544,98 @@ export default function AdminDashboard() {
         selectedEmployee.horasTotalesObjetivo || 480,
       ),
       remuneracion: currentSalaryDigits,
+      pagoDia: "",
       color: selectedEmployee.color || "#2563eb",
       escuela: selectedEmployee.escuela || "",
       lineas: selectedEmployee.lineas || [],
     });
     setIsEditModalOpen(true);
+
+    // Pago por día de la raya semanal: el de su semana más reciente con pago.
+    const empId = selectedEmployee.id;
+    supabase
+      .from("raya_detalle")
+      .select("pago_dia, raya_semanas(semana_inicio)")
+      .eq("empleado_id", empId)
+      .gt("pago_dia", 0)
+      .then(({ data }: { data: any[] | null }) => {
+        let mejor = { inicio: "", pago: 0 };
+        (data || []).forEach((d: any) => {
+          const r = Array.isArray(d.raya_semanas)
+            ? d.raya_semanas[0]
+            : d.raya_semanas;
+          const inicio = String(r?.semana_inicio || "").slice(0, 10);
+          if (inicio >= mejor.inicio)
+            mejor = { inicio, pago: Number(d.pago_dia) };
+        });
+        const valor = mejor.pago > 0 ? String(mejor.pago) : "";
+        setPagoDiaInicial(valor);
+        setEditFormData((prev) => ({ ...prev, pagoDia: valor }));
+      });
+  };
+
+  const abrirEditarTarea = async (taskId: string | number) => {
+    const { data, error } = await supabase
+      .from("tareas")
+      .select("id, titulo, descripcion, prioridad, fecha_limite")
+      .eq("id", taskId)
+      .single();
+    if (error || !data) {
+      alert("No se pudo cargar la tarea: " + (error?.message || ""));
+      return;
+    }
+    setEditTarea({
+      id: data.id,
+      titulo: data.titulo || "",
+      descripcion: data.descripcion || "",
+      prioridad: data.prioridad || "Media",
+      fechaLimite: data.fecha_limite
+        ? String(data.fecha_limite).slice(0, 10)
+        : "",
+    });
+  };
+
+  const handleGuardarTarea = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarea || !editTarea.titulo.trim()) return;
+    setGuardandoTarea(true);
+    try {
+      const { error } = await supabase
+        .from("tareas")
+        .update({
+          titulo: editTarea.titulo.trim(),
+          descripcion: editTarea.descripcion.trim() || null,
+          prioridad: editTarea.prioridad,
+          fecha_limite: editTarea.fechaLimite || null,
+        })
+        .eq("id", editTarea.id);
+      if (error) throw error;
+
+      // El evento "Fecha Límite" del calendario sigue a la tarea.
+      if (editTarea.fechaLimite) {
+        await supabase
+          .from("reuniones")
+          .update({
+            titulo: editTarea.titulo.trim(),
+            fecha: editTarea.fechaLimite,
+            fecha_inicio: new Date(
+              `${editTarea.fechaLimite}T09:00:00`,
+            ).toISOString(),
+            fecha_fin: new Date(
+              `${editTarea.fechaLimite}T10:00:00`,
+            ).toISOString(),
+          })
+          .eq("tarea_id", editTarea.id)
+          .eq("estado", "Fecha Límite");
+      }
+
+      setEditTarea(null);
+      await fetchDashboardData();
+    } catch (err: any) {
+      alert("No se pudo guardar la tarea: " + (err.message || "Error"));
+    } finally {
+      setGuardandoTarea(false);
+    }
   };
 
   const handleUpdateEmployee = async (e: React.FormEvent) => {
@@ -1590,14 +1692,47 @@ export default function AdminDashboard() {
         );
       }
 
+      // La beca mensual solo se toca en personal de convenio; a los demás se
+      // les paga por día en la raya semanal.
       await supabase.from("contratos").upsert(
         {
           empleado_id: selectedEmployee.id,
           tipo_contrato: editFormData.rol,
-          remuneracion_o_beca: formattedSalary,
+          ...(esConvenio(editFormData.rol)
+            ? { remuneracion_o_beca: formattedSalary }
+            : {}),
         },
         { onConflict: "empleado_id" },
       );
+
+      // Pago por día: se actualiza en las listas de raya sin pagar de la
+      // semana anterior en adelante (lo ya pagado no se toca).
+      if (
+        !esConvenio(editFormData.rol) &&
+        editFormData.nivel !== "Gerencia" &&
+        editFormData.pagoDia !== pagoDiaInicial
+      ) {
+        const nuevoPago = Number(editFormData.pagoDia) || 0;
+        await asegurarSemanasRaya(true);
+        const corte = new Date();
+        corte.setDate(corte.getDate() - 13);
+        const corteYmd = `${corte.getFullYear()}-${String(corte.getMonth() + 1).padStart(2, "0")}-${String(corte.getDate()).padStart(2, "0")}`;
+        const { data: semanas } = await supabase
+          .from("raya_semanas")
+          .select("id")
+          .gte("semana_inicio", corteYmd);
+        const ids = (semanas || []).map((x: any) => x.id);
+        if (ids.length > 0) {
+          const { error: errPago } = await supabase
+            .from("raya_detalle")
+            .update({ pago_dia: nuevoPago })
+            .eq("empleado_id", selectedEmployee.id)
+            .in("semana_id", ids)
+            .or("pagado.is.null,pagado.eq.false");
+          if (errPago)
+            alert("No se pudo actualizar el pago por día: " + errPago.message);
+        }
+      }
 
       setIsEditModalOpen(false);
       await fetchDashboardData();
@@ -2243,6 +2378,7 @@ export default function AdminDashboard() {
                                 task.dueDate,
                               )
                             }
+                            onEdit={() => abrirEditarTarea(task.id)}
                           />
                         ))
                       )}
@@ -3208,6 +3344,58 @@ export default function AdminDashboard() {
                 </div>
               )}
 
+              {/* Pago: convenio recibe beca mensual; planta, pago por día (raya semanal). */}
+              {esConvenio(editFormData.rol) ? (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Beca mensual (MXN)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editFormData.remuneracion}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        remuneracion: e.target.value,
+                      })
+                    }
+                    placeholder="Sin beca"
+                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Se paga cada mes, el día en que empezó su contrato.
+                  </p>
+                </div>
+              ) : (
+                editFormData.nivel !== "Gerencia" && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Pago por día (MXN)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editFormData.pagoDia}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          pagoDia: e.target.value,
+                        })
+                      }
+                      placeholder="Sin definir"
+                      className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Raya semanal, se paga los sábados: días trabajados × pago
+                      por día. Aplica a las listas sin pagar.
+                    </p>
+                  </div>
+                )
+              )}
+
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                   Color Asignado
@@ -3374,6 +3562,107 @@ export default function AdminDashboard() {
                 {isDeleting ? "Eliminando..." : "Sí, Eliminar"}
               </button>
             </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ✏️ MODAL DE EDICIÓN DE TAREA */}
+      {editTarea && (
+        <ModalOverlay onClose={() => setEditTarea(null)}>
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-100 p-3 space-y-2">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+              <h3 className="text-sm font-bold text-slate-900">Editar tarea</h3>
+              <button
+                onClick={() => setEditTarea(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleGuardarTarea} className="space-y-2 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Título
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editTarea.titulo}
+                  onChange={(e) =>
+                    setEditTarea({ ...editTarea, titulo: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Descripción
+                </label>
+                <textarea
+                  rows={3}
+                  value={editTarea.descripcion}
+                  onChange={(e) =>
+                    setEditTarea({ ...editTarea, descripcion: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Prioridad
+                  </label>
+                  <select
+                    value={editTarea.prioridad}
+                    onChange={(e) =>
+                      setEditTarea({ ...editTarea, prioridad: e.target.value })
+                    }
+                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                  >
+                    <option value="Baja">Baja</option>
+                    <option value="Media">Media</option>
+                    <option value="Alta">Alta</option>
+                    <option value="Urgente">Urgente</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Fecha límite
+                  </label>
+                  <input
+                    type="date"
+                    value={editTarea.fechaLimite}
+                    onChange={(e) =>
+                      setEditTarea({
+                        ...editTarea,
+                        fechaLimite: e.target.value,
+                      })
+                    }
+                    className="w-full border border-slate-300 rounded-xl p-1.5 text-slate-900 font-medium bg-white outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-1 pt-1.5 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditTarea(null)}
+                  className="flex-1 bg-slate-100 text-slate-700 py-1.5 rounded-xl font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoTarea}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-1.5 rounded-xl font-bold"
+                >
+                  {guardandoTarea ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </form>
           </div>
         </ModalOverlay>
       )}

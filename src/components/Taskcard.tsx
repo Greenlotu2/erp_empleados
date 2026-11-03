@@ -18,6 +18,7 @@ export interface TaskCardProps {
   isCritical?: boolean;
   slackDays?: number;
   onRequestExtension?: () => void;
+  onEdit?: () => void;
 }
 
 export default function TaskCard({
@@ -34,6 +35,7 @@ export default function TaskCard({
   isCritical,
   slackDays,
   onRequestExtension,
+  onEdit,
 }: TaskCardProps) {
   const [abierta, setAbierta] = useState(false);
 
@@ -190,16 +192,28 @@ export default function TaskCard({
       )}
 
       {/* Acciones */}
-      {status !== 'Completada' && onRequestExtension && (
+      {(onEdit || (status !== 'Completada' && onRequestExtension)) && (
         <div className="pt-1.5 border-t border-slate-100 flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={onRequestExtension}
-            className="inline-flex items-center gap-1 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 hover:border-amber-300 font-medium px-1.5 py-1 rounded-lg text-[10px] transition-colors cursor-pointer"
-            title="Extender la fecha límite de esta tarea"
-          >
-            <Icon name="clock" size={11} /> Tiempo extra
-          </button>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 font-medium px-1.5 py-1 rounded-lg text-[10px] transition-colors cursor-pointer"
+              title="Editar los datos de esta tarea"
+            >
+              <Icon name="pencil" size={11} /> Editar
+            </button>
+          )}
+          {status !== 'Completada' && onRequestExtension && (
+            <button
+              type="button"
+              onClick={onRequestExtension}
+              className="inline-flex items-center gap-1 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 hover:border-amber-300 font-medium px-1.5 py-1 rounded-lg text-[10px] transition-colors cursor-pointer"
+              title="Extender la fecha límite de esta tarea"
+            >
+              <Icon name="clock" size={11} /> Tiempo extra
+            </button>
+          )}
         </div>
       )}
         </div>
